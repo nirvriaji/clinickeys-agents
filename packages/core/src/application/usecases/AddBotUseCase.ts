@@ -1,10 +1,12 @@
+// packages/core/src/application/usecases/AddBotUseCase.ts
+
 import { BotConfigDTO, BotConfigType, ChatBotConfigDTO, NotificationBotConfigDTO } from "@clinickeys-agents/core/domain/botConfig";
-import { IBotConfigRepository } from "@clinickeys-agents/core/domain/botConfig";
+import { defaultPlaceholders, generateInstructionsRaw } from "@clinickeys-agents/core/utils";
 import { IOpenAIAssistantRepository } from "@clinickeys-agents/core/domain/openai";
-import { defaultPlaceholders, generateInstructions } from "@clinickeys-agents/core/utils";
+import { IBotConfigRepository } from "@clinickeys-agents/core/domain/botConfig";
+import { ulid } from "ulidx";
 import path from "path";
 import fs from "fs";
-import { ulid } from "ulidx";
 
 export interface AddBotInput {
   botConfigType: BotConfigType;
@@ -42,6 +44,7 @@ export class AddBotUseCase {
       if (!input.openaiApikey) {
         throw new Error("openaiApikey es obligatorio para chatBot");
       }
+
       const placeholders: Record<string, string> = { ...defaultPlaceholders, ...(input.placeholders || {}) };
 
       const templateDir = path.resolve(__dirname, "packages/core/src/.ia/instructions/templates");
@@ -59,7 +62,8 @@ export class AddBotUseCase {
 
       for (const fileName of assistantFiles) {
         const assistantKey = path.basename(fileName, ".md");
-        const instructionText = generateInstructions(assistantKey, placeholders);
+        // Usamos generateInstructionsRaw para dejar los placeholders intactos
+        const instructionText = generateInstructionsRaw(assistantKey);
         const assistant = await openaiRepo.createAssistant({
           name: assistantKey,
           instructions: instructionText,

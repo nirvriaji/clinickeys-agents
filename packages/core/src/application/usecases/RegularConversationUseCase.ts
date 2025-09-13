@@ -1,3 +1,5 @@
+// packages/core/src/application/usecases/RegularConversationUseCase.ts
+
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 
 interface RegularConversationInput {

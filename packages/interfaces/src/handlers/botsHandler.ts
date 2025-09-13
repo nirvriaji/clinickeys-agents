@@ -1,6 +1,4 @@
-// -----------------------------------------------------------------------------
 // packages/core/src/interface/handlers/botsHandler.ts (RESTful refactor)
-// -----------------------------------------------------------------------------
 
 import { createDynamoDocumentClient, getEnvVar } from "@clinickeys-agents/core/infrastructure/helpers";
 import { BotConfigRepositoryDynamo } from "@clinickeys-agents/core/infrastructure/botConfig";

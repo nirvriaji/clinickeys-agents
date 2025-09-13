@@ -1,6 +1,4 @@
-// -----------------------------------------------------------------------------
 // packages/core/src/interface/controllers/BotController.ts
-// -----------------------------------------------------------------------------
 
 import { BotConfigDTO, BotConfigType } from "@clinickeys-agents/core/domain/botConfig";
 import {

@@ -1,8 +1,11 @@
+// packages/core/src/application/usecases/RecognizeUserIntentUseCase.ts
+
+import { AppError, getActualTimeForPrompts } from '@clinickeys-agents/core/utils';
+import { BotConfigType, BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
-import { BotConfigType } from '@clinickeys-agents/core/domain/botConfig';
 import { IOpenAIService } from '@clinickeys-agents/core/domain/openai';
 import { FetchPatientInfoUseCase } from './FetchPatientInfoUseCase';
-import { AppError, getActualTimeForPrompts } from '@clinickeys-agents/core/utils';
+import { mergePlaceholdersIntoContext } from '@clinickeys-agents/core/utils';
 import type { DateTime } from 'luxon';
 
 type KnownIntent =
@@ -29,6 +32,7 @@ export interface RecognizeUserIntentInput {
   openAIService: IOpenAIService;
   speakingBotId: string;
   threadId?: string | null;
+  botConfig?: BotConfigDTO; // para acceder a placeholders
 }
 
 export interface RecognizeUserIntentOutput {
@@ -56,6 +60,7 @@ type IntentContext = {
   CITAS_PROGRAMADAS_DEL_PACIENTE: PatientInfo['appointments'];
   RESUMEN_PACK_BONOS_DEL_PACIENTE: PatientInfo['packsBonos'];
   RESUMEN_PRESUPUESTOS_DEL_PACIENTE: PatientInfo['budgets'];
+  CONTEXTO_PLACEHOLDERS?: string;
 };
 
 export class RecognizeUserIntentUseCase {
@@ -78,7 +83,8 @@ export class RecognizeUserIntentUseCase {
       userMessage,
       openAIService,
       speakingBotId,
-      threadId
+      threadId,
+      botConfig
     } = input;
 
     Logger.info('[RecognizeUserIntent] Inicio', { leadId, userMessage, speakingBotId, threadId });
@@ -107,7 +113,8 @@ export class RecognizeUserIntentUseCase {
       DATOS_DEL_PACIENTE: patientInfo.patient,
       CITAS_PROGRAMADAS_DEL_PACIENTE: patientInfo.appointments ?? [],
       RESUMEN_PACK_BONOS_DEL_PACIENTE: patientInfo.packsBonos ?? [],
-      RESUMEN_PRESUPUESTOS_DEL_PACIENTE: patientInfo.budgets ?? []
+      RESUMEN_PRESUPUESTOS_DEL_PACIENTE: patientInfo.budgets ?? [],
+      CONTEXTO_PLACEHOLDERS: botConfig?.placeholders ? mergePlaceholdersIntoContext(botConfig.placeholders) : ""
     };
 
     Logger.debug('[RecognizeUserIntent] Contexto para AI generado', { contextSample: { ...contextForAI } });

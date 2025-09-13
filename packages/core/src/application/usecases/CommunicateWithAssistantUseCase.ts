@@ -37,6 +37,7 @@ import {
   THREAD_ID,
 } from '@clinickeys-agents/core/utils';
 
+import { mergePlaceholdersIntoContext } from '@clinickeys-agents/core/utils';
 import type { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 
 const CitaSchema = z.object({
@@ -182,6 +183,7 @@ export class CommunicateWithAssistantUseCase {
         openAIService: this.deps.openAIService,
         speakingBotId: botConfig.openai?.assistants?.speakingBot || '',
         threadId: threadId || undefined,
+        botConfig,
       } as any);
 
       const { intent: intentName, params, assistantResult, patientInfo } = intentResult;
@@ -336,11 +338,13 @@ export class CommunicateWithAssistantUseCase {
       if (runId && Array.isArray(functionCalls) && functionCalls.length > 0) {
         Logger.info('[CommunicateWithAssistant] Resolviendo functionCalls', { count: functionCalls.length });
         Logger.info('[CommunicateWithAssistant] UcResponse toolOutput', ucResponse.toolOutput);
+        // Agregamos placeholders al toolOutput como contexto extra
+        const toolOutputWithPlaceholders = `${ucResponse.toolOutput}\n${mergePlaceholdersIntoContext(botConfig.placeholders)}`;
         const resolved = await this.deps.openAIService.getResponseFromWaitingAssistant({
           threadId: thId!,
           runId: runId!,
           functionCalls,
-          rawOutput: ucResponse.toolOutput,
+          rawOutput: toolOutputWithPlaceholders,
         });
         Logger.debug('[CommunicateWithAssistant] Respuesta tras functionCalls', { resolvedMessage: resolved.message });
         finalMsg = resolved.message || '';
