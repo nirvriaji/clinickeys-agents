@@ -1,3 +1,5 @@
+// packages/core/src/application/usecases/RescheduleAppointmentUseCase.ts
+
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { isAppointmentSoon, getActualTimeForPrompts } from '@clinickeys-agents/core/utils';
@@ -14,6 +16,8 @@ import {
   AvailabilityService,
   OpenAIService,
 } from '@clinickeys-agents/core/application/services';
+
+import { filterAvailabilityByRestrictions } from '@clinickeys-agents/core/utils/availability/filterAvailabilityByRestrictions';
 
 interface RescheduleAppointmentInput {
   botConfig: any;
@@ -45,7 +49,7 @@ interface RescheduleAppointmentOutput {
   updatedAppointmentId?: number;
 }
 
-const ID_ESTADO_CITA_PROGRAMADA = 1; // mantiene estado programada tras mover la fecha
+const ID_ESTADO_CITA_PROGRAMADA = 1;
 
 export class RescheduleAppointmentUseCase {
   constructor(
@@ -61,7 +65,6 @@ export class RescheduleAppointmentUseCase {
 
     Logger.info('[RescheduleAppointment] Inicio', { leadId, id_cita, tratamiento, medico, id_medico, fechas, horas });
 
-    /* 1) mensaje inicial */
     Logger.debug('[RescheduleAppointment] Enviando mensaje inicial al bot');
     await this.kommoService.sendBotInitialMessage({
       leadId,
@@ -70,7 +73,6 @@ export class RescheduleAppointmentUseCase {
       message: 'Muy bien, voy a reprogramar tu cita. Un momento por favor.',
     });
 
-    /* 2) pasos de disponibilidad */
     const STEPS = [
       { tipo: 'original', filtros: { con_medico: true, rango_dias_extra: 0 }, params: { ...params } },
       { tipo: 'ampliada_mismo_medico', filtros: { con_medico: true, rango_dias_extra: 45 }, params: { ...params, rango_dias_extra: 45 } },
@@ -87,7 +89,7 @@ export class RescheduleAppointmentUseCase {
         ? `${Array.isArray(fechas) ? JSON.stringify(fechas) : fechas}, los próximos 45 días`
         : fechas;
 
-      const availability = await this.availabilityService.getAvailabilityInfo({
+      let availability = await this.availabilityService.getAvailabilityInfo({
         id_clinica: botConfig.clinicId,
         id_super_clinica: botConfig.superClinicId,
         tiempo_actual: tiempoActualDT.toISO() as string,
@@ -107,11 +109,15 @@ export class RescheduleAppointmentUseCase {
       });
       Logger.info(`[RescheduleAppointment] Paso '${step.tipo}' respuesta recibida`, { success: availability.success, count: availability.analisis_agenda?.length });
 
-      if (
-        availability.success &&
-        Array.isArray(availability.analisis_agenda) &&
-        availability.analisis_agenda.length > 0
-      ) {
+      if (availability.success && Array.isArray(availability.analisis_agenda) && availability.analisis_agenda.length > 0) {
+        const restricciones = botConfig?.placeholders?.RESTRICCIONES_EN_DISPONIBILIDADES || "";
+        const filtradas = await filterAvailabilityByRestrictions(
+          this.openAIService,
+          availability.analisis_agenda,
+          restricciones
+        );
+        availability.analisis_agenda = filtradas;
+
         finalPayload = {
           tipo_busqueda: step.tipo,
           filtros_aplicados: step.filtros,
@@ -120,7 +126,6 @@ export class RescheduleAppointmentUseCase {
         };
         Logger.debug('[RescheduleAppointment] Disponibilidad encontrada', { finalPayload });
 
-        /* extractor para elegir horario */
         const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
         const citasPacienteStr = JSON.stringify(patientInfo.appointments ?? []);
         const extractorPrompt = `#reprogramarCita\n\nTIEMPO_ACTUAL: ${actualTimeForPrompts}\n\nLa CITAS_PACIENTE que se va a reprogramar es la siguiente: ${citasPacienteStr};\nLos HORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}\nMENSAJE_USUARIO: ${JSON.stringify(params)}`;
@@ -172,7 +177,6 @@ export class RescheduleAppointmentUseCase {
       };
     }
 
-    /* 3) construir toolOutput */
     let toolOutput: string;
     if (citaReprogramada?.id_cita) {
       Logger.info('[RescheduleAppointment] Cita reprogramada con éxito', { citaReprogramada });

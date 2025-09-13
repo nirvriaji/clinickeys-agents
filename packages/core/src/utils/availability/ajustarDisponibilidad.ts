@@ -1,3 +1,5 @@
+// packages/core/src/utils/availability/ajustarDisponibilidad.ts
+
 import { DateTime } from "luxon";
 import { formatFechaLegible } from "@clinickeys-agents/core/utils";
 

@@ -7,6 +7,7 @@ import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
 import { readFile } from "fs/promises";
 import path from "path";
+import { filterAvailabilityByRestrictions } from "@clinickeys-agents/core/utils/availability/filterAvailabilityByRestrictions";
 
 interface GetAvailabilityInfoInput {
   id_clinica: number;
@@ -16,6 +17,7 @@ interface GetAvailabilityInfoInput {
   subdomain: string;
   kommoToken: string;
   leadId?: number;
+  restriccionesDisponibilidades?: string;
 }
 
 export interface GetTreatmentsDataInput {
@@ -41,9 +43,6 @@ export class AvailabilityService {
     this.openAIService = openAIService;
   }
 
-  /**
-   * Gets treatments with associated medicos and espacios, using advanced search by names.
-   */
   async fetchTreatmentsWithDoctorsAndSpaces({ clinicId, tratamientosConsultados }: GetTreatmentsDataInput): Promise<any[]> {
     Logger.info("Starting advanced tratamiento search...");
     const treatmentsFound = await this.treatmentRepo.findTreatmentsByNamesWithRelevance(tratamientosConsultados, clinicId);
@@ -58,7 +57,6 @@ export class AvailabilityService {
       throw AppError.TRATAMIENTOS_NO_EXACTOS(tratamientosConsultados);
     }
 
-    // For each exact tratamiento, get medicos and espacios
     const result = await Promise.all(
       tratamientosExactos.map(async (tratamiento: any) => {
         let medicos: any[] = [];
@@ -100,9 +98,6 @@ export class AvailabilityService {
     return result;
   }
 
-  /**
-   * Orchestrates getting appointment availability from user input.
-   */
   async getAppointmentAvailability(input: any): Promise<any> {
     try {
       const {
@@ -114,17 +109,14 @@ export class AvailabilityService {
         tiempo_actual: tiempo_actual,
       } = input;
 
-      // Basic validations
       if (!clinicId) throw AppError.FALTA_ID_CLINICA();
       if (!Array.isArray(tratamientosConsultados) || tratamientosConsultados.length === 0) throw AppError.NINGUN_TRATAMIENTO_SELECCIONADO();
       if (!Array.isArray(fechasSeleccionadas) || fechasSeleccionadas.length === 0) throw AppError.NINGUNA_FECHA_SELECCIONADA();
       Logger.info("Input data processed correctly.");
 
-      // 1. Get base treatments
       let datosTratamientos = await this.fetchTreatmentsWithDoctorsAndSpaces({ clinicId, tratamientosConsultados });
       Logger.info("Treatments obtained:", JSON.stringify(datosTratamientos));
 
-      // 2. Optional: filter by medicos
       let idsMedicosSolicitados: number[] = [];
       let tratamientosFiltrados = datosTratamientos;
       if (medicosConsultados.length > 0) {
@@ -145,7 +137,6 @@ export class AvailabilityService {
         }
       }
 
-      // 2.1 Optional: filter by espacios (names); keeps only matching espacios per médico, and prunes médicos/tratamientos vacíos
       if (espaciosConsultados.length > 0) {
         const setNombresEspacios = new Set(
           espaciosConsultados.map((n: any) => String(n).trim().toLowerCase())
@@ -165,7 +156,6 @@ export class AvailabilityService {
           .filter((t: any) => t.medicos && t.medicos.length > 0);
       }
 
-      // 3. Collect medico and space IDs
       const idsMedicos = idsMedicosSolicitados.length
         ? idsMedicosSolicitados
         : [
@@ -190,7 +180,6 @@ export class AvailabilityService {
         throw AppError.NINGUN_ESPACIO_ENCONTRADO(tratamientosFiltrados.map((t: any) => t.tratamiento.nombre_tratamiento), idsMedicos);
       }
 
-      // 4. Generate SQL queries
       const consultasSQL = generarConsultasSQL({
         fechas: fechasSeleccionadas,
         id_medicos: idsMedicos,
@@ -198,7 +187,6 @@ export class AvailabilityService {
         id_clinica: clinicId,
       });
 
-      // 5. Execute queries
       let citas, progMedicos, progEspacios, progMedicoEspacio;
       try {
         citas = await ejecutarConReintento(consultasSQL.sql_citas, []);
@@ -217,7 +205,6 @@ export class AvailabilityService {
         throw AppError.NO_PROG_ESPACIOS(idsEspacios, fechasSeleccionadas.map((f: any) => f.fecha));
       }
 
-      // 6. Calculate availability (unified pipeline under same API)
       let availability = calcularDisponibilidad({
         tratamientos: tratamientosFiltrados,
         citas_programadas: citas,
@@ -226,7 +213,6 @@ export class AvailabilityService {
         prog_medico_espacio: progMedicoEspacio,
       });
 
-      // 7. Final adjustment (tiempo_actual)
       const adjustedAvailability = ajustarDisponibilidad(availability, tiempo_actual);
       if (!adjustedAvailability.length) {
         throw AppError.SIN_HORARIOS_DISPONIBLES(tratamientosConsultados, fechasSeleccionadas);
@@ -264,20 +250,14 @@ export class AvailabilityService {
     }
   }
 
-  /**
-   * Interpreta el mensaje del usuario para consultar disponibilidad
-   * y delega al cálculo puro de disponibilidad.
-   */
   public async getAvailabilityInfo(input: GetAvailabilityInfoInput): Promise<{ success: boolean; message: string | null; analisis_agenda: any[] | null }> {
-    const { id_clinica, id_super_clinica, tiempo_actual, mensajeBotParlante } = input;
+    const { id_clinica, id_super_clinica, tiempo_actual, mensajeBotParlante, restriccionesDisponibilidades } = input;
 
-    // 1. Datos de contexto: tratamientos y médicos
     const tratamientos = await this.treatmentRepo.getActiveTreatmentsForClinic(id_clinica, id_super_clinica);
     const nombresTratamientos = tratamientos.map((t) => t.nombre_tratamiento);
     const medicos = await this.doctorRepo.getMedicos(id_clinica, id_super_clinica);
     const nombresMedicos = medicos.map((m) => m.nombre_medico);
 
-    // 2. Construir prompt para OpenAI
     const consultAgendaMessage = `
 El paciente consultó por una cita y le respondimos esto: ${mensajeBotParlante}
 
@@ -290,11 +270,9 @@ Contexto:
 `;
     Logger.info('[AvailabilityService] Prompt de consulta de agenda:', consultAgendaMessage);
 
-    // 3. Cargar instrucciones del sistema (corrección de ruta relativa)
     const promptsPath = path.resolve(__dirname, "packages/core/src/.ia/instructions/prompts/bot_extractor_consulta_cita.md");
     const systemPrompt = await readFile(promptsPath, "utf8");
 
-    // 4. Obtener filtros estructurados desde OpenAI
     const { filters } = await this.openAIService.getSchemaStructuredResponse(
       systemPrompt,
       consultAgendaMessage,
@@ -303,7 +281,6 @@ Contexto:
     );
     Logger.info('[AvailabilityService] Filtros obtenidos:', JSON.stringify(filters));
 
-    // 5. Preparar payload para cálculo de disponibilidad
     const lambdaBody = {
       tratamientos: filters[0]?.tratamientos ?? [],
       medicos: filters[0]?.medicos ?? [],
@@ -314,14 +291,20 @@ Contexto:
     };
 
     if (lambdaBody.tratamientos.length === 0) {
-      return {
-        success: false,
-        message: 'No se encontraron tratamientos disponibles en la clínica.',
-        analisis_agenda: null,
-      };
+      return { success: false, message: 'No se encontraron tratamientos disponibles en la clínica.', analisis_agenda: null };
     }
 
-    // 6. Delegar al core de disponibilidad
-    return this.getAppointmentAvailability(lambdaBody);
+    const baseResult = await this.getAppointmentAvailability(lambdaBody);
+
+    if (!baseResult.success || !baseResult.analisis_agenda) {
+      return baseResult;
+    }
+
+    if (restriccionesDisponibilidades && restriccionesDisponibilidades.trim() !== "") {
+      const filtradas = await filterAvailabilityByRestrictions(this.openAIService, baseResult.analisis_agenda, restriccionesDisponibilidades);
+      return { ...baseResult, analisis_agenda: filtradas };
+    }
+
+    return baseResult;
   }
 }

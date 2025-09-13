@@ -1,3 +1,5 @@
+// packages/core/src/utils/availability/calcularDisponibilidad.ts
+
 /**
  * Refactor: disponibilidad unificada
  * Construye ventanas (general + específica) → combina → resta citas/bloqueos una sola vez → genera slots.

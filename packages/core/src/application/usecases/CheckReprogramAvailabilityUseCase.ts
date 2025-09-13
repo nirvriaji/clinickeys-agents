@@ -1,3 +1,5 @@
+// packages/core/src/application/usecases/CheckReprogramAvailabilityUseCase.ts
+
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { AvailabilityService, KommoService } from '@clinickeys-agents/core/application/services';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
@@ -5,6 +7,11 @@ import { getActualTimeForPrompts } from '@clinickeys-agents/core/utils';
 import { DateTime } from 'luxon';
 
 import type { FetchPatientInfoUseCase } from './FetchPatientInfoUseCase';
+
+import { filterAvailabilityByRestrictions } from '@clinickeys-agents/core/utils/availability/filterAvailabilityByRestrictions';
+
+import { OpenAIService } from '@clinickeys-agents/core/application/services';
+
 type PatientInfo = Awaited<ReturnType<FetchPatientInfoUseCase['execute']>>;
 
 interface CheckReprogramAvailabilityInput {
@@ -39,6 +46,7 @@ export class CheckReprogramAvailabilityUseCase {
   constructor(
     private readonly kommoService: KommoService,
     private readonly availabilityService: AvailabilityService,
+    private readonly openAIService: OpenAIService,
   ) {}
 
   public async execute(input: CheckReprogramAvailabilityInput): Promise<CheckReprogramAvailabilityOutput> {
@@ -82,7 +90,7 @@ export class CheckReprogramAvailabilityUseCase {
         ? `${Array.isArray(fechas) ? JSON.stringify(fechas) : fechas}, los próximos 45 días`
         : fechas;
 
-      const availability = await this.availabilityService.getAvailabilityInfo({
+      let availability = await this.availabilityService.getAvailabilityInfo({
         id_clinica: botConfig.clinicId,
         id_super_clinica: botConfig.superClinicId,
         tiempo_actual: tiempoActualDT.toISO() as string,
@@ -101,6 +109,17 @@ export class CheckReprogramAvailabilityUseCase {
         leadId,
       });
       Logger.info(`[CheckReprogramAvailability] Paso '${step.tipo}' respuesta recibida`, { success: availability.success, count: availability.analisis_agenda?.length });
+
+      // 2.1 Aplicar restricciones si existen
+      if (availability.success && Array.isArray(availability.analisis_agenda) && availability.analisis_agenda.length > 0) {
+        const restricciones = botConfig?.placeholders?.RESTRICCIONES_EN_DISPONIBILIDADES || "";
+        const filtradas = await filterAvailabilityByRestrictions(
+          this.openAIService,
+          availability.analisis_agenda,
+          restricciones
+        );
+        availability.analisis_agenda = filtradas;
+      }
 
       if (
         availability.success &&

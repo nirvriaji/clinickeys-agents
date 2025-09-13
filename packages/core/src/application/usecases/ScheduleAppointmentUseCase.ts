@@ -1,4 +1,4 @@
-// packages/core/src/application/usecases/ScheduleAppointmentUseCase.ts
+// // packages/core/src/application/usecases/ScheduleAppointmentUseCase.ts
 
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
@@ -22,6 +22,8 @@ import {
   OpenAIService,
   PackBonoService,
 } from '@clinickeys-agents/core/application/services';
+
+import { filterAvailabilityByRestrictions } from '@clinickeys-agents/core/utils/availability/filterAvailabilityByRestrictions';
 
 interface ScheduleAppointmentInput {
   botConfig: any;
@@ -68,7 +70,7 @@ export class ScheduleAppointmentUseCase {
 
     Logger.info('[ScheduleAppointment] Inicio', { leadId, nombre, apellido, telefono, tratamiento, medico });
 
-    // 1. Mensaje inicial "please‑wait"
+    // 1. Mensaje inicial "please-wait"
     Logger.debug('[ScheduleAppointment] Enviando mensaje inicial al bot');
     await this.kommoService.sendBotInitialMessage({
       leadId,
@@ -118,7 +120,7 @@ export class ScheduleAppointmentUseCase {
         ? `${Array.isArray(fechas) ? JSON.stringify(fechas) : fechas}, los próximos 45 días`
         : fechas;
 
-      const availability = await this.availabilityService.getAvailabilityInfo({
+      let availability = await this.availabilityService.getAvailabilityInfo({
         id_clinica: botConfig.clinicId,
         id_super_clinica: botConfig.superClinicId,
         tiempo_actual: tiempoActualDT.toISO() as string,
@@ -133,7 +135,19 @@ export class ScheduleAppointmentUseCase {
         kommoToken: botConfig.longLivedToken,
         leadId,
       });
+
       Logger.info('[ScheduleAppointment] Disponibilidad recibida', { success: availability.success, count: availability.analisis_agenda?.length });
+
+      // 3.1 Aplicar restricciones si existen
+      if (availability.success && Array.isArray(availability.analisis_agenda) && availability.analisis_agenda.length > 0) {
+        const restricciones = botConfig?.placeholders?.RESTRICCIONES_EN_DISPONIBILIDADES || "";
+        const filtradas = await filterAvailabilityByRestrictions(
+          this.openAIService,
+          availability.analisis_agenda,
+          restricciones
+        );
+        availability.analisis_agenda = filtradas;
+      }
 
       if (
         availability.success &&

@@ -3,6 +3,7 @@ import { AvailabilityService, KommoService } from '@clinickeys-agents/core/appli
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { getActualTimeForPrompts } from '@clinickeys-agents/core/utils';
+import { filterAvailabilityByRestrictions } from '@clinickeys-agents/core/utils/availability/filterAvailabilityByRestrictions';
 import type { DateTime } from 'luxon';
 
 interface CheckAvailabilityInput {
@@ -40,7 +41,7 @@ export class CheckAvailabilityUseCase {
 
     Logger.info('[CheckAvailability] Inicio', { leadId, tratamiento, medico, fechas, horas });
 
-    // 1. Mensaje inicial "please‑wait"
+    // 1. Mensaje inicial "please-wait"
     Logger.debug('[CheckAvailability] Enviando mensaje inicial al bot');
     await this.kommoService.sendBotInitialMessage({
       leadId,
@@ -65,7 +66,7 @@ export class CheckAvailabilityUseCase {
         ? `${Array.isArray(fechas) ? JSON.stringify(fechas) : fechas}, los próximos 45 días`
         : fechas;
 
-      const availability = await this.availabilityService.getAvailabilityInfo({
+      let availability = await this.availabilityService.getAvailabilityInfo({
         id_clinica: botConfig.clinicId,
         id_super_clinica: botConfig.superClinicId,
         tiempo_actual: tiempoActualDT.toISO() as string,
@@ -81,6 +82,16 @@ export class CheckAvailabilityUseCase {
         leadId,
       });
       Logger.info(`[CheckAvailability] Paso '${step.tipo}' respuesta recibida`, { success: availability.success, count: availability.analisis_agenda?.length });
+
+      // 2.1 Aplicar restricciones si existen
+      if (availability.success && Array.isArray(availability.analisis_agenda) && availability.analisis_agenda.length > 0) {
+        const restricciones = botConfig?.placeholders?.RESTRICCIONES_EN_DISPONIBILIDADES || "";
+        availability.analisis_agenda = await filterAvailabilityByRestrictions(
+          this.availabilityService['openAIService'],
+          availability.analisis_agenda,
+          restricciones
+        );
+      }
 
       if (
         availability.success &&
