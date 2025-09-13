@@ -169,30 +169,38 @@ export class PatientService {
         : cita.fecha_cita;
       const hora = cita.hora_inicio || '00:00:00';
       const fechaHoraISO = `${fecha}T${hora}`;
-      Logger.debug('[PatientService] fechaHoraISO', fechaHoraISO);
       const zone = tiempoActualDT.zoneName ?? 'UTC';
-      Logger.debug('[PatientService] zone', zone);
       const citaDT = DateTime.fromISO(fechaHoraISO, { zone });
-      Logger.debug('[PatientService] citaDT', citaDT);
-      Logger.debug('[PatientService] tiempoActualDT', tiempoActualDT);
-      Logger.debug('[PatientService] citaDT > tiempoActualDT', citaDT > tiempoActualDT);
       return citaDT > tiempoActualDT;
     });
-    const citas = citasFiltradas.map((cita: any) => ({
-      id_cita: cita.id_cita,
-      id_medico: cita.id_medico,
-      id_tratamiento: cita.id_tratamiento,
-      fecha_cita: cita.fecha_cita,
-      hora_inicio: cita.hora_inicio,
-      hora_fin: cita.hora_fin,
-      id_espacio: cita.id_espacio,
-      id_presupuesto: cita.id_presupuesto,
-      id_pack_bono: cita.id_pack_bono,
-      nombre_espacio: cita.nombre_espacio,
-      nombre_tratamiento: cita.nombre_tratamiento,
-      nombre_medico: cita.nombre_medico,
-      [`ultimo_resumen_cita_ID_${cita.id_cita}`]: cita.comentario_ia,
-    }));
+    const citas = citasFiltradas.map((cita: any) => {
+      const fecha = cita.fecha_cita instanceof Date
+        ? DateTime.fromJSDate(cita.fecha_cita)
+        : DateTime.fromISO(cita.fecha_cita);
+
+      const hora = cita.hora_inicio || '00:00:00';
+      const citaDT = DateTime.fromISO(
+        `${fecha.toISODate()}T${hora}`,
+        { zone: tiempoActualDT.zoneName ?? 'UTC' }
+      );
+
+      return {
+        id_cita: cita.id_cita,
+        id_medico: cita.id_medico,
+        id_tratamiento: cita.id_tratamiento,
+        fecha_cita: cita.fecha_cita,
+        hora_inicio: cita.hora_inicio,
+        hora_fin: cita.hora_fin,
+        id_espacio: cita.id_espacio,
+        id_presupuesto: cita.id_presupuesto,
+        id_pack_bono: cita.id_pack_bono,
+        nombre_espacio: cita.nombre_espacio,
+        nombre_tratamiento: cita.nombre_tratamiento,
+        nombre_medico: cita.nombre_medico,
+        dia_semana: citaDT.setLocale("es").toFormat("cccc"),
+        [`ultimo_resumen_cita_ID_${cita.id_cita}`]: cita.comentario_ia,
+      }
+    });
 
     // Packs/bonos: sesiones y detalles
     Logger.debug('[PatientService] Fetching packs/bonos sessions and details');
