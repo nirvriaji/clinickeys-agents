@@ -1,9 +1,10 @@
 import { KommoService, AppointmentService, PackBonoService } from '@clinickeys-agents/core/application/services';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
+import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 
 interface CancelAppointmentInput {
-  botConfig: any;
+  botConfig: BotConfigDTO;
   leadId: number;
   normalizedLeadCF: (KommoCustomFieldValueBase & { value: any })[];
   params: {

@@ -107,4 +107,16 @@ export async function ejecutarUnicoResultado(
   return rows[0] || null;
 }
 
+/**
+ * Ejecuta una consulta SQL obteniendo todas las filas.
+ */
+export async function ejecutarTodosLosResultados(
+  consulta: string,
+  parametros: any[] = [],
+  reintentos = 3
+): Promise<any[]> {
+  const rows = await ejecutarConReintento(consulta, parametros, reintentos);
+  return rows || [];
+}
+
 export { Pool } from "mysql2/promise";

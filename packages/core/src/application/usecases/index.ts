@@ -16,6 +16,7 @@ export * from "./FetchPatientInfoUseCase";
 export * from "./UpdateBotConfigUseCase";
 export * from "./UpdateBotConfigUseCase";
 export * from "./FetchKommoDataUseCase";
+export * from "./ClarifyPatientUseCase";
 export * from "./HandleUrgencyUseCase";
 export * from "./GetAllClinicsUseCase";
 export * from "./GetKommoUsersUseCase";

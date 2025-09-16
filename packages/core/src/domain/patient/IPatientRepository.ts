@@ -38,7 +38,7 @@ export interface IPatientRepository {
   /**
    * Busca paciente por número nacional, clínica y solo activos. Devuelve PatientDTO o undefined.
    */
-  findByNationalPhoneAndClinic(telefonoNacional: string, id_clinica: number): Promise<PatientDTO | undefined>;
+  findByNationalPhoneAndClinic(telefonoNacional: string, id_clinica: number): Promise<PatientDTO[]>;
 
   updateKommoLeadId(patientId: number, kommoLeadId: number): Promise<void>;
 }

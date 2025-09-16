@@ -1,6 +1,7 @@
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { KommoService } from '@clinickeys-agents/core/application/services';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
+import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 
 /**
  * Número de minutos (48 h) que tendrá el usuario interno para resolver la tarea
@@ -9,7 +10,7 @@ import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 const TASK_DEADLINE_MINUTES = 48 * 60;
 
 export interface HandleUrgencyInput {
-  botConfig: any;
+  botConfig: BotConfigDTO;
   leadId: number;
   normalizedLeadCF: (KommoCustomFieldValueBase & { value: any })[];
   params: {

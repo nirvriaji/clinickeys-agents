@@ -1,3 +1,5 @@
+// packages/core/src/application/usecases/FetchPatientInfoUseCase.ts
+
 import { PatientService } from '@clinickeys-agents/core/application/services';
 import { BotConfigType } from '@clinickeys-agents/core/domain/botConfig';
 import { FetchKommoDataUseCase } from './FetchKommoDataUseCase';
@@ -14,10 +16,12 @@ export interface FetchPatientInfoInput {
 }
 
 export interface FetchPatientInfoOutput {
-  patient: any;
-  appointments: any[];
-  packsBonos: any[];
-  budgets: any[];
+  patients: Array<{
+    paciente: any;
+    appointments: any[];
+    packsBonos: any[];
+    budgets: any[];
+  }>;
 }
 
 export class FetchPatientInfoUseCase {
@@ -36,7 +40,6 @@ export class FetchPatientInfoUseCase {
     const { botConfigType, botConfigId, clinicSource, clinicId, leadId, tiempoActualDT } = input;
     Logger.info('[FetchPatientInfo] Inicio', { botConfigType, botConfigId, clinicSource, clinicId, leadId });
 
-    // 1. Obtener datos de Kommo
     Logger.debug('[FetchPatientInfo] Obteniendo datos de Kommo');
     const kommoData = await this.fetchKommoDataUseCase.execute({
       botConfigType,
@@ -51,7 +54,6 @@ export class FetchPatientInfoUseCase {
       normalizedContactCFCount: kommoData.normalizedContactCF?.length
     });
 
-    // 2. Preparar objeto leadPhones
     Logger.debug('[FetchPatientInfo] Preparando objeto leadPhones');
     const contactPhone = kommoData.contactData?.custom_fields_values?.find(
       (cf: any) => cf.field_code === 'PHONE' && cf.values?.length
@@ -63,7 +65,6 @@ export class FetchPatientInfoUseCase {
     };
     Logger.debug('[FetchPatientInfo] leadPhones preparado', { leadPhones });
 
-    // 3. Llamar a PatientService
     Logger.debug('[FetchPatientInfo] Obteniendo información del paciente desde PatientService');
     const patientInfo = await this.patientService.getPatientInfo(
       tiempoActualDT,
@@ -71,21 +72,7 @@ export class FetchPatientInfoUseCase {
       leadPhones
     );
 
-    if (patientInfo?.paciente?.id_paciente) {
-      const patientId = patientInfo.paciente.id_paciente;
-      const oldLeadId = patientInfo.paciente.kommo_lead_id;
-      if (oldLeadId !== kommoData.leadData.id) {
-        Logger.debug('[FetchPatientInfo] Actualizando kommo_lead_id en BD', {
-          patientId,
-          oldLeadId,
-          newLeadId: kommoData.leadData.id,
-        });
-        await this.patientService.updateKommoLeadId(patientId, kommoData.leadData.id);
-        patientInfo.paciente.kommo_lead_id = kommoData.leadData.id;
-      }
-    }
-
-    if (!patientInfo) {
+    if (!patientInfo || !patientInfo.patients?.length) {
       Logger.error('[FetchPatientInfo] No se encontró información del paciente', { leadId });
       throw new AppError({
         code: 'ERR_PATIENT_INFO_NOT_FOUND',
@@ -94,17 +81,33 @@ export class FetchPatientInfoUseCase {
       });
     }
 
-    Logger.info('[FetchPatientInfo] Información del paciente obtenida con éxito', {
-      hasAppointments: !!patientInfo.citas?.length,
-      hasPacksBonos: !!patientInfo.packsBonos?.length,
-      hasBudgets: !!patientInfo.presupuestos?.length
+    for (const patient of patientInfo.patients) {
+      if (patient.paciente?.id_paciente) {
+        const patientId = patient.paciente.id_paciente;
+        const oldLeadId = patient.paciente.kommo_lead_id;
+        if (oldLeadId !== kommoData.leadData.id) {
+          Logger.debug('[FetchPatientInfo] Actualizando kommo_lead_id en BD', {
+            patientId,
+            oldLeadId,
+            newLeadId: kommoData.leadData.id,
+          });
+          await this.patientService.updateKommoLeadId(patientId, kommoData.leadData.id);
+          patient.paciente.kommo_lead_id = kommoData.leadData.id;
+        }
+      }
+    }
+
+    Logger.info('[FetchPatientInfo] Información de pacientes obtenida con éxito', {
+      totalPatients: patientInfo.patients.length
     });
 
-    return {
-      patient: patientInfo.paciente,
-      appointments: patientInfo.citas,
-      packsBonos: patientInfo.packsBonos,
-      budgets: patientInfo.presupuestos
-    };
+    const outputPatients = patientInfo.patients.map((p: any) => ({
+      paciente: p.paciente,
+      appointments: p.citas,
+      packsBonos: p.packsBonos,
+      budgets: p.presupuestos
+    }));
+
+    return { patients: outputPatients };
   }
 }

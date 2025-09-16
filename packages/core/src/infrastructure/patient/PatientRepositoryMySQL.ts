@@ -1,7 +1,7 @@
 // @clinickeys-agents/core/src/infrastructure/patient/PatientRepositoryMySQL.ts
 
 import { PatientDTO, IPatientRepository } from "@clinickeys-agents/core/domain/patient";
-import { ejecutarUnicoResultado, ejecutarExecConReintento } from "@clinickeys-agents/core/infrastructure/helpers";
+import { ejecutarUnicoResultado, ejecutarExecConReintento, ejecutarTodosLosResultados } from "@clinickeys-agents/core/infrastructure/helpers";
 /**
  * Implementación MySQL del repositorio de pacientes.
  */
@@ -81,21 +81,20 @@ export class PatientRepositoryMySQL implements IPatientRepository {
   }
 
   /**
-   * Busca paciente por teléfono nacional (solo dígitos), clínica y estado activo. Devuelve PatientDTO o undefined.
+   * Busca todos los pacientes por teléfono nacional (solo dígitos), clínica y estado activo.
+   * Devuelve PatientDTO[].
    */
-  async findByNationalPhoneAndClinic(telefonoNacional: string, id_clinica: number): Promise<PatientDTO | undefined> {
-    const row = await ejecutarUnicoResultado(
+  async findByNationalPhoneAndClinic(telefonoNacional: string, id_clinica: number): Promise<PatientDTO[]> {
+    const rows = await ejecutarTodosLosResultados(
       `SELECT id_paciente, nombre, apellido, telefono, id_clinica, nif_cif, id_super_clinica, id_cliente, kommo_lead_id
        FROM pacientes
        WHERE REGEXP_REPLACE(telefono, '[^0-9]', '') LIKE CONCAT('%', ?, '%')
          AND id_clinica = ?
-         AND id_estado_registro = 1
-       LIMIT 1`,
+         AND id_estado_registro = 1`,
       [telefonoNacional, id_clinica]
     );
-    if (!row) return undefined;
-    // Los campos seleccionados aquí son menos, así que sólo se devuelven esos
-    return {
+    if (!rows || !rows.length) return [];
+    return rows.map((row: any) => ({
       id_paciente: row.id_paciente,
       nombre: row.nombre,
       apellido: row.apellido,
@@ -107,7 +106,7 @@ export class PatientRepositoryMySQL implements IPatientRepository {
       kommo_lead_id: row.kommo_lead_id,
       // Defaults para campos obligatorios que no vienen del SELECT:
       lopd_aceptado: false,
-    } as PatientDTO;
+    } as PatientDTO));
   }
 
   /**

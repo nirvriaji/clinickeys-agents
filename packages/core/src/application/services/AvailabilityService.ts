@@ -15,7 +15,6 @@ interface GetAvailabilityInfoInput {
   tiempo_actual: string;
   mensajeBotParlante: string;
   subdomain: string;
-  kommoToken: string;
   leadId?: number;
   restriccionesDisponibilidades?: string;
 }
@@ -116,9 +115,10 @@ export class AvailabilityService {
 
       let datosTratamientos = await this.fetchTreatmentsWithDoctorsAndSpaces({ clinicId, tratamientosConsultados });
       Logger.info("Treatments obtained:", JSON.stringify(datosTratamientos));
-
+      
       let idsMedicosSolicitados: number[] = [];
       let tratamientosFiltrados = datosTratamientos;
+      Logger.info("Treatments filtered 1:", JSON.stringify(tratamientosFiltrados));
       if (medicosConsultados.length > 0) {
         const rows = await this.doctorRepo.getIdsMedicosPorNombre(medicosConsultados, clinicId);
         idsMedicosSolicitados = rows.map((f: any) => f.id_medico);
@@ -169,6 +169,8 @@ export class AvailabilityService {
           )
         ),
       ];
+
+      Logger.info("Treatments filtered 2:", JSON.stringify(tratamientosFiltrados));
 
       if (idsMedicos.length === 0) {
         const treatmentNamesOut = tratamientosFiltrados.map((t: any) => t.tratamiento.nombre_tratamiento);

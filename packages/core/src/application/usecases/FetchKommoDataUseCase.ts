@@ -1,10 +1,8 @@
-import { KommoContactResponse, KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
+import { KommoCustomFieldDefinitionBase, KommoContactResponse, KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
+import { BotConfigType, BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
+import { normalizeEntityCustomFields, AppError } from '@clinickeys-agents/core/utils';
 import { GetBotConfigUseCase } from '@clinickeys-agents/core/application/usecases';
 import { KommoService } from '@clinickeys-agents/core/application/services';
-import { BotConfigType } from '@clinickeys-agents/core/domain/botConfig';
-import { AppError } from '@clinickeys-agents/core/utils';
-import { normalizeEntityCustomFields } from '@clinickeys-agents/core/utils';
-import { KommoCustomFieldDefinitionBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo/models';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 
 export interface FetchKommoDataInput {
@@ -16,7 +14,7 @@ export interface FetchKommoDataInput {
 }
 
 export interface FetchKommoDataOutput {
-  botConfig: any;
+  botConfig: BotConfigDTO;
   leadData: any;
   contactId: number;
   contactData: KommoContactResponse;
