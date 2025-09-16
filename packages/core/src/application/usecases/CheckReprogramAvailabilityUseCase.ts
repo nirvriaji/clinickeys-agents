@@ -1,25 +1,21 @@
 // packages/core/src/application/usecases/CheckReprogramAvailabilityUseCase.ts
 
+import { AvailabilityService, KommoService, OpenAIService } from '@clinickeys-agents/core/application/services';
+import { getActualTimeForPrompts, filterAvailabilityByRestrictions } from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
-import { AvailabilityService, KommoService } from '@clinickeys-agents/core/application/services';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
-import { getActualTimeForPrompts } from '@clinickeys-agents/core/utils';
+import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { DateTime } from 'luxon';
 
-import type { FetchPatientInfoUseCase } from './FetchPatientInfoUseCase';
-
-import { filterAvailabilityByRestrictions } from '@clinickeys-agents/core/utils/availability/filterAvailabilityByRestrictions';
-
-import { OpenAIService } from '@clinickeys-agents/core/application/services';
-
-type PatientInfo = Awaited<ReturnType<FetchPatientInfoUseCase['execute']>>;
-
 interface CheckReprogramAvailabilityInput {
-  botConfig: any;
+  botConfig: BotConfigDTO;
   leadId: number;
   normalizedLeadCF: (KommoCustomFieldValueBase & { value: any })[];
-  patientInfo: PatientInfo;
   params: {
+    id_paciente: number;
+    nombre: string;
+    apellido: string;
+    telefono: string;
     id_cita: number;
     id_tratamiento: number;
     tratamiento: string;
@@ -39,7 +35,6 @@ interface CheckReprogramAvailabilityInput {
 interface CheckReprogramAvailabilityOutput {
   success: boolean;
   toolOutput: string;
-  customFields?: Record<string, string>;
 }
 
 export class CheckReprogramAvailabilityUseCase {
@@ -47,7 +42,7 @@ export class CheckReprogramAvailabilityUseCase {
     private readonly kommoService: KommoService,
     private readonly availabilityService: AvailabilityService,
     private readonly openAIService: OpenAIService,
-  ) {}
+  ) { }
 
   public async execute(input: CheckReprogramAvailabilityInput): Promise<CheckReprogramAvailabilityOutput> {
     const {
@@ -58,20 +53,43 @@ export class CheckReprogramAvailabilityUseCase {
       timezone,
       tiempoActualDT,
       subdomain,
-      patientInfo
     } = input;
 
-    const { tratamiento, medico, id_medico, id_tratamiento, fechas, horas } = params;
+    const {
+      id_paciente,
+      nombre,
+      apellido,
+      telefono,
+      id_cita,
+      tratamiento,
+      medico,
+      id_medico,
+      id_tratamiento,
+      fechas,
+      horas,
+    } = params;
 
-    Logger.info('[CheckReprogramAvailability] Inicio', { leadId, tratamiento, medico, id_medico, fechas, horas });
+    Logger.info('[CheckReprogramAvailability] Inicio', {
+      leadId,
+      id_paciente,
+      nombre,
+      apellido,
+      telefono,
+      id_cita,
+      tratamiento,
+      medico,
+      id_medico,
+      fechas,
+      horas,
+    });
 
-    // 1. Mensaje inicial "please-wait"
+    // 1. Mensaje inicial
     Logger.debug('[CheckReprogramAvailability] Enviando mensaje inicial al bot');
     await this.kommoService.sendBotInitialMessage({
       leadId,
       normalizedLeadCF,
       salesbotId: botConfig.kommo.salesbotId,
-      message: 'Muy bien, voy a revisar los horarios. Un momento por favor.',
+      message: 'Muy bien, voy a revisar los horarios para reprogramar tu cita. Un momento por favor.',
     });
 
     // 2. Estrategia escalonada de disponibilidad
@@ -86,6 +104,7 @@ export class CheckReprogramAvailabilityUseCase {
 
     for (const step of STEPS) {
       Logger.debug('[CheckReprogramAvailability] Buscando disponibilidad', { step: step.tipo, filtros: step.filtros });
+
       const fechasStep = step.filtros.rango_dias_extra
         ? `${Array.isArray(fechas) ? JSON.stringify(fechas) : fechas}, los próximos 45 días`
         : fechas;
@@ -105,14 +124,16 @@ export class CheckReprogramAvailabilityUseCase {
           id_espacio: step.params.id_espacio,
         }),
         subdomain,
-        kommoToken: botConfig.longLivedToken,
         leadId,
       });
-      Logger.info(`[CheckReprogramAvailability] Paso '${step.tipo}' respuesta recibida`, { success: availability.success, count: availability.analisis_agenda?.length });
 
-      // 2.1 Aplicar restricciones si existen
+      Logger.info(`[CheckReprogramAvailability] Paso '${step.tipo}' respuesta recibida`, {
+        success: availability.success,
+        count: availability.analisis_agenda?.length,
+      });
+
       if (availability.success && Array.isArray(availability.analisis_agenda) && availability.analisis_agenda.length > 0) {
-        const restricciones = botConfig?.placeholders?.RESTRICCIONES_EN_DISPONIBILIDADES || "";
+        const restricciones = botConfig?.placeholders?.RESTRICCIONES_EN_DISPONIBILIDADES || '';
         const filtradas = await filterAvailabilityByRestrictions(
           this.openAIService,
           availability.analisis_agenda,
@@ -121,18 +142,13 @@ export class CheckReprogramAvailabilityUseCase {
         availability.analisis_agenda = filtradas;
       }
 
-      if (
-        availability.success &&
-        Array.isArray(availability.analisis_agenda) &&
-        availability.analisis_agenda.length > 0
-      ) {
+      if (availability.success && Array.isArray(availability.analisis_agenda) && availability.analisis_agenda.length > 0) {
         finalPayload = {
           tipo_busqueda: step.tipo,
           filtros_aplicados: step.filtros,
-          tratamiento: {
-            id: step.params.id_tratamiento ?? null,
-            nombre: step.params.tratamiento,
-          },
+          paciente: { id_paciente, nombre, apellido, telefono },
+          cita: { id_cita },
+          tratamiento: { id: step.params.id_tratamiento ?? null, nombre: step.params.tratamiento },
           horarios: availability.analisis_agenda,
         };
         Logger.debug('[CheckReprogramAvailability] Disponibilidad encontrada', { finalPayload });
@@ -145,6 +161,8 @@ export class CheckReprogramAvailabilityUseCase {
       finalPayload = {
         tipo_busqueda: 'sin_disponibilidad',
         filtros_aplicados: { con_medico: !!medico, rango_dias_extra: 0 },
+        paciente: { id_paciente, nombre, apellido, telefono },
+        cita: { id_cita },
         tratamiento: { id: id_tratamiento ?? null, nombre: tratamiento },
         horarios: [],
       };
@@ -152,10 +170,13 @@ export class CheckReprogramAvailabilityUseCase {
 
     // 3. Construir toolOutput para resolver run
     const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
-    const citasPacienteStr = JSON.stringify(patientInfo.appointments ?? []);
-    const toolOutput = `#consultaReprogramar\nTIEMPO_ACTUAL: ${actualTimeForPrompts}\nCITAS_PACIENTE: ${citasPacienteStr}\nHORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}\nMENSAJE_USUARIO: ${JSON.stringify(params)}`;
-    Logger.info('[CheckReprogramAvailability] Ejecución completada', { success: true });
+    const toolOutput = `#consultaReprogramar\nTIEMPO_ACTUAL: ${actualTimeForPrompts}\nPACIENTE: ${JSON.stringify({
+      id_paciente, nombre, apellido, telefono,
+    })}\nCITA: ${JSON.stringify({ id_cita })}\nHORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}\nMENSAJE_USUARIO: ${JSON.stringify(
+      params
+    )}`;
 
+    Logger.info('[CheckReprogramAvailability] Ejecución completada', { success: true });
     return { success: true, toolOutput };
   }
 }

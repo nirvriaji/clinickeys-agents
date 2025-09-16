@@ -37,7 +37,8 @@ export type ToolName =
   | "cancelar_cita"
   | "confirmar_cita"
   | "paciente_en_camino"
-  | "tarea";
+  | "tarea"
+  | "clarificar_paciente";
 
 // Colección tipada de herramientas
 export const openaiTools: ReadonlyArray<OpenAITool> = [
@@ -136,6 +137,14 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
             type: "string",
             description: "Resumen breve, en un solo párrafo, de la conversación con el paciente: por qué se contactó, qué se hizo (acciones tomadas) y en qué se quedó (acuerdos/próximos pasos). Si actuó en nombre de otra persona, menciónalo. No repitas datos estructurados de la cita (IDs, fecha/hora, nombres, tratamiento) salvo que sean necesarios para entender el caso. 150–400 caracteres, sin viñetas ni formato.",
           },
+          id_paciente: {
+            type: ["integer", "null"],
+            description: "ID del paciente si ya existe, o null si debe crearse.",
+          },
+          shouldCreatePatient: {
+            type: "boolean",
+            description: "Indica si se debe crear un nuevo paciente (true/false).",
+          },
         },
         // Requeridos reales: los demás son opcionales
         required: [
@@ -150,6 +159,8 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
           "summary",
           "id_pack_bono",
           "id_presupuesto",
+          "id_paciente",
+          "shouldCreatePatient",
         ],
         additionalProperties: false,
       },
@@ -164,6 +175,22 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
       parameters: {
         type: "object",
         properties: {
+          nombre: {
+            type: "string",
+            description: "Nombre del paciente (NO PUEDE ESTAR VACÍO)",
+          },
+          apellido: {
+            type: "string",
+            description: "Apellido del paciente (NO PUEDE ESTAR VACÍO)",
+          },
+          telefono: {
+            type: "string",
+            description: "Teléfono del paciente (NO PUEDE ESTAR VACÍO)",
+          },
+          id_paciente: {
+            type: "integer",
+            description: "ID del paciente dueño de la cita (NO PUEDE ESTAR VACÍO).",
+          },
           id_cita: {
             type: "integer",
             description:
@@ -196,6 +223,11 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
             type: "string",
             description: "Horas solicitadas por el paciente (NO PUEDE ESTAR VACÍO)",
           },
+          id_espacio: {
+            type: ["integer", "null"],
+            description:
+              "id_espacio de la SEDE objetivo de la reprogramación. Por defecto, el id_espacio de la sede original; null si no se restringe por sede",
+          },
           espacio: {
             type: ["string", "null"],
             description:
@@ -203,11 +235,16 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
           },
         },
         required: [
+          "nombre",
+          "apellido",
+          "telefono",
+          "id_paciente",
           "id_cita",
           "id_tratamiento",
           "tratamiento",
           "id_medico",
           "medico",
+          "id_espacio",
           "espacio",
           "fechas",
           "horas",
@@ -236,6 +273,10 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
           telefono: {
             type: "string",
             description: "Teléfono del paciente (NO PUEDE ESTAR VACÍO)",
+          },
+          id_paciente: {
+            type: "integer",
+            description: "ID del paciente dueño de la cita (NO PUEDE ESTAR VACÍO).",
           },
           id_cita: {
             type: "integer",
@@ -282,6 +323,7 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
           "nombre",
           "apellido",
           "telefono",
+          "id_paciente",
           "id_cita",
           "id_tratamiento",
           "tratamiento",

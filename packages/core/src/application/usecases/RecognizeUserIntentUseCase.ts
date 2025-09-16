@@ -5,7 +5,6 @@ import { BotConfigType, BotConfigDTO } from '@clinickeys-agents/core/domain/botC
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { IOpenAIService } from '@clinickeys-agents/core/domain/openai';
 import { FetchPatientInfoUseCase } from './FetchPatientInfoUseCase';
-import { mergePlaceholdersIntoContext } from '@clinickeys-agents/core/utils';
 import type { DateTime } from 'luxon';
 
 type KnownIntent =
@@ -17,7 +16,8 @@ type KnownIntent =
   | "consulta_reprogramar"
   | "reprogramar_cita"
   | "cancelar_cita"
-  | "tarea";
+  | "tarea"
+  | "identificar_paciente";
 
 export interface RecognizeUserIntentInput {
   botConfigType: BotConfigType;
@@ -32,7 +32,7 @@ export interface RecognizeUserIntentInput {
   openAIService: IOpenAIService;
   speakingBotId: string;
   threadId?: string | null;
-  botConfig?: BotConfigDTO; // para acceder a placeholders
+  botConfig?: BotConfigDTO;
 }
 
 export interface RecognizeUserIntentOutput {
@@ -56,10 +56,7 @@ type PatientInfo = Awaited<ReturnType<FetchPatientInfoUseCase['execute']>>;
 type IntentContext = {
   MENSAJE: string;
   TIEMPO_ACTUAL: string;
-  DATOS_DEL_PACIENTE: PatientInfo['patient'];
-  CITAS_PROGRAMADAS_DEL_PACIENTE: PatientInfo['appointments'];
-  RESUMEN_PACK_BONOS_DEL_PACIENTE: PatientInfo['packsBonos'];
-  RESUMEN_PRESUPUESTOS_DEL_PACIENTE: PatientInfo['budgets'];
+  PACIENTES: PatientInfo['patients'];
   CONTEXTO_PLACEHOLDERS?: string;
 };
 
@@ -89,7 +86,7 @@ export class RecognizeUserIntentUseCase {
 
     Logger.info('[RecognizeUserIntent] Inicio', { leadId, userMessage, speakingBotId, threadId });
 
-    Logger.debug('[RecognizeUserIntent] Obteniendo información del paciente');
+    Logger.debug('[RecognizeUserIntent] Obteniendo información de pacientes');
     const patientInfo = await this.fetchPatientInfoUseCase.execute({
       botConfigType,
       botConfigId,
@@ -98,10 +95,11 @@ export class RecognizeUserIntentUseCase {
       leadId,
       tiempoActualDT
     });
-    Logger.debug('[RecognizeUserIntent] Información del paciente obtenida', { hasPatient: !!patientInfo.patient });
+    Logger.debug('[RecognizeUserIntent] Información de pacientes obtenida', { patientsCount: patientInfo.patients?.length });
 
     let MENSAJE = '';
-    if (reminderMessage && Array.isArray(patientInfo.appointments) && patientInfo.appointments?.length) {
+    const allAppointments = patientInfo.patients.flatMap(p => p.appointments || []);
+    if (reminderMessage && Array.isArray(allAppointments) && allAppointments.length) {
       MENSAJE = `MENSAJE_RECORDATORIO_CITA: ${reminderMessage}. RESPUESTA_AL_MENSAJE_RECORDATORIO_CITA del paciente: ${userMessage}`;
     } else {
       MENSAJE = (userMessage || "").trim();
@@ -110,11 +108,8 @@ export class RecognizeUserIntentUseCase {
     const contextForAI: IntentContext = {
       MENSAJE,
       TIEMPO_ACTUAL: getActualTimeForPrompts(tiempoActualDT, timezone),
-      DATOS_DEL_PACIENTE: patientInfo.patient,
-      CITAS_PROGRAMADAS_DEL_PACIENTE: patientInfo.appointments ?? [],
-      RESUMEN_PACK_BONOS_DEL_PACIENTE: patientInfo.packsBonos ?? [],
-      RESUMEN_PRESUPUESTOS_DEL_PACIENTE: patientInfo.budgets ?? [],
-      CONTEXTO_PLACEHOLDERS: botConfig?.placeholders ? mergePlaceholdersIntoContext(botConfig.placeholders) : ""
+      PACIENTES: patientInfo.patients ?? [],
+      CONTEXTO_PLACEHOLDERS: botConfig?.placeholders ? JSON.stringify(botConfig.placeholders) : ""
     };
 
     Logger.debug('[RecognizeUserIntent] Contexto para AI generado', { contextSample: { ...contextForAI } });

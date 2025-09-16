@@ -1,9 +1,8 @@
+import { filterAvailabilityByRestrictions, getActualTimeForPrompts } from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { AvailabilityService, KommoService } from '@clinickeys-agents/core/application/services';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
-import { getActualTimeForPrompts } from '@clinickeys-agents/core/utils';
-import { filterAvailabilityByRestrictions } from '@clinickeys-agents/core/utils/availability/filterAvailabilityByRestrictions';
 import type { DateTime } from 'luxon';
 
 interface CheckAvailabilityInput {
@@ -78,7 +77,6 @@ export class CheckAvailabilityUseCase {
           espacio: step.params.espacio,
         }),
         subdomain,
-        kommoToken: botConfig.kommo.longLivedToken,
         leadId,
       });
       Logger.info(`[CheckAvailability] Paso '${step.tipo}' respuesta recibida`, { success: availability.success, count: availability.analisis_agenda?.length });

@@ -20,7 +20,6 @@ export const SPACE_NAME = "spaceName";
 
 export const REMINDER_MESSAGE = "reminderMessage";
 
-// Otros campos usados directamente en los perfiles:
 export const PATIENT_MESSAGE_PROCESSED_CHUNK = "patientMessageProcessedChunk";
 export const LAST_PATIENT_MESSAGE = "lastPatientMessage";
 export const TRIGGERED_BY_MACHINE = "triggeredByMachine";

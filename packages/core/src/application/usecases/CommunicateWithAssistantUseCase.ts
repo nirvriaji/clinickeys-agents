@@ -40,21 +40,6 @@ import {
 import { mergePlaceholdersIntoContext } from '@clinickeys-agents/core/utils';
 import type { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 
-const CitaSchema = z.object({
-  id_cita: z.number(),
-  id_medico: z.number().nullable().optional(),
-  id_tratamiento: z.union([z.string(), z.number()]),
-  fecha_cita: z.string(),
-  hora_inicio: z.string(),
-  hora_fin: z.string(),
-  id_espacio: z.number().nullable().optional(),
-  id_presupuesto: z.number().nullable().optional(),
-  id_pack_bono: z.number().nullable().optional(),
-  nombre_espacio: z.string().nullable().optional(),
-  nombre_tratamiento: z.string().nullable().optional(),
-  nombre_medico: z.string().nullable().optional()
-});
-
 const CheckAvailabilitySchema = z.object({
   tratamiento: z.string(),
   medico: z.string().nullable().optional(),
@@ -69,9 +54,17 @@ const ScheduleAppointmentSchema = CheckAvailabilitySchema.extend({
   apellido: z.string(),
   telefono: z.string(),
   summary: z.string(),
+  id_paciente: z.number(),
+  shouldCreatePatient: z.boolean(),
+  id_pack_bono: z.string().nullable().optional(),
+  id_presupuesto: z.string().nullable().optional(),
 });
 
 const CheckReprogramAvailabilitySchema = z.object({
+  nombre: z.string(),
+  apellido: z.string(),
+  telefono: z.string(),
+  id_paciente: z.number(),
   id_cita: z.number(),
   id_tratamiento: z.number(),
   tratamiento: z.string(),
@@ -82,13 +75,9 @@ const CheckReprogramAvailabilitySchema = z.object({
   fechas: z.string(),
   horas: z.string(),
   rango_dias_extra: z.number().optional(),
-  citas_paciente: z.array(CitaSchema).optional(),
 });
 
 const RescheduleAppointmentSchema = CheckReprogramAvailabilitySchema.extend({
-  nombre: z.string(),
-  apellido: z.string(),
-  telefono: z.string(),
   summary: z.string(),
 });
 
@@ -164,10 +153,10 @@ export interface CommunicateWithAssistantUseCaseDeps {
 }
 
 export class CommunicateWithAssistantUseCase {
-  constructor(private deps: CommunicateWithAssistantUseCaseDeps) { }
+  constructor(private deps: CommunicateWithAssistantUseCaseDeps) {}
 
   public async execute(input: CommunicateInput): Promise<CommunicateOutput> {
-    const { botConfig, leadId, normalizedLeadCF, userMessage, reminderMessage, threadId } = input;
+    const { botConfig, leadId, normalizedLeadCF, userMessage, reminderMessage, threadId, } = input;
 
     try {
       const intentResult = await this.deps.recognizeIntentUC.execute({
@@ -246,7 +235,6 @@ export class CommunicateWithAssistantUseCase {
             botConfig,
             leadId,
             normalizedLeadCF,
-            patientInfo,
             params: CheckReprogramAvailabilitySchema.parse(params),
             timezone: botConfig.timezone,
             tiempoActualDT: localTime(botConfig.timezone),
@@ -260,7 +248,6 @@ export class CommunicateWithAssistantUseCase {
             botConfig,
             leadId,
             normalizedLeadCF,
-            patientInfo,
             params: rescheduleParams,
             timezone: botConfig.timezone,
             tiempoActualDT: localTime(botConfig.timezone),
@@ -338,7 +325,6 @@ export class CommunicateWithAssistantUseCase {
       if (runId && Array.isArray(functionCalls) && functionCalls.length > 0) {
         Logger.info('[CommunicateWithAssistant] Resolviendo functionCalls', { count: functionCalls.length });
         Logger.info('[CommunicateWithAssistant] UcResponse toolOutput', ucResponse.toolOutput);
-        // Agregamos placeholders al toolOutput como contexto extra
         const toolOutputWithPlaceholders = `${ucResponse.toolOutput}\n${mergePlaceholdersIntoContext(botConfig.placeholders)}`;
         const resolved = await this.deps.openAIService.getResponseFromWaitingAssistant({
           threadId: thId!,
@@ -364,7 +350,6 @@ export class CommunicateWithAssistantUseCase {
         [PATIENT_PHONE]: '',
         [CLINIC_NAME]: '',
         [SPACE_NAME]: '',
-
         [THREAD_ID]: thId ?? '',
         [BOT_MESSAGE]: finalMsg || '',
         [PLEASE_WAIT_MESSAGE]: 'false',
@@ -380,22 +365,21 @@ export class CommunicateWithAssistantUseCase {
       });
 
       Logger.debug('[CommunicateWithAssistant] Llamando a replyToLead', { customFields });
-      console.log("[CommunicateWithAssistantUseCase.execute] UC customFields", ucResponse.customFields);
-      const replyResult = await this.deps.kommoService.replyToLead({
+      Logger.debug("[CommunicateWithAssistantUseCase.execute] UC customFields", ucResponse.customFields);
+      await this.deps.kommoService.replyToLead({
         salesbotId: botConfig.kommo.salesbotId,
         leadId,
         customFields,
         normalizedLeadCF,
       });
-      Logger.debug('[CommunicateWithAssistant] Resultado de replyToLead', { replyResult });
+      Logger.info('[CommunicateWithAssistant] Ejecución completada con éxito', { leadId });      
 
-      Logger.info('[CommunicateWithAssistant] Ejecución completada con éxito', { leadId });
       return { success: true, message: finalMsg || '' };
     } catch (error) {
       Logger.error('[CommunicateWithAssistant] Error general', { error });
       return {
         success: false,
-        message: 'No fue posible procesar el mensaje en este momento.',
+        message: 'No fue posible procesar el mensaje en este momento.'
       };
     }
   }

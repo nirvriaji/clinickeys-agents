@@ -131,7 +131,7 @@ export class LeadProcessorController {
       packBonoService,
     );
     const checkAvailabilityUC = new CheckAvailabilityUseCase(kommoService, availabilityService);
-    const checkReprogramAvailabilityUC = new CheckReprogramAvailabilityUseCase(kommoService, availabilityService);
+    const checkReprogramAvailabilityUC = new CheckReprogramAvailabilityUseCase(kommoService, availabilityService, openAIService);
     const rescheduleAppointmentUC = new RescheduleAppointmentUseCase(
       kommoService,
       appointmentService,

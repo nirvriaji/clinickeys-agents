@@ -1,14 +1,12 @@
 // packages/core/src/application/usecases/RescheduleAppointmentUseCase.ts
 
+import { filterAvailabilityByRestrictions, isAppointmentSoon, getActualTimeForPrompts, formatFechaCita } from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
-import { isAppointmentSoon, getActualTimeForPrompts } from '@clinickeys-agents/core/utils';
+import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { readFile } from 'fs/promises';
 import { DateTime } from 'luxon';
 import path from 'path';
-
-import type { FetchPatientInfoUseCase } from './FetchPatientInfoUseCase';
-type PatientInfo = Awaited<ReturnType<FetchPatientInfoUseCase['execute']>>;
 
 import {
   KommoService,
@@ -17,15 +15,13 @@ import {
   OpenAIService,
 } from '@clinickeys-agents/core/application/services';
 
-import { filterAvailabilityByRestrictions } from '@clinickeys-agents/core/utils/availability/filterAvailabilityByRestrictions';
-
 interface RescheduleAppointmentInput {
-  botConfig: any;
+  botConfig: BotConfigDTO;
   leadId: number;
   normalizedLeadCF: (KommoCustomFieldValueBase & { value: any })[];
-  patientInfo: PatientInfo;
   params: {
     id_cita: number;
+    id_paciente: number;
     id_tratamiento: number;
     tratamiento: string;
     medico?: string | null;
@@ -57,11 +53,11 @@ export class RescheduleAppointmentUseCase {
     private readonly appointmentService: AppointmentService,
     private readonly availabilityService: AvailabilityService,
     private readonly openAIService: OpenAIService,
-  ) {}
+  ) { }
 
   public async execute(input: RescheduleAppointmentInput): Promise<RescheduleAppointmentOutput> {
-    const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, subdomain, patientInfo } = input;
-    const { id_cita, id_tratamiento, tratamiento, medico, id_medico, fechas, horas, summary } = params;
+    const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, subdomain } = input;
+    const { id_cita, id_tratamiento, tratamiento, medico, id_medico, fechas, horas, summary, id_paciente } = params;
 
     Logger.info('[RescheduleAppointment] Inicio', { leadId, id_cita, tratamiento, medico, id_medico, fechas, horas });
 
@@ -104,9 +100,9 @@ export class RescheduleAppointmentUseCase {
           id_espacio: step.params.id_espacio,
         }),
         subdomain,
-        kommoToken: botConfig.longLivedToken,
         leadId,
       });
+
       Logger.info(`[RescheduleAppointment] Paso '${step.tipo}' respuesta recibida`, { success: availability.success, count: availability.analisis_agenda?.length });
 
       if (availability.success && Array.isArray(availability.analisis_agenda) && availability.analisis_agenda.length > 0) {
@@ -126,10 +122,47 @@ export class RescheduleAppointmentUseCase {
         };
         Logger.debug('[RescheduleAppointment] Disponibilidad encontrada', { finalPayload });
 
+        const raw_citas_paciente = await this.appointmentService.getAppointmentsByPatient(id_paciente, botConfig.clinicId);
+        const filtered_citas_paciente = (raw_citas_paciente || []).filter((cita: any) => {
+          const fecha = cita.fecha_cita instanceof Date
+            ? DateTime.fromJSDate(cita.fecha_cita).toISODate()
+            : cita.fecha_cita;
+          const hora = cita.hora_inicio || '00:00:00';
+          const fechaHoraISO = `${fecha}T${hora}`;
+          const zone = tiempoActualDT.zoneName ?? 'UTC';
+          const citaDT = DateTime.fromISO(fechaHoraISO, { zone });
+          return citaDT > tiempoActualDT;
+        });
+
+        const citas_paciente = filtered_citas_paciente.map((cita: any) => {
+          const fecha = cita.fecha_cita instanceof Date
+            ? DateTime.fromJSDate(cita.fecha_cita)
+            : DateTime.fromISO(cita.fecha_cita);
+
+          const hora = cita.hora_inicio || '00:00:00';
+          const citaDT = DateTime.fromISO(`${fecha.toISODate()}T${hora}`, { zone: tiempoActualDT.zoneName ?? 'UTC' });
+
+          return {
+            id_cita: cita.id_cita,
+            id_medico: cita.id_medico,
+            id_tratamiento: cita.id_tratamiento,
+            fecha_cita: cita.fecha_cita,
+            hora_inicio: cita.hora_inicio,
+            hora_fin: cita.hora_fin,
+            id_espacio: cita.id_espacio,
+            id_presupuesto: cita.id_presupuesto,
+            id_pack_bono: cita.id_pack_bono,
+            nombre_espacio: cita.nombre_espacio,
+            nombre_tratamiento: cita.nombre_tratamiento,
+            nombre_medico: cita.nombre_medico,
+            dia_semana: citaDT.setLocale("es").toFormat("cccc"),
+          };
+        });
+
         const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
-        const citasPacienteStr = JSON.stringify(patientInfo.appointments ?? []);
-        const extractorPrompt = `#reprogramarCita\n\nTIEMPO_ACTUAL: ${actualTimeForPrompts}\n\nLa CITAS_PACIENTE que se va a reprogramar es la siguiente: ${citasPacienteStr};\nLos HORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}\nMENSAJE_USUARIO: ${JSON.stringify(params)}`;
+        const extractorPrompt = `#reprogramarCita\n\nTIEMPO_ACTUAL: ${actualTimeForPrompts}\n\nLa CITA_A_REPROGRAMAR tiene ID ${id_cita}.\nLos HORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}\nMENSAJE_USUARIO: ${JSON.stringify(params)}\nCITAS_PACIENTE: ${JSON.stringify(citas_paciente)}`;
         Logger.debug('[RescheduleAppointment] Extractor prompt', extractorPrompt);
+
         const systemPrompt = await readFile(
           path.resolve(__dirname, 'packages/core/src/.ia/instructions/prompts/bot_extractor_de_datos.md'),
           'utf8',
@@ -150,8 +183,9 @@ export class RescheduleAppointmentUseCase {
             hora_fin: extractorData.hora_fin,
             id_espacio: extractorData.id_espacio,
             id_estado_cita: ID_ESTADO_CITA_PROGRAMADA,
-            comentario_ia: summary
+            comentario_ia: summary,
           });
+
           citaReprogramada = { ...extractorData };
 
           const isSoon = isAppointmentSoon(
@@ -179,13 +213,12 @@ export class RescheduleAppointmentUseCase {
 
     let toolOutput: string;
     if (citaReprogramada?.id_cita) {
-      Logger.info('[RescheduleAppointment] Cita reprogramada con éxito', { citaReprogramada });
-      toolOutput = `#reprogramarCita\nLa cita fue reprogramada con éxito con los datos: ${JSON.stringify(citaReprogramada)}`;
+      const fechaLegible = formatFechaCita(citaReprogramada.fecha_cita);
+      const doctorLine = citaReprogramada.nombre_medico ? ` con el Dr. ${citaReprogramada.nombre_medico}` : '';
+      toolOutput = `#reprogramarCita\nLa cita de “${citaReprogramada.nombre_tratamiento}” fue reprogramada para el ${fechaLegible} a las ${citaReprogramada.hora_inicio}${doctorLine}.`;
     } else if (finalPayload.horarios.length === 0) {
-      Logger.info('[RescheduleAppointment] Sin disponibilidad para reprogramar');
       toolOutput = `#reprogramarCita\nLo siento, en este momento no hay horarios disponibles para el día solicitado. ¿Te gustaría buscar otro día o franja horaria?`;
     } else {
-      Logger.info('[RescheduleAppointment] Horarios disponibles encontrados', { finalPayload });
       toolOutput = `#reprogramarCita\nLo siento, parece que ocurrió un problema. Por favor, ¿Podrías repetirnos tu horario o escoger otro?`;
     }
 

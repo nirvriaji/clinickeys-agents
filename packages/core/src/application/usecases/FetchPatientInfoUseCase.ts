@@ -1,10 +1,10 @@
 // packages/core/src/application/usecases/FetchPatientInfoUseCase.ts
 
+import { AppError, CHAT_BOT_CUSTOM_FIELDS, PATIENT_PHONE } from '@clinickeys-agents/core/utils';
 import { PatientService } from '@clinickeys-agents/core/application/services';
 import { BotConfigType } from '@clinickeys-agents/core/domain/botConfig';
-import { FetchKommoDataUseCase } from './FetchKommoDataUseCase';
-import { AppError } from '@clinickeys-agents/core/utils';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
+import { FetchKommoDataUseCase } from './FetchKommoDataUseCase';
 
 export interface FetchPatientInfoInput {
   botConfigType: BotConfigType;
@@ -51,16 +51,16 @@ export class FetchPatientInfoUseCase {
     Logger.debug('[FetchPatientInfo] Datos de Kommo obtenidos', {
       contactId: kommoData.contactId,
       normalizedLeadCFCount: kommoData.normalizedLeadCF?.length,
-      normalizedContactCFCount: kommoData.normalizedContactCF?.length
+      normalizedContactCFCount: kommoData.normalizedContactCF?.length,
+      normalizedLeadCFSample: kommoData.normalizedLeadCF?.filter(cf => CHAT_BOT_CUSTOM_FIELDS.includes(cf.field_name)).map(cf => ({ name: cf.field_name, value: cf.value })) || [],
     });
 
     Logger.debug('[FetchPatientInfo] Preparando objeto leadPhones');
-    const contactPhone = kommoData.contactData?.custom_fields_values?.find(
-      (cf: any) => cf.field_code === 'PHONE' && cf.values?.length
-    )?.values?.[0]?.value || '';
+    const contactPhone = kommoData.normalizedContactCF?.find((cf: any) => cf.field_code === 'PHONE')?.values?.[0]?.value || '';
+    const leadCFPhone = kommoData.normalizedLeadCF?.find((cf) => cf.field_name == PATIENT_PHONE)?.value || '';
     const leadPhones = {
       in_conversation: '',
-      in_field: kommoData.normalizedContactCF?.find((cf: any) => cf.field_code === 'PHONE')?.values?.[0]?.value || '',
+      in_field: leadCFPhone,
       in_contact: contactPhone
     };
     Logger.debug('[FetchPatientInfo] leadPhones preparado', { leadPhones });

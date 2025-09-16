@@ -1,4 +1,4 @@
-import { generarConsultasSQL, calcularDisponibilidad, ajustarDisponibilidad, AppError, ConsultaCitaSchema } from "@clinickeys-agents/core/utils";
+import { filterAvailabilityByRestrictions, generarConsultasSQL, calcularDisponibilidad, ajustarDisponibilidad, AppError, ConsultaCitaSchema } from "@clinickeys-agents/core/utils";
 import { ejecutarConReintento } from "@clinickeys-agents/core/infrastructure/helpers";
 import { ITratamientoRepository } from "@clinickeys-agents/core/domain/tratamiento";
 import { IEspacioRepository } from "@clinickeys-agents/core/domain/espacio";
@@ -7,7 +7,6 @@ import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
 import { readFile } from "fs/promises";
 import path from "path";
-import { filterAvailabilityByRestrictions } from "@clinickeys-agents/core/utils/availability/filterAvailabilityByRestrictions";
 
 interface GetAvailabilityInfoInput {
   id_clinica: number;

@@ -30,6 +30,7 @@ import {
   PATIENT_LAST_NAME,
   PATIENT_PHONE,
   NOTIFICATION_ID,
+  CHAT_BOT_CUSTOM_FIELDS,
 } from '@clinickeys-agents/core/utils';
 
 export class NotificationOmittedError extends Error {
@@ -213,7 +214,7 @@ export class KommoService {
       customFieldKeys,
       customFieldsCount: customFieldKeys.length,
       mergedCFCount: input.normalizedLeadCF?.length || 0,
-      mergedCFSample: input.normalizedLeadCF?.slice(0, 5)?.map(cf => ({ id: cf.field_id, name: cf.field_name })) || [],
+      mergedCFSample: input.normalizedLeadCF?.filter(cf => CHAT_BOT_CUSTOM_FIELDS.includes(cf.field_name)).map(cf => ({ id: cf.field_id, name: cf.field_name })) || [],
     });
 
     const latest = await this.kommoRepository.getLeadById({ leadId: input.leadId });
