@@ -34,6 +34,7 @@ interface ScheduleAppointmentInput {
     horas: string;
     rango_dias_extra?: number;
     summary: string;
+    isThirdParty: boolean;
   };
   timezone: string;
   tiempoActualDT: DateTime;

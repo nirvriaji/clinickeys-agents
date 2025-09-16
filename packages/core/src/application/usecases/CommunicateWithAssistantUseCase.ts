@@ -58,6 +58,7 @@ const ScheduleAppointmentSchema = CheckAvailabilitySchema.extend({
   shouldCreatePatient: z.boolean(),
   id_pack_bono: z.string().nullable().optional(),
   id_presupuesto: z.string().nullable().optional(),
+  isThirdParty: z.boolean(),
 });
 
 const CheckReprogramAvailabilitySchema = z.object({

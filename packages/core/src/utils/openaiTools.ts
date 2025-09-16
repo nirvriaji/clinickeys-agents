@@ -145,6 +145,10 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
             type: "boolean",
             description: "Indica si se debe crear un nuevo paciente (true/false).",
           },
+          isThirdParty: {
+            type: "boolean",
+            description: "Indica si la persona que contacta actúa en nombre de otra (true/false).",
+          }
         },
         // Requeridos reales: los demás son opcionales
         required: [
@@ -161,6 +165,7 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
           "id_presupuesto",
           "id_paciente",
           "shouldCreatePatient",
+          "property",
         ],
         additionalProperties: false,
       },
