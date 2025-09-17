@@ -47,13 +47,13 @@ const CheckAvailabilitySchema = z.object({
   fechas: z.string(),
   horas: z.string(),
   rango_dias_extra: z.number().optional(),
+  summary: z.string(),
 });
 
 const ScheduleAppointmentSchema = CheckAvailabilitySchema.extend({
   nombre: z.string(),
   apellido: z.string(),
   telefono: z.string(),
-  summary: z.string(),
   id_paciente: z.number(),
   shouldCreatePatient: z.boolean(),
   id_pack_bono: z.string().nullable().optional(),
@@ -76,11 +76,10 @@ const CheckReprogramAvailabilitySchema = z.object({
   fechas: z.string(),
   horas: z.string(),
   rango_dias_extra: z.number().optional(),
-});
-
-const RescheduleAppointmentSchema = CheckReprogramAvailabilitySchema.extend({
   summary: z.string(),
 });
+
+const RescheduleAppointmentSchema = CheckReprogramAvailabilitySchema;
 
 const CancelAppointmentSchema = z.object({
   nombre: z.string(),

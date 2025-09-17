@@ -251,7 +251,7 @@ export class AvailabilityService {
     }
   }
 
-  public async getAvailabilityInfo(input: GetAvailabilityInfoInput): Promise<{ success: boolean; message: string | null; analisis_agenda: any[] | null }> {
+  public async getAvailabilityInfo(input: GetAvailabilityInfoInput): Promise<{ success: boolean; message: string | null; fechas_buscadas: string | null; analisis_agenda: any[] | null }> {
     const { id_clinica, id_super_clinica, tiempo_actual, mensajeBotParlante, restriccionesDisponibilidades } = input;
 
     const tratamientos = await this.treatmentRepo.getActiveTreatmentsForClinic(id_clinica, id_super_clinica);
@@ -292,20 +292,20 @@ Contexto:
     };
 
     if (lambdaBody.tratamientos.length === 0) {
-      return { success: false, message: 'No se encontraron tratamientos disponibles en la clínica.', analisis_agenda: null };
+      return { success: false, message: 'No se encontraron tratamientos disponibles en la clínica.', fechas_buscadas: null, analisis_agenda: null };
     }
 
     const baseResult = await this.getAppointmentAvailability(lambdaBody);
 
     if (!baseResult.success || !baseResult.analisis_agenda) {
-      return baseResult;
+      return { ...baseResult, fechas_buscadas: lambdaBody.fechas };
     }
 
     if (restriccionesDisponibilidades && restriccionesDisponibilidades.trim() !== "") {
       const filtradas = await filterAvailabilityByRestrictions(this.openAIService, baseResult.analisis_agenda, restriccionesDisponibilidades);
-      return { ...baseResult, analisis_agenda: filtradas };
+      return { ...baseResult, fechas_buscadas: lambdaBody.fechas, analisis_agenda: filtradas };
     }
 
-    return baseResult;
+    return { ...baseResult, fechas_buscadas: lambdaBody.fechas };
   }
 }

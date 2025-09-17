@@ -16,6 +16,7 @@ interface CheckAvailabilityInput {
     fechas: string;
     horas: string;
     rango_dias_extra?: number;
+    summary: string;
   };
   timezone: string;
   tiempoActualDT: DateTime;
@@ -36,7 +37,7 @@ export class CheckAvailabilityUseCase {
 
   public async execute(input: CheckAvailabilityInput): Promise<CheckAvailabilityOutput> {
     const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, subdomain } = input;
-    const { tratamiento, medico, fechas, horas } = params;
+    const { tratamiento, medico, fechas, horas, summary } = params;
 
     Logger.info('[CheckAvailability] Inicio', { leadId, tratamiento, medico, fechas, horas });
 
@@ -58,6 +59,7 @@ export class CheckAvailabilityUseCase {
     ];
 
     let finalPayload: any = null;
+    let fechas_buscadas: any = null;
 
     for (const step of STEPS) {
       Logger.debug('[CheckAvailability] Buscando disponibilidad', { step: step.tipo, filtros: step.filtros });
@@ -75,11 +77,14 @@ export class CheckAvailabilityUseCase {
           horas,
           medico: step.params.medico,
           espacio: step.params.espacio,
+          summary,
         }),
         subdomain,
         leadId,
       });
       Logger.info(`[CheckAvailability] Paso '${step.tipo}' respuesta recibida`, { success: availability.success, count: availability.analisis_agenda?.length });
+
+      fechas_buscadas = availability.fechas_buscadas;
 
       // 2.1 Aplicar restricciones si existen
       if (availability.success && Array.isArray(availability.analisis_agenda) && availability.analisis_agenda.length > 0) {
@@ -119,7 +124,12 @@ export class CheckAvailabilityUseCase {
 
     // 3. Construir toolOutput
     const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
-    const toolOutput = `#consultaAgendar\nTIEMPO_ACTUAL: ${actualTimeForPrompts}\nHORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}\nMENSAJE_USUARIO: ${JSON.stringify(params)}`;
+    const toolOutput = `#consultaAgendar
+    TIEMPO_ACTUAL: ${actualTimeForPrompts}
+    DISCLAIMER_FECHAS_BUSCADAS: Se buscaron solo las siguientes fechas ${JSON.stringify(fechas_buscadas)}
+    HORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}
+    MENSAJE_USUARIO: ${JSON.stringify(params)}
+    `;
     Logger.info('[CheckAvailability] Ejecución completada', { success: true });
 
     return { success: true, toolOutput };

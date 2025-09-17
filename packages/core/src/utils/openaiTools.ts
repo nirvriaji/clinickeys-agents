@@ -73,8 +73,12 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
             description:
               "SEDE solicitada. Usar null si el paciente no indicó sede o si mencionó una sala/cabina.",
           },
+          summary: {
+            type: "string",
+            description: "Breve resumen (80–150 caracteres) con las fechas/horas solicitadas y/o descartadas por el paciente"
+          },
         },
-        required: ["tratamiento", "medico", "espacio", "fechas", "horas"],
+        required: ["tratamiento", "medico", "espacio", "fechas", "horas", "summary",],
         additionalProperties: false,
       },
       strict: true,
@@ -238,6 +242,10 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
             description:
               "SEDE objetivo de la reprogramación. Por defecto, la sede original; null si no se restringe por sede.",
           },
+          summary: {
+            type: "string",
+            description: "Breve resumen (80–150 caracteres) con las fechas/horas solicitadas y/o descartadas por el paciente"
+          },
         },
         required: [
           "nombre",
@@ -253,6 +261,7 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
           "espacio",
           "fechas",
           "horas",
+          "summary",
         ],
         additionalProperties: false,
       },

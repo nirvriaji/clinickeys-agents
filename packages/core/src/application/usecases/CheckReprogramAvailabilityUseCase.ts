@@ -26,6 +26,7 @@ interface CheckReprogramAvailabilityInput {
     fechas: string;
     horas: string;
     rango_dias_extra?: number;
+    summary: string;
   };
   timezone: string;
   tiempoActualDT: DateTime;
@@ -67,6 +68,7 @@ export class CheckReprogramAvailabilityUseCase {
       id_tratamiento,
       fechas,
       horas,
+      summary,
     } = params;
 
     Logger.info('[CheckReprogramAvailability] Inicio', {
@@ -101,6 +103,7 @@ export class CheckReprogramAvailabilityUseCase {
     ];
 
     let finalPayload: any = null;
+    let fechas_buscadas: any = null;
 
     for (const step of STEPS) {
       Logger.debug('[CheckReprogramAvailability] Buscando disponibilidad', { step: step.tipo, filtros: step.filtros });
@@ -114,6 +117,7 @@ export class CheckReprogramAvailabilityUseCase {
         id_super_clinica: botConfig.superClinicId,
         tiempo_actual: tiempoActualDT.toISO() as string,
         mensajeBotParlante: JSON.stringify({
+          summary,
           id_tratamiento: step.params.id_tratamiento,
           tratamiento: step.params.tratamiento,
           fechas: fechasStep,
@@ -126,6 +130,8 @@ export class CheckReprogramAvailabilityUseCase {
         subdomain,
         leadId,
       });
+
+      fechas_buscadas = availability.fechas_buscadas;
 
       Logger.info(`[CheckReprogramAvailability] Paso '${step.tipo}' respuesta recibida`, {
         success: availability.success,
@@ -170,11 +176,14 @@ export class CheckReprogramAvailabilityUseCase {
 
     // 3. Construir toolOutput para resolver run
     const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
-    const toolOutput = `#consultaReprogramar\nTIEMPO_ACTUAL: ${actualTimeForPrompts}\nPACIENTE: ${JSON.stringify({
-      id_paciente, nombre, apellido, telefono,
-    })}\nCITA: ${JSON.stringify({ id_cita })}\nHORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}\nMENSAJE_USUARIO: ${JSON.stringify(
-      params
-    )}`;
+    const toolOutput = `#consultaReprogramar
+    TIEMPO_ACTUAL: ${actualTimeForPrompts}
+    PACIENTE: ${JSON.stringify({id_paciente, nombre, apellido, telefono,})}
+    CITA: ${JSON.stringify({ id_cita })}
+    DISCLAIMER_FECHAS_BUSCADAS: Se buscaron solo las siguientes fechas ${JSON.stringify(fechas_buscadas)}
+    HORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}
+    MENSAJE_USUARIO: ${JSON.stringify(params)}
+    `;
 
     Logger.info('[CheckReprogramAvailability] Ejecución completada', { success: true });
     return { success: true, toolOutput };
