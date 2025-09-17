@@ -187,6 +187,7 @@ export class KommoApiGateway {
   }
 
   async createTask({ body }: { body: any }) {
+    console.log("Creating task with body:", JSON.stringify(body, null, 2));
     const url = `${this.baseUrl}/tasks`;
     const res = await this.http.request<any>(url, {
       method: "POST",

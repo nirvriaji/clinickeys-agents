@@ -55,9 +55,10 @@ type PatientInfo = Awaited<ReturnType<FetchPatientInfoUseCase['execute']>>;
 
 type IntentContext = {
   MENSAJE: string;
+  TIMEZONE_SISTEMA: string;
   TIEMPO_ACTUAL: string;
   PACIENTES_ASOCIADOS_AL_TELEFONO: PatientInfo['patients'];
-  CONTEXTO_PLACEHOLDERS?: string;
+  CONTEXTO_PLACEHOLDERS: string;
 };
 
 export class RecognizeUserIntentUseCase {
@@ -107,6 +108,7 @@ export class RecognizeUserIntentUseCase {
 
     const contextForAI: IntentContext = {
       MENSAJE,
+      TIMEZONE_SISTEMA: timezone,
       TIEMPO_ACTUAL: getActualTimeForPrompts(tiempoActualDT, timezone),
       PACIENTES_ASOCIADOS_AL_TELEFONO: patientInfo.patients ?? [],
       CONTEXTO_PLACEHOLDERS: botConfig?.placeholders ? JSON.stringify(botConfig.placeholders) : ""

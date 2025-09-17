@@ -165,7 +165,7 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
           "id_presupuesto",
           "id_paciente",
           "shouldCreatePatient",
-          "property",
+          "isThirdParty",
         ],
         additionalProperties: false,
       },
