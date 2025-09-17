@@ -191,7 +191,9 @@ export class PatientService {
           const fechaHoraISO = `${fecha}T${hora}`;
           const zone = tiempoActualDT.zoneName ?? 'UTC';
           const citaDT = DateTime.fromISO(fechaHoraISO, { zone });
-          return citaDT > tiempoActualDT;
+
+          const limiteInferior = tiempoActualDT.minus({ days: 400 });
+          return citaDT >= limiteInferior;
         });
 
         const citas = citasFiltradas.map((cita: any) => {
@@ -219,6 +221,7 @@ export class PatientService {
             nombre_tratamiento: cita.nombre_tratamiento,
             nombre_medico: cita.nombre_medico,
             dia_semana: citaDT.setLocale("es").toFormat("cccc"),
+            estado_cita: cita.estado_cita,
             [`ultimo_resumen_cita_ID_${cita.id_cita}`]: cita.comentario_ia,
           };
         });

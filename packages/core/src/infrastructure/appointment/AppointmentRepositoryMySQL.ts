@@ -116,22 +116,26 @@ export class AppointmentRepositoryMySQL {
   }
 
   /**
-   * Obtiene las citas de un paciente por clínica.
-   */
+ * Obtiene las citas de un paciente por clínica.
+ */
   async getAppointmentsByPatient(patientId: number, clinicId: number): Promise<any[]> {
+    const DAYS_LIMIT = 400; // Número de días hacia atrás para filtrar citas
     const query = `
       SELECT 
         citas.*, 
         espacios.nombre AS nombre_espacio,
         tratamientos.nombre_tratamiento,
-        CONCAT(TRIM(medicos.nombre_medico), ' ', TRIM(medicos.apellido_medico)) AS nombre_medico
+        CONCAT(TRIM(medicos.nombre_medico), ' ', TRIM(medicos.apellido_medico)) AS nombre_medico,
+        estado_cita.descripcion AS estado_cita
       FROM citas
       LEFT JOIN espacios ON citas.id_espacio = espacios.id_espacio
       LEFT JOIN tratamientos ON citas.id_tratamiento = tratamientos.id_tratamiento
       LEFT JOIN medicos ON citas.id_medico = medicos.id_medico
+      LEFT JOIN estado_cita ON citas.id_estado_cita = estado_cita.id_estado_cita
       WHERE citas.id_paciente = ?
-      AND citas.id_clinica = ?
-      AND citas.id_estado_cita IN (1, 7, 8, 9)
+        AND citas.id_clinica = ?
+        AND citas.id_estado_cita IN (1, 2, 3, 5, 7, 8, 9)
+        AND citas.fecha_cita BETWEEN DATE_SUB(CURDATE(), INTERVAL ${DAYS_LIMIT} DAY) AND DATE_ADD(CURDATE(), INTERVAL 1 DAY)
       ORDER BY citas.fecha_cita ASC, citas.hora_inicio ASC
     `;
     return await ejecutarConReintento(query, [patientId, clinicId]);
