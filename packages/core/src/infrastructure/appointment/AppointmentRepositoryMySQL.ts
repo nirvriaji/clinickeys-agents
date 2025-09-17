@@ -160,7 +160,7 @@ export class AppointmentRepositoryMySQL {
         AND id_pack_bono IS NOT NULL
         AND id_clinica = ?
     `;
-    await ejecutarConReintento(query, [id_paciente, id_clinica]);
+    return await ejecutarConReintento(query, [id_paciente, id_clinica]);
   }
 
   /**
