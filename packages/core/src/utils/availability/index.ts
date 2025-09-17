@@ -1,4 +1,4 @@
-export * from './filterAvailabilityByRestrictions';
+export * from "./presentAndFilterAvailability";
 export * from "./calcularDisponibilidad";
 export * from "./ajustarDisponibilidad";
 export * from './availabilityHelpers';

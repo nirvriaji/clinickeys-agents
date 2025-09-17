@@ -1,7 +1,7 @@
 // packages/core/src/application/usecases/CheckReprogramAvailabilityUseCase.ts
 
 import { AvailabilityService, KommoService, OpenAIService } from '@clinickeys-agents/core/application/services';
-import { getActualTimeForPrompts, filterAvailabilityByRestrictions } from '@clinickeys-agents/core/utils';
+import { getActualTimeForPrompts } from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
@@ -129,33 +129,24 @@ export class CheckReprogramAvailabilityUseCase {
         }),
         subdomain,
         leadId,
+        contextoDisponibilidades: botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES || "",
       });
 
       fechas_buscadas = availability.fechas_buscadas;
 
       Logger.info(`[CheckReprogramAvailability] Paso '${step.tipo}' respuesta recibida`, {
         success: availability.success,
-        count: availability.analisis_agenda?.length,
+        presentacion_disponibilidades: availability.presentacion_disponibilidades,
       });
 
-      if (availability.success && Array.isArray(availability.analisis_agenda) && availability.analisis_agenda.length > 0) {
-        const restricciones = botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES || '';
-        const filtradas = await filterAvailabilityByRestrictions(
-          this.openAIService,
-          availability.analisis_agenda,
-          restricciones
-        );
-        availability.analisis_agenda = filtradas;
-      }
-
-      if (availability.success && Array.isArray(availability.analisis_agenda) && availability.analisis_agenda.length > 0) {
+      if (availability.success && availability.presentacion_disponibilidades) {
         finalPayload = {
           tipo_busqueda: step.tipo,
           filtros_aplicados: step.filtros,
           paciente: { id_paciente, nombre, apellido, telefono },
           cita: { id_cita },
           tratamiento: { id: step.params.id_tratamiento ?? null, nombre: step.params.tratamiento },
-          horarios: availability.analisis_agenda,
+          horarios_texto: availability.presentacion_disponibilidades,
         };
         Logger.debug('[CheckReprogramAvailability] Disponibilidad encontrada', { finalPayload });
         break;
@@ -170,7 +161,7 @@ export class CheckReprogramAvailabilityUseCase {
         paciente: { id_paciente, nombre, apellido, telefono },
         cita: { id_cita },
         tratamiento: { id: id_tratamiento ?? null, nombre: tratamiento },
-        horarios: [],
+        horarios_texto: [],
       };
     }
 

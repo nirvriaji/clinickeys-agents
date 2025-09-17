@@ -1,6 +1,6 @@
 // packages/core/src/application/usecases/RescheduleAppointmentUseCase.ts
 
-import { filterAvailabilityByRestrictions, isAppointmentSoon, getActualTimeForPrompts, formatFechaCita } from '@clinickeys-agents/core/utils';
+import { isAppointmentSoon, getActualTimeForPrompts, formatFechaCita } from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
@@ -101,24 +101,17 @@ export class RescheduleAppointmentUseCase {
         }),
         subdomain,
         leadId,
+        contextoDisponibilidades: botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES || "",
       });
 
-      Logger.info(`[RescheduleAppointment] Paso '${step.tipo}' respuesta recibida`, { success: availability.success, count: availability.analisis_agenda?.length });
+      Logger.info(`[RescheduleAppointment] Paso '${step.tipo}' respuesta recibida`, { success: availability.success, presentacion_disponibilidades: availability.presentacion_disponibilidades });
 
-      if (availability.success && Array.isArray(availability.analisis_agenda) && availability.analisis_agenda.length > 0) {
-        const restricciones = botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES || "";
-        const filtradas = await filterAvailabilityByRestrictions(
-          this.openAIService,
-          availability.analisis_agenda,
-          restricciones
-        );
-        availability.analisis_agenda = filtradas;
-
+      if (availability.success && availability.presentacion_disponibilidades) {
         finalPayload = {
           tipo_busqueda: step.tipo,
           filtros_aplicados: step.filtros,
           tratamiento: { id: step.params.id_tratamiento ?? null, nombre: step.params.tratamiento },
-          horarios: availability.analisis_agenda,
+          horarios_texto: availability.presentacion_disponibilidades,
         };
         Logger.debug('[RescheduleAppointment] Disponibilidad encontrada', { finalPayload });
 
@@ -207,7 +200,7 @@ export class RescheduleAppointmentUseCase {
         tipo_busqueda: 'sin_disponibilidad',
         filtros_aplicados: { con_medico: !!medico, rango_dias_extra: 0 },
         tratamiento: { id: id_tratamiento ?? null, nombre: tratamiento },
-        horarios: [],
+        horarios_texto: [],
       };
     }
 

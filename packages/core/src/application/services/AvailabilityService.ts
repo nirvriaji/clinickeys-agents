@@ -1,6 +1,6 @@
 // packages/core/src/application/services/AvailabilityService.ts
 
-import { filterAvailabilityByRestrictions, generarConsultasSQL, calcularDisponibilidad, ajustarDisponibilidad, AppError, ConsultaCitaSchema } from "@clinickeys-agents/core/utils";
+import { presentAndFilterAvailability, generarConsultasSQL, calcularDisponibilidad, ajustarDisponibilidad, AppError, ConsultaCitaSchema } from "@clinickeys-agents/core/utils";
 import { ejecutarConReintento } from "@clinickeys-agents/core/infrastructure/helpers";
 import { ITratamientoRepository } from "@clinickeys-agents/core/domain/tratamiento";
 import { IEspacioRepository } from "@clinickeys-agents/core/domain/espacio";
@@ -17,7 +17,7 @@ interface GetAvailabilityInfoInput {
   mensajeBotParlante: string;
   subdomain: string;
   leadId?: number;
-  restriccionesDisponibilidades?: string;
+  contextoDisponibilidades: string;
 }
 
 export interface GetTreatmentsDataInput {
@@ -253,8 +253,8 @@ export class AvailabilityService {
     }
   }
 
-  public async getAvailabilityInfo(input: GetAvailabilityInfoInput): Promise<{ success: boolean; message: string | null; fechas_buscadas: string | null; analisis_agenda: any[] | null }> {
-    const { id_clinica, id_super_clinica, tiempo_actual, mensajeBotParlante, restriccionesDisponibilidades } = input;
+  public async getAvailabilityInfo(input: GetAvailabilityInfoInput): Promise<{ success: boolean; message: string | null; fechas_buscadas: string | null; presentacion_disponibilidades: string }> {
+    const { id_clinica, id_super_clinica, tiempo_actual, mensajeBotParlante, contextoDisponibilidades } = input;
 
     const tratamientos = await this.treatmentRepo.getActiveTreatmentsForClinic(id_clinica, id_super_clinica);
     const nombresTratamientos = tratamientos.map((t) => t.nombre_tratamiento);
@@ -294,20 +294,25 @@ Contexto:
     };
 
     if (lambdaBody.tratamientos.length === 0) {
-      return { success: false, message: 'No se encontraron tratamientos disponibles en la clínica.', fechas_buscadas: null, analisis_agenda: null };
+      return { success: false, message: 'No se encontraron tratamientos disponibles en la clínica.', fechas_buscadas: null, presentacion_disponibilidades: "" };
     }
 
     const baseResult = await this.getAppointmentAvailability(lambdaBody);
 
     if (!baseResult.success || !baseResult.analisis_agenda) {
-      return { ...baseResult, fechas_buscadas: lambdaBody.fechas };
+      return { ...baseResult, fechas_buscadas: lambdaBody.fechas, presentacion_disponibilidades: "" };
     }
 
-    if (restriccionesDisponibilidades && restriccionesDisponibilidades.trim() !== "") {
-      const filtradas = await filterAvailabilityByRestrictions(this.openAIService, baseResult.analisis_agenda, restriccionesDisponibilidades);
-      return { ...baseResult, fechas_buscadas: lambdaBody.fechas, analisis_agenda: filtradas };
+    if (contextoDisponibilidades && contextoDisponibilidades.trim() !== "") {
+      const result = await presentAndFilterAvailability(this.openAIService, baseResult.analisis_agenda, contextoDisponibilidades);
+      
+      return {
+        ...baseResult,
+        fechas_buscadas: lambdaBody.fechas,
+        presentacion_disponibilidades: result.presentacion
+      };
     }
 
-    return { ...baseResult, fechas_buscadas: lambdaBody.fechas };
+    return { ...baseResult, fechas_buscadas: lambdaBody.fechas, presentacion_disponibilidades: "" };
   }
 }

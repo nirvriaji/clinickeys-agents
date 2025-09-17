@@ -41,6 +41,9 @@ chatbotQueue.subscribe({
     },
     {
       from: "packages/core/src/.ia/instructions/prompts/bot_extractor_consulta_cita.md",
+    },
+    {
+      from: "packages/core/src/.ia/instructions/prompts/bot_presentador_disponibilidades.md",
     }
   ]
 });
