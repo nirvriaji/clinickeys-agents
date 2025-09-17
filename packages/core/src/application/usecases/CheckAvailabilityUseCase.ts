@@ -1,3 +1,5 @@
+// packages/core/src/application/usecases/CheckAvailabilityUseCase.ts
+
 import { filterAvailabilityByRestrictions, getActualTimeForPrompts } from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { AvailabilityService, KommoService } from '@clinickeys-agents/core/application/services';
@@ -88,7 +90,7 @@ export class CheckAvailabilityUseCase {
 
       // 2.1 Aplicar restricciones si existen
       if (availability.success && Array.isArray(availability.analisis_agenda) && availability.analisis_agenda.length > 0) {
-        const restricciones = botConfig?.placeholders?.RESTRICCIONES_EN_DISPONIBILIDADES || "";
+        const restricciones = botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES || "";
         availability.analisis_agenda = await filterAvailabilityByRestrictions(
           this.availabilityService['openAIService'],
           availability.analisis_agenda,

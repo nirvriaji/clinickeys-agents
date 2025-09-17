@@ -196,7 +196,7 @@ export function mergePlaceholdersIntoContext(
   }
 
   // Lista de placeholders que no deben incluirse en el contexto
-  const EXCLUDED_KEYS = new Set<string>(["RESTRICCIONES_EN_DISPONIBILIDADES"]);
+  const EXCLUDED_KEYS = new Set<string>(["CONFIGURACION_DE_DISPONIBILIDADES"]);
 
   const entries = Object.entries(placeholders)
     .filter(([key, value]) => !EXCLUDED_KEYS.has(key) && value != null && value !== "")

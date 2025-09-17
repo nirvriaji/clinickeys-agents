@@ -25,7 +25,7 @@ const DisponibilidadesFiltradasSchema = z.array(DisponibilidadSchema);
 export type Disponibilidad = z.infer<typeof DisponibilidadSchema>;
 
 /**
- * Filtra disponibilidades usando reglas definidas en RESTRICCIONES_EN_DISPONIBILIDADES.
+ * Filtra disponibilidades usando reglas definidas en CONFIGURACION_DE_DISPONIBILIDADES.
  * Si las restricciones están vacías, devuelve las disponibilidades originales.
  */
 export async function filterAvailabilityByRestrictions(
@@ -43,7 +43,7 @@ Recibirás un array de disponibilidades y un conjunto de restricciones.
 Devuelve únicamente las disponibilidades que cumplan las restricciones.
 Responde siempre con un JSON que cumpla el schema proporcionado.`;
 
-  const userPrompt = `RESTRICCIONES_EN_DISPONIBILIDADES:
+  const userPrompt = `CONFIGURACION_DE_DISPONIBILIDADES:
 ${restricciones}
 
 DISPONIBILIDADES_ORIGINALES:

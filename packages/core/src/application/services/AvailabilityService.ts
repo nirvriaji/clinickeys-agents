@@ -1,3 +1,5 @@
+// packages/core/src/application/services/AvailabilityService.ts
+
 import { filterAvailabilityByRestrictions, generarConsultasSQL, calcularDisponibilidad, ajustarDisponibilidad, AppError, ConsultaCitaSchema } from "@clinickeys-agents/core/utils";
 import { ejecutarConReintento } from "@clinickeys-agents/core/infrastructure/helpers";
 import { ITratamientoRepository } from "@clinickeys-agents/core/domain/tratamiento";

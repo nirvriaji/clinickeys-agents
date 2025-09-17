@@ -130,7 +130,7 @@ export class ScheduleAppointmentUseCase {
       Logger.info('[ScheduleAppointment] Disponibilidad recibida', { success: availability.success, count: availability.analisis_agenda?.length });
 
       if (availability.success && Array.isArray(availability.analisis_agenda) && availability.analisis_agenda.length > 0) {
-        const restricciones = botConfig?.placeholders?.RESTRICCIONES_EN_DISPONIBILIDADES || "";
+        const restricciones = botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES || "";
         const filtradas = await filterAvailabilityByRestrictions(this.openAIService, availability.analisis_agenda, restricciones);
         availability.analisis_agenda = filtradas;
 
