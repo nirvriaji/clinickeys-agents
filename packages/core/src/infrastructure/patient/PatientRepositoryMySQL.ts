@@ -57,18 +57,6 @@ export class PatientRepositoryMySQL implements IPatientRepository {
   }
 
   /**
-   * Busca paciente por teléfono. Devuelve el primer match como PatientDTO o undefined.
-   */
-  async findByPhone(telefono: string): Promise<PatientDTO | undefined> {
-    const row = await ejecutarUnicoResultado(
-      "SELECT * FROM pacientes WHERE telefono = ? LIMIT 1",
-      [telefono]
-    );
-    if (!row) return undefined;
-    return this.mapRowToPatientDTO(row);
-  }
-
-  /**
    * Busca paciente por ID. Devuelve el registro completo como PatientDTO o undefined.
    */
   async findById(patientId: number): Promise<PatientDTO | undefined> {
@@ -99,13 +87,7 @@ export class PatientRepositoryMySQL implements IPatientRepository {
       nombre: row.nombre,
       apellido: row.apellido,
       telefono: row.telefono,
-      id_clinica: row.id_clinica,
-      nif_cif: row.nif_cif,
-      id_super_clinica: row.id_super_clinica,
-      id_cliente: row.id_cliente,
       kommo_lead_id: row.kommo_lead_id,
-      // Defaults para campos obligatorios que no vienen del SELECT:
-      lopd_aceptado: false,
     } as PatientDTO));
   }
 

@@ -26,11 +26,6 @@ export interface IPatientRepository {
   }): Promise<number>;
 
   /**
-   * Busca paciente por teléfono. Devuelve PatientDTO o undefined.
-   */
-  findByPhone(telefono: string): Promise<PatientDTO | undefined>;
-
-  /**
    * Busca paciente por ID. Devuelve PatientDTO o undefined.
    */
   findById(patientId: number): Promise<PatientDTO | undefined>;
