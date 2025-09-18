@@ -1,5 +1,3 @@
-// @clinickeys-agents/core/infrastructure/helpers/MySQLHelpers.ts
-
 import mysql, { Pool, PoolOptions } from "mysql2/promise";
 import type { OkPacket } from "mysql2";
 
@@ -8,7 +6,10 @@ let pool: Pool | null = null;
 
 export function createMySQLPool(config: PoolOptions): Pool {
   if (!pool) {
-    pool = mysql.createPool({ ...config, dateStrings: true });
+    pool = mysql.createPool({
+      ...config,
+      dateStrings: true, // fuerza que DATETIME/DATE se devuelvan como string
+    });
     (pool as any).on("connection", async (connection: any) => {
       try {
         const conn = connection.promise();
@@ -36,18 +37,18 @@ export function getMySQLPool(): Pool {
 /**
  * Ejecuta una consulta SQL (SELECT) con reintentos automáticos ante timeout de cliente.
  */
-export async function ejecutarConReintento(
+export async function ejecutarConReintento<T = any>(
   consulta: string,
   parametros: any[] = [],
   reintentos = 3
-): Promise<any[]> {
+): Promise<T[]> {
   const dbPool = getMySQLPool();
   for (let intento = 1; intento <= reintentos; intento++) {
     let conexion;
     try {
       conexion = await dbPool.getConnection();
       const [rows] = await conexion.execute(consulta, parametros);
-      return rows as any[];
+      return rows as T[];
     } catch (error: any) {
       console.error(`Intento ${intento} falló:`, error);
       if (
@@ -77,8 +78,8 @@ export async function ejecutarExecConReintento(
     let conexion;
     try {
       conexion = await dbPool.getConnection();
-      const [result] = await conexion.execute<OkPacket>(consulta, parametros);
-      return result;
+      const [result] = await conexion.execute(consulta, parametros);
+      return result as OkPacket;
     } catch (error: any) {
       console.error(`Intento ${intento} falló:`, error);
       if (
@@ -98,24 +99,24 @@ export async function ejecutarExecConReintento(
 /**
  * Ejecuta una consulta SQL obteniendo una única fila (o null si no hay resultado).
  */
-export async function ejecutarUnicoResultado(
+export async function ejecutarUnicoResultado<T = any>(
   consulta: string,
   parametros: any[] = [],
   reintentos = 3
-): Promise<any | null> {
-  const rows = await ejecutarConReintento(consulta, parametros, reintentos);
+): Promise<T | null> {
+  const rows = await ejecutarConReintento<T>(consulta, parametros, reintentos);
   return rows[0] || null;
 }
 
 /**
  * Ejecuta una consulta SQL obteniendo todas las filas.
  */
-export async function ejecutarTodosLosResultados(
+export async function ejecutarTodosLosResultados<T = any>(
   consulta: string,
   parametros: any[] = [],
   reintentos = 3
-): Promise<any[]> {
-  const rows = await ejecutarConReintento(consulta, parametros, reintentos);
+): Promise<T[]> {
+  const rows = await ejecutarConReintento<T>(consulta, parametros, reintentos);
   return rows || [];
 }
 

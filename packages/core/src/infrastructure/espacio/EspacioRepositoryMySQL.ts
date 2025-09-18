@@ -1,13 +1,7 @@
-// @clinickeys-agents/core/src/infrastructure/espacio/EspacioRepositoryMySQL.ts
+// packages/core/src/infrastructure/espacio/EspacioRepositoryMySQL.ts
 
 import { ejecutarConReintento, ejecutarUnicoResultado } from "@clinickeys-agents/core/infrastructure/helpers";
-
-export interface EspacioDTO {
-  id_espacio: number;
-  id_clinica: number;
-  nombre: string;
-  // puedes agregar más campos según tus necesidades
-}
+import { EspacioDTO } from "@clinickeys-agents/core/domain/espacio";
 
 export class EspacioRepositoryMySQL {
   /**
@@ -20,8 +14,8 @@ export class EspacioRepositoryMySQL {
       WHERE id_espacio = ?
       LIMIT 1
     `;
-    const row = await ejecutarUnicoResultado(query, [id_espacio]);
-    return row || undefined;
+    const row = await ejecutarUnicoResultado<EspacioDTO>(query, [id_espacio]);
+    return row as EspacioDTO | undefined;
   }
 
   /**
@@ -33,7 +27,8 @@ export class EspacioRepositoryMySQL {
       FROM espacios
       WHERE id_clinica = ?
     `;
-    return await ejecutarConReintento(query, [id_clinica]);
+    const rows = await ejecutarConReintento<EspacioDTO>(query, [id_clinica]);
+    return rows as EspacioDTO[];
   }
 
   /**
@@ -54,6 +49,7 @@ export class EspacioRepositoryMySQL {
         AND et.id_tratamiento = ?
         AND e.id_clinica = ?
     `;
-    return await ejecutarConReintento(query, [id_medico, id_tratamiento, id_clinica]);
+    const rows = await ejecutarConReintento<EspacioDTO>(query, [id_medico, id_tratamiento, id_clinica]);
+    return rows as EspacioDTO[];
   }
 }

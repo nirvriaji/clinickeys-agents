@@ -1,9 +1,6 @@
-export interface EspacioDTO {
-  id_espacio: number;
-  id_clinica: number;
-  nombre: string;
-  // puedes agregar más campos según tus necesidades
-}
+// packages/core/src/domain/espacio/IEspacioRepository.ts
+
+import { EspacioDTO, EspacioBasicDTO } from "./dtos";
 
 export interface IEspacioRepository {
   /**
@@ -23,5 +20,5 @@ export interface IEspacioRepository {
     id_medico: number,
     id_tratamiento: number,
     id_clinica: number
-  ): Promise<EspacioDTO[]>;
+  ): Promise<EspacioBasicDTO[]>;
 }
