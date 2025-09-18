@@ -2,9 +2,14 @@
 
 import { AppError, CHAT_BOT_CUSTOM_FIELDS, PATIENT_PHONE } from '@clinickeys-agents/core/utils';
 import { PatientService } from '@clinickeys-agents/core/application/services';
+import { AppointmentDTO } from '@clinickeys-agents/core/domain/appointment';
+import { PackBonoConUsoDTO } from '@clinickeys-agents/core/domain/packBono';
+import { PresupuestoDTO } from '@clinickeys-agents/core/domain/presupuesto';
 import { BotConfigType } from '@clinickeys-agents/core/domain/botConfig';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
+import { PatientDTO } from '@clinickeys-agents/core/domain/patient';
 import { FetchKommoDataUseCase } from './FetchKommoDataUseCase';
+import { DateTime } from 'luxon';
 
 export interface FetchPatientInfoInput {
   botConfigType: BotConfigType;
@@ -12,17 +17,24 @@ export interface FetchPatientInfoInput {
   clinicSource: string;
   clinicId: number;
   leadId: number;
-  tiempoActualDT: any;
+  tiempoActualDT: DateTime;
 }
 
 export interface FetchPatientInfoOutput {
   patients: Array<{
-    paciente: any;
-    appointments: any[];
-    packsBonos: any[];
-    budgets: any[];
+    patient: PatientDTO;
+    appointments: AppointmentDTO[];
+    packsBonos: PackBonoConUsoDTO[];
+    budgets: PresupuestoDTO[];
   }>;
 }
+
+export type PatientFullInfo = {
+  paciente: PatientDTO;
+  citas: AppointmentDTO[];
+  packsBonos: PackBonoConUsoDTO[];
+  presupuestos: PresupuestoDTO[];
+};
 
 export class FetchPatientInfoUseCase {
   private fetchKommoDataUseCase: FetchKommoDataUseCase;
@@ -48,21 +60,17 @@ export class FetchPatientInfoUseCase {
       clinicId,
       leadId
     });
+
     Logger.debug('[FetchPatientInfo] Datos de Kommo obtenidos', {
       contactId: kommoData.contactId,
       normalizedLeadCFCount: kommoData.normalizedLeadCF?.length,
       normalizedContactCFCount: kommoData.normalizedContactCF?.length,
-      normalizedLeadCFSample: kommoData.normalizedLeadCF?.filter(cf => CHAT_BOT_CUSTOM_FIELDS.includes(cf.field_name)).map(cf => ({ name: cf.field_name, value: cf.value })) || [],
+      normalizedLeadCFSample: kommoData.normalizedLeadCF
+        ?.filter(cf => CHAT_BOT_CUSTOM_FIELDS.includes(cf.field_name))
+        .map(cf => ({ name: cf.field_name, value: cf.value })) || [],
     });
 
-    Logger.debug('[FetchPatientInfo] Preparando objeto leadPhones');
-    const contactPhone = kommoData.normalizedContactCF?.find((cf: any) => cf.field_code === 'PHONE')?.values?.[0]?.value || '';
-    const leadCFPhone = kommoData.normalizedLeadCF?.find((cf) => cf.field_name == PATIENT_PHONE)?.value || '';
-    const leadPhones = {
-      in_conversation: '',
-      in_field: leadCFPhone,
-      in_contact: contactPhone
-    };
+    const leadPhones = this.prepareLeadPhones(kommoData);
     Logger.debug('[FetchPatientInfo] leadPhones preparado', { leadPhones });
 
     Logger.debug('[FetchPatientInfo] Obteniendo información del paciente desde PatientService');
@@ -81,33 +89,47 @@ export class FetchPatientInfoUseCase {
       });
     }
 
-    for (const patient of patientInfo.patients) {
-      if (patient.paciente?.id_paciente) {
-        const patientId = patient.paciente.id_paciente;
-        const oldLeadId = patient.paciente.kommo_lead_id;
-        if (oldLeadId !== kommoData.leadData.id) {
-          Logger.debug('[FetchPatientInfo] Actualizando kommo_lead_id en BD', {
-            patientId,
-            oldLeadId,
-            newLeadId: kommoData.leadData.id,
-          });
-          await this.patientService.updateKommoLeadId(patientId, kommoData.leadData.id);
-          patient.paciente.kommo_lead_id = kommoData.leadData.id;
-        }
-      }
-    }
+    await this.syncKommoLeadId(patientInfo.patients, kommoData.leadData.id);
 
     Logger.info('[FetchPatientInfo] Información de pacientes obtenida con éxito', {
       totalPatients: patientInfo.patients.length
     });
 
-    const outputPatients = patientInfo.patients.map((p: any) => ({
-      paciente: p.paciente,
+    const outputPatients = patientInfo.patients.map((p: PatientFullInfo) => ({
+      patient: p.paciente,
       appointments: p.citas,
       packsBonos: p.packsBonos,
       budgets: p.presupuestos
     }));
 
     return { patients: outputPatients };
+  }
+
+  private prepareLeadPhones(kommoData: any) {
+    const contactPhone = kommoData.normalizedContactCF?.find((cf: { field_code: string; values: Array<{ value: string }> }) => cf.field_code === 'PHONE')?.values?.[0]?.value || '';
+    const leadCFPhone = kommoData.normalizedLeadCF?.find((cf: { field_name: string; value: string }) => cf.field_name === PATIENT_PHONE)?.value || '';
+    return {
+      in_conversation: '',
+      in_field: leadCFPhone,
+      in_contact: contactPhone
+    };
+  }
+
+  private async syncKommoLeadId(patients: PatientFullInfo[], newLeadId: string) {
+    for (const patient of patients) {
+      if (patient.paciente?.id_paciente) {
+        const patientId = patient.paciente.id_paciente;
+        const oldLeadId = patient.paciente.kommo_lead_id;
+        if (oldLeadId !== newLeadId) {
+          Logger.debug('[FetchPatientInfo] Actualizando kommo_lead_id en BD', {
+            patientId,
+            oldLeadId,
+            newLeadId,
+          });
+          await this.patientService.updateKommoLeadId(patientId, newLeadId);
+          patient.paciente.kommo_lead_id = newLeadId;
+        }
+      }
+    }
   }
 }

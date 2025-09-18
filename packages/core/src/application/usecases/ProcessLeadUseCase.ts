@@ -22,7 +22,7 @@ export interface ProcessLeadOutput {
     clinicId: string;
   };
   patients: Array<{
-    paciente: any;
+    patient: any;
     appointments: any[];
     packsBonos: any[];
     budgets: any[];

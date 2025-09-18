@@ -1,13 +1,13 @@
-// @clinickeys-agents/core/src/infrastructure/presupuesto/PresupuestoRepositoryMySQL.ts
+// packages/core/src/infrastructure/presupuesto/PresupuestoRepositoryMySQL.ts
 
-import { IPresupuestoRepository } from "@clinickeys-agents/core/domain/presupuesto";
+import { IPresupuestoRepository, PresupuestoDTO, CreatePresupuestoParams } from "@clinickeys-agents/core/domain/presupuesto";
 import { ejecutarConReintento, ejecutarUnicoResultado, ejecutarExecConReintento } from "@clinickeys-agents/core/infrastructure/helpers";
 
 export class PresupuestoRepositoryMySQL implements IPresupuestoRepository {
   /**
    * Obtiene todos los presupuestos pendientes de un paciente en una clínica.
    */
-  async getPresupuestosByPacienteId(id_paciente: number, id_clinica: number): Promise<any[]> {
+  async getPresupuestosByPacienteId(id_paciente: number, id_clinica: number): Promise<PresupuestoDTO[]> {
     const query = `
       SELECT 
         p.id_presupuesto,
@@ -32,7 +32,7 @@ export class PresupuestoRepositoryMySQL implements IPresupuestoRepository {
   /**
    * Obtiene un presupuesto por su ID y clínica.
    */
-  async getPresupuestoById(id_presupuesto: number, id_clinica: number): Promise<any | undefined> {
+  async getPresupuestoById(id_presupuesto: number, id_clinica: number): Promise<PresupuestoDTO | undefined> {
     const query = `
       SELECT 
         p.id_presupuesto,
@@ -57,16 +57,7 @@ export class PresupuestoRepositoryMySQL implements IPresupuestoRepository {
   /**
    * Crea un presupuesto nuevo.
    */
-  async createPresupuesto(params: {
-    id_paciente: number;
-    id_clinica: number;
-    fecha: string;
-    monto_total: number;
-    monto_pagado: number;
-    saldo_pendiente: number;
-    id_tipo_pago: number;
-    id_estado: number;
-  }): Promise<number> {
+  async createPresupuesto(params: CreatePresupuestoParams): Promise<number> {
     const query = `
       INSERT INTO presupuestos (
         id_paciente, id_clinica, fecha, monto_total, monto_pagado, saldo_pendiente, id_tipo_pago, id_estado

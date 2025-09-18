@@ -1,7 +1,4 @@
-/*
- * Data Transfer Objects (DTOs) for Patient entity
- * ClinicKeys - 2024
- */
+// packages/core/src/domain/patient/dtos.ts
 
 // DTO to create a new patient
 export class CreatePatientDTO {

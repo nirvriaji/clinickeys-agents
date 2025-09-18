@@ -1,13 +1,13 @@
 // packages/core/src/infrastructure/packBono/PackBonoRepositoryMySQL.ts
 
-import { IPackBonoRepository } from "@clinickeys-agents/core/domain/packBono";
+import { IPackBonoRepository, PackBonoDTO, PackBonoTratamientoDTO, PackBonoSesionDTO } from "@clinickeys-agents/core/domain/packBono";
 import { ejecutarConReintento, ejecutarUnicoResultado, ejecutarExecConReintento } from "@clinickeys-agents/core/infrastructure/helpers";
 
 export class PackBonoRepositoryMySQL implements IPackBonoRepository {
   /**
    * Obtiene todos los packs bono de una clínica.
    */
-  async getPackBonosByClinic(id_clinica: number): Promise<any[]> {
+  async getPackBonosByClinic(id_clinica: number): Promise<PackBonoDTO[]> {
     const query = `
       SELECT id_pack_bono, id_clinica, id_super_clinica, nombre, descripcion, precio
       FROM pack_bonos
@@ -19,7 +19,7 @@ export class PackBonoRepositoryMySQL implements IPackBonoRepository {
   /**
    * Obtiene un pack bono por su ID y clínica.
    */
-  async getPackBonoById(id_pack_bono: number, id_clinica: number): Promise<any | undefined> {
+  async getPackBonoById(id_pack_bono: number, id_clinica: number): Promise<PackBonoDTO | undefined> {
     const query = `
       SELECT id_pack_bono, id_clinica, id_super_clinica, nombre, descripcion, precio
       FROM pack_bonos
@@ -33,7 +33,7 @@ export class PackBonoRepositoryMySQL implements IPackBonoRepository {
   /**
    * Obtiene todos los tratamientos asociados a un pack bono.
    */
-  async getPackBonoTratamientos(id_pack_bono: number): Promise<any[]> {
+  async getPackBonoTratamientos(id_pack_bono: number): Promise<PackBonoTratamientoDTO[]> {
     const query = `
       SELECT id_pack_bono_tratamientos, id_pack_bono, id_par_tratamiento, id_tratamiento, total_sesiones
       FROM pack_bono_tratamientos
@@ -45,9 +45,9 @@ export class PackBonoRepositoryMySQL implements IPackBonoRepository {
   /**
    * Obtiene las sesiones de pack bono de un paciente.
    */
-  async getPackBonosSesionesByPacienteId(id_paciente: number): Promise<any[]> {
+  async getPackBonosSesionesByPacienteId(id_paciente: number): Promise<PackBonoSesionDTO[]> {
     const query = `
-      SELECT *
+      SELECT id_pack_bono_sesion, id_pack_bono, id_paciente
       FROM pack_bonos_sesiones
       WHERE id_paciente = ?
     `;

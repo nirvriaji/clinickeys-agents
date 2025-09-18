@@ -1,4 +1,4 @@
-// @clinickeys-agents/core/src/domain/patient/IPatientRepository.ts
+// packages/core/src/domain/patient/IPatientRepository.ts
 
 import { PatientDTO } from "@clinickeys-agents/core/domain/patient";
 
@@ -6,7 +6,7 @@ export interface IPatientRepository {
   /**
    * Actualiza el kommoLeadId de un paciente.
    */
-  updateKommoLeadId(patientId: number, kommoLeadId: number): Promise<void>;
+  updateKommoLeadId(patientId: number, kommoLeadId: string): Promise<void>;
 
   /**
    * Obtiene el kommoLeadId de un paciente.
@@ -34,6 +34,4 @@ export interface IPatientRepository {
    * Busca paciente por número nacional, clínica y solo activos. Devuelve PatientDTO o undefined.
    */
   findByNationalPhoneAndClinic(telefonoNacional: string, id_clinica: number): Promise<PatientDTO[]>;
-
-  updateKommoLeadId(patientId: number, kommoLeadId: number): Promise<void>;
 }

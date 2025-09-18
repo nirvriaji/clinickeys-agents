@@ -95,7 +95,7 @@ export class KommoService {
     patientLastName: string;
     patientPhone: string;
     notificationId?: number;
-  }): Promise<number> {
+  }): Promise<string> {
     const { botConfig, patientId, patientFirstName, patientLastName, patientPhone, notificationId } = input;
     const defaultCountry = botConfig.defaultCountry as CountryCode;
     const normalizedPhone = parsePhoneNumberFromString(patientPhone, defaultCountry)?.number || patientPhone;
@@ -119,17 +119,17 @@ export class KommoService {
       const leadExists = await this.kommoRepository.getLeadById({ leadId: Number(existingLeadId) });
       if (leadExists) {
         Logger.info('[KommoService.ensureLead] Lead existente reutilizado', { existingLeadId });
-        return Number(existingLeadId);
+        return existingLeadId;
       }
       Logger.warn('[KommoService.ensureLead] LeadId guardado no existe en Kommo, se creará uno nuevo', { existingLeadId });
     }
 
     let contactId: number | undefined;
-    let leadId: number | undefined;
+    let leadId: string | undefined;
     const found = await this.kommoRepository.searchContactByPhone({ phone: normalizedPhone });
     if (found?._embedded?.contacts?.length) {
       contactId = Number(found._embedded.contacts[0].id);
-      leadId = Number(found._embedded.contacts[0]._embedded?.leads?.[0]?.id);
+      leadId = found._embedded.contacts[0]._embedded?.leads?.[0]?.id;
       Logger.info('[KommoService.ensureLead] Contacto encontrado por teléfono', { contactId, leadId });
     }
 
@@ -173,7 +173,7 @@ export class KommoService {
         cfSample: (leadPayload[0].custom_fields_values || []).slice(0, 3),
       });
       const res = await this.kommoRepository.createLead({ body: leadPayload });
-      leadId = Number(res._embedded?.leads?.[0]?.id!);
+      leadId = res._embedded?.leads?.[0]?.id!;
       Logger.info('[KommoService.ensureLead] Lead creado', { leadId });
       try {
         await this.patientRepository.updateKommoLeadId(patientId, leadId);

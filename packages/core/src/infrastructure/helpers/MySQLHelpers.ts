@@ -8,7 +8,7 @@ let pool: Pool | null = null;
 
 export function createMySQLPool(config: PoolOptions): Pool {
   if (!pool) {
-    pool = mysql.createPool(config);
+    pool = mysql.createPool({ ...config, dateStrings: true });
     (pool as any).on("connection", async (connection: any) => {
       try {
         const conn = connection.promise();

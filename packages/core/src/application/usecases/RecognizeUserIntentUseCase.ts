@@ -114,7 +114,14 @@ export class RecognizeUserIntentUseCase {
       CONTEXTO_PLACEHOLDERS: botConfig?.placeholders ? JSON.stringify(botConfig.placeholders) : ""
     };
 
-    Logger.debug('[RecognizeUserIntent] Contexto para AI generado', { contextSample: { ...contextForAI } });
+    Logger.debug('[RecognizeUserIntent] Contexto para AI generado', {
+      contextSample: {
+        MENSAJE,
+        TIMEZONE_SISTEMA: timezone,
+        TIEMPO_ACTUAL: getActualTimeForPrompts(tiempoActualDT, timezone),
+        PACIENTES_ASOCIADOS_AL_TELEFONO: patientInfo.patients ?? [],
+      }
+    });
 
     let assistantResult: RecognizeUserIntentOutput['assistantResult'];
     try {

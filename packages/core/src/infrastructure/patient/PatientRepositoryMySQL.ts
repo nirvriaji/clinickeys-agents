@@ -1,7 +1,36 @@
-// @clinickeys-agents/core/src/infrastructure/patient/PatientRepositoryMySQL.ts
+// packages/core/src/infrastructure/patient/PatientRepositoryMySQL.ts
 
 import { PatientDTO, IPatientRepository } from "@clinickeys-agents/core/domain/patient";
 import { ejecutarUnicoResultado, ejecutarExecConReintento, ejecutarTodosLosResultados } from "@clinickeys-agents/core/infrastructure/helpers";
+
+interface PatientRow {
+  id_paciente: number;
+  nombre: string;
+  apellido: string;
+  email?: string | null;
+  telefono: string;
+  fecha_nacimiento?: string | null;
+  id_sexo?: number | null;
+  direccion?: string | null;
+  ciudad?: string | null;
+  id_clinica?: number | null;
+  codigo_postal?: string | null;
+  nif_cif?: string | null;
+  referido?: string | null;
+  observaciones?: string | null;
+  id_super_clinica: number;
+  id_estado_registro?: number | null;
+  id_cliente?: number | null;
+  lopd_aceptado: number;
+  kommo_lead_id?: string | null;
+  old_id?: number | null;
+  fecha_alta?: string | null;
+  fecha_creacion?: string | null;
+  fecha_modificacion?: string | null;
+  usuario_creacion?: string | null;
+  id_usuario_creacion?: number | null;
+}
+
 /**
  * Implementación MySQL del repositorio de pacientes.
  */
@@ -9,7 +38,7 @@ export class PatientRepositoryMySQL implements IPatientRepository {
   /**
    * Actualiza el campo kommoLeadId de un paciente específico.
    */
-  async updateKommoLeadId(patientId: number, kommoLeadId: number): Promise<void> {
+  async updateKommoLeadId(patientId: number, kommoLeadId: string): Promise<void> {
     await ejecutarExecConReintento(
       "UPDATE pacientes SET kommo_lead_id = ? WHERE id_paciente = ?",
       [kommoLeadId, patientId]
@@ -65,7 +94,7 @@ export class PatientRepositoryMySQL implements IPatientRepository {
       [patientId]
     );
     if (!row) return undefined;
-    return this.mapRowToPatientDTO(row);
+    return this.mapRowToPatientDTO(row as PatientRow);
   }
 
   /**
@@ -82,19 +111,21 @@ export class PatientRepositoryMySQL implements IPatientRepository {
       [telefonoNacional, id_clinica]
     );
     if (!rows || !rows.length) return [];
-    return rows.map((row: any) => ({
+    return rows.map((row: PatientRow) => ({
       id_paciente: row.id_paciente,
       nombre: row.nombre,
       apellido: row.apellido,
       telefono: row.telefono,
+      id_clinica: row.id_clinica,
+      id_super_clinica: row.id_super_clinica,
       kommo_lead_id: row.kommo_lead_id,
     } as PatientDTO));
   }
 
   /**
-   * Convierte un row de la BD a PatientDTO
+   * Convierte un row de la BD a PatientDTO.
    */
-  private mapRowToPatientDTO(row: any): PatientDTO {
+  private mapRowToPatientDTO(row: PatientRow): PatientDTO {
     return {
       id_paciente: row.id_paciente,
       nombre: row.nombre,
