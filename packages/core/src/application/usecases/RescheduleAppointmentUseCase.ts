@@ -59,6 +59,8 @@ export class RescheduleAppointmentUseCase {
     const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, subdomain } = input;
     const { id_cita, id_tratamiento, tratamiento, medico, id_medico, fechas, horas, summary, id_paciente } = params;
 
+    const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
+
     Logger.info('[RescheduleAppointment] Inicio', { leadId, id_cita, tratamiento, medico, id_medico, fechas, horas });
 
     Logger.debug('[RescheduleAppointment] Enviando mensaje inicial al bot');
@@ -88,6 +90,7 @@ export class RescheduleAppointmentUseCase {
       let availability = await this.availabilityService.getAvailabilityInfo({
         id_clinica: botConfig.clinicId,
         id_super_clinica: botConfig.superClinicId,
+        actualTimeForPrompts,
         tiempo_actual: tiempoActualDT.toISO() as string,
         mensajeBotParlante: JSON.stringify({
           id_tratamiento: step.params.id_tratamiento,
@@ -110,8 +113,9 @@ export class RescheduleAppointmentUseCase {
         finalPayload = {
           tipo_busqueda: step.tipo,
           filtros_aplicados: step.filtros,
-          tratamiento: { id: step.params.id_tratamiento ?? null, nombre: step.params.tratamiento },
+          horarios: availability.disponibilidades,
           horarios_texto: availability.presentacion_disponibilidades,
+          tratamiento: { id: step.params.id_tratamiento ?? null, nombre: step.params.tratamiento },
         };
         Logger.debug('[RescheduleAppointment] Disponibilidad encontrada', { finalPayload });
 
@@ -152,7 +156,6 @@ export class RescheduleAppointmentUseCase {
           };
         });
 
-        const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
         const extractorPrompt = `#reprogramarCita\n\nTIEMPO_ACTUAL: ${actualTimeForPrompts}\n\nLa CITA_A_REPROGRAMAR tiene ID ${id_cita}.\nLos HORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}\nMENSAJE_USUARIO: ${JSON.stringify(params)}\nCITAS_PACIENTE: ${JSON.stringify(citas_paciente)}`;
         Logger.debug('[RescheduleAppointment] Extractor prompt', extractorPrompt);
 
@@ -197,6 +200,7 @@ export class RescheduleAppointmentUseCase {
     if (!finalPayload) {
       Logger.warn('[RescheduleAppointment] No se encontró disponibilidad en ningún paso');
       finalPayload = {
+        horarios: [],
         tipo_busqueda: 'sin_disponibilidad',
         filtros_aplicados: { con_medico: !!medico, rango_dias_extra: 0 },
         tratamiento: { id: id_tratamiento ?? null, nombre: tratamiento },

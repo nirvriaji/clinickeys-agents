@@ -63,6 +63,8 @@ export class ScheduleAppointmentUseCase {
     const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, subdomain } = input;
     const { id_paciente, shouldCreatePatient, nombre, apellido, telefono, tratamiento, medico, fechas, horas, summary } = params;
 
+    const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
+
     Logger.info('[ScheduleAppointment] Inicio', { leadId, nombre, apellido, telefono, tratamiento, medico, id_paciente, shouldCreatePatient });
 
     Logger.debug('[ScheduleAppointment] Enviando mensaje inicial al bot');
@@ -113,6 +115,7 @@ export class ScheduleAppointmentUseCase {
         : fechas;
 
       let availability = await this.availabilityService.getAvailabilityInfo({
+        actualTimeForPrompts,
         id_clinica: botConfig.clinicId,
         id_super_clinica: botConfig.superClinicId,
         tiempo_actual: tiempoActualDT.toISO() as string,
@@ -134,13 +137,13 @@ export class ScheduleAppointmentUseCase {
         finalPayload = {
           tipo_busqueda: step.tipo,
           filtros_aplicados: step.filtros,
+          horarios: availability.disponibilidades,
           tratamiento: { id: null, nombre: step.params.tratamiento },
           horarios_texto: availability.presentacion_disponibilidades,
         };
 
         Logger.debug('[ScheduleAppointment] FinalPayload con horarios disponibles', { finalPayload });
 
-        const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
         const extractorPrompt = `#agendarCita\n\nTIEMPO_ACTUAL: ${actualTimeForPrompts}\n\nLos HORARIOS_DISPONIBLES para citas son: ${JSON.stringify(finalPayload)}\n\nMENSAJE_USUARIO: ${JSON.stringify(params)}`;
         Logger.debug('[ScheduleAppointment] Extractor prompt', extractorPrompt);
         const systemPrompt = await readFile(
@@ -193,10 +196,11 @@ export class ScheduleAppointmentUseCase {
     if (!finalPayload) {
       Logger.warn('[ScheduleAppointment] No se encontró disponibilidad en ningún paso');
       finalPayload = {
+        horarios: [],
+        horarios_texto: [],
         tipo_busqueda: 'sin_disponibilidad',
         filtros_aplicados: { con_medico: !!medico, rango_dias_extra: 0 },
         tratamiento: { id: null, nombre: tratamiento },
-        horarios_texto: [],
       };
     }
 
@@ -205,7 +209,7 @@ export class ScheduleAppointmentUseCase {
       const fechaLegible = formatFechaCita(appointmentCreated.fecha_cita);
       const doctorLine = medico && appointmentCreated.nombre_medico ? `\n- El médico es “${appointmentCreated.nombre_medico} ${appointmentCreated.apellido_medico}”.` : '';
       toolOutput = `#agendarCita\n- La cita de “${appointmentCreated.nombre_tratamiento}” ha sido agendada para el ${fechaLegible} a las ${appointmentCreated.hora_inicio}.${doctorLine}`;
-    } else if (finalPayload.horarios.length === 0) {
+    } else if (finalPayload.horarios.length == 0) {
       toolOutput = '#agendarCita\nLo siento, en este momento no hay horarios disponibles para el día solicitado. ¿Te gustaría buscar otro día o franja horaria?';
     } else {
       toolOutput = `#agendarCita\nLo siento, parece que ocurrió un problema. Por favor, ¿Podrías repetirnos tu horario o escoger otro?`;

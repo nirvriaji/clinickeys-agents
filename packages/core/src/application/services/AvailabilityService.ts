@@ -11,12 +11,13 @@ import { readFile } from "fs/promises";
 import path from "path";
 
 interface GetAvailabilityInfoInput {
-  id_clinica: number;
-  id_super_clinica: number;
-  tiempo_actual: string;
-  mensajeBotParlante: string;
-  subdomain: string;
   leadId?: number;
+  subdomain: string;
+  id_clinica: number;
+  tiempo_actual: string;
+  id_super_clinica: number;
+  mensajeBotParlante: string;
+  actualTimeForPrompts: string;
   contextoDisponibilidades: string;
 }
 
@@ -119,7 +120,6 @@ export class AvailabilityService {
       
       let idsMedicosSolicitados: number[] = [];
       let tratamientosFiltrados = datosTratamientos;
-      Logger.info("Treatments filtered 1:", JSON.stringify(tratamientosFiltrados));
       if (medicosConsultados.length > 0) {
         const rows = await this.doctorRepo.getIdsMedicosPorNombre(medicosConsultados, clinicId);
         idsMedicosSolicitados = rows.map((f: any) => f.id_medico);
@@ -171,16 +171,14 @@ export class AvailabilityService {
         ),
       ];
 
-      Logger.info("Treatments filtered 2:", JSON.stringify(tratamientosFiltrados));
-
       if (idsMedicos.length === 0) {
-        const treatmentNamesOut = tratamientosFiltrados.map((t: any) => t.tratamiento.nombre_tratamiento);
+        const treatmentNamesOut = datosTratamientos.map((t: any) => t.tratamiento.nombre_tratamiento);
         if (medicosConsultados.length > 0) throw AppError.MEDICO_NO_ASOCIADO_A_TRATAMIENTO(medicosConsultados, tratamientosConsultados);
         else throw AppError.NINGUN_MEDICO_ENCONTRADO(treatmentNamesOut);
       }
 
       if (idsEspacios.length === 0) {
-        throw AppError.NINGUN_ESPACIO_ENCONTRADO(tratamientosFiltrados.map((t: any) => t.tratamiento.nombre_tratamiento), idsMedicos);
+        throw AppError.NINGUN_ESPACIO_ENCONTRADO(datosTratamientos.map((t: any) => t.tratamiento.nombre_tratamiento), idsMedicos);
       }
 
       const consultasSQL = generarConsultasSQL({
@@ -253,8 +251,14 @@ export class AvailabilityService {
     }
   }
 
-  public async getAvailabilityInfo(input: GetAvailabilityInfoInput): Promise<{ success: boolean; message: string | null; fechas_buscadas: string | null; presentacion_disponibilidades: string }> {
-    const { id_clinica, id_super_clinica, tiempo_actual, mensajeBotParlante, contextoDisponibilidades } = input;
+  public async getAvailabilityInfo(input: GetAvailabilityInfoInput): Promise<{
+    success: boolean;
+    message: string | null;
+    fechas_buscadas: string | null;
+    disponibilidades: any[];
+    presentacion_disponibilidades: string;
+  }> {
+    const { id_clinica, id_super_clinica, tiempo_actual, actualTimeForPrompts, mensajeBotParlante, contextoDisponibilidades } = input;
 
     const tratamientos = await this.treatmentRepo.getActiveTreatmentsForClinic(id_clinica, id_super_clinica);
     const nombresTratamientos = tratamientos.map((t) => t.nombre_tratamiento);
@@ -267,7 +271,7 @@ El paciente consultó por una cita y le respondimos esto: ${mensajeBotParlante}
 Contexto:
 - id_clinica: ${id_clinica}
 - id_super_clinica: ${id_super_clinica}
-- tiempo_actual: ${tiempo_actual}
+- tiempo_actual: ${actualTimeForPrompts}
 - tratamientos disponibles: ${JSON.stringify(nombresTratamientos)}
 - médicos disponibles: ${JSON.stringify(nombresMedicos)}
 `;
@@ -294,13 +298,19 @@ Contexto:
     };
 
     if (lambdaBody.tratamientos.length === 0) {
-      return { success: false, message: 'No se encontraron tratamientos disponibles en la clínica.', fechas_buscadas: null, presentacion_disponibilidades: "" };
+      return {
+        success: false,
+        message: 'No se encontraron tratamientos disponibles en la clínica.',
+        fechas_buscadas: null,
+        disponibilidades: [],
+        presentacion_disponibilidades: "",
+      };
     }
 
     const baseResult = await this.getAppointmentAvailability(lambdaBody);
 
     if (!baseResult.success || !baseResult.analisis_agenda) {
-      return { ...baseResult, fechas_buscadas: lambdaBody.fechas, presentacion_disponibilidades: "" };
+      return { ...baseResult, fechas_buscadas: lambdaBody.fechas, presentacion_disponibilidades: "", disponibilidades: [] };
     }
 
     if (contextoDisponibilidades && contextoDisponibilidades.trim() !== "") {
@@ -309,10 +319,11 @@ Contexto:
       return {
         ...baseResult,
         fechas_buscadas: lambdaBody.fechas,
-        presentacion_disponibilidades: result.presentacion
+        presentacion_disponibilidades: result.presentacion,
+        disponibilidades: result.disponibilidades,
       };
     }
 
-    return { ...baseResult, fechas_buscadas: lambdaBody.fechas, presentacion_disponibilidades: "" };
+    return { ...baseResult, fechas_buscadas: lambdaBody.fechas, presentacion_disponibilidades: "", disponibilidades: [] };
   }
 }

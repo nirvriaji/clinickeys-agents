@@ -71,6 +71,8 @@ export class CheckReprogramAvailabilityUseCase {
       summary,
     } = params;
 
+    const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
+
     Logger.info('[CheckReprogramAvailability] Inicio', {
       leadId,
       id_paciente,
@@ -113,6 +115,7 @@ export class CheckReprogramAvailabilityUseCase {
         : fechas;
 
       let availability = await this.availabilityService.getAvailabilityInfo({
+        actualTimeForPrompts,
         id_clinica: botConfig.clinicId,
         id_super_clinica: botConfig.superClinicId,
         tiempo_actual: tiempoActualDT.toISO() as string,
@@ -166,7 +169,6 @@ export class CheckReprogramAvailabilityUseCase {
     }
 
     // 3. Construir toolOutput para resolver run
-    const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
     const toolOutput = `#consultaReprogramar
     TIEMPO_ACTUAL: ${actualTimeForPrompts}
     PACIENTE: ${JSON.stringify({id_paciente, nombre, apellido, telefono,})}

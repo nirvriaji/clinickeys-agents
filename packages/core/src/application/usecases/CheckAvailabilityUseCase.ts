@@ -41,6 +41,8 @@ export class CheckAvailabilityUseCase {
     const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, subdomain } = input;
     const { tratamiento, medico, fechas, horas, summary } = params;
 
+    const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
+
     Logger.info('[CheckAvailability] Inicio', { leadId, tratamiento, medico, fechas, horas });
 
     // 1. Mensaje inicial "please-wait"
@@ -70,6 +72,7 @@ export class CheckAvailabilityUseCase {
         : fechas;
 
       let availability = await this.availabilityService.getAvailabilityInfo({
+        actualTimeForPrompts,
         id_clinica: botConfig.clinicId,
         id_super_clinica: botConfig.superClinicId,
         tiempo_actual: tiempoActualDT.toISO() as string,
@@ -112,7 +115,6 @@ export class CheckAvailabilityUseCase {
     }
 
     // 3. Construir toolOutput
-    const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
     const toolOutput = `#consultaAgendar
     TIEMPO_ACTUAL: ${actualTimeForPrompts}
     DISCLAIMER_FECHAS_BUSCADAS: Se buscaron solo las siguientes fechas ${JSON.stringify(fechas_buscadas)}

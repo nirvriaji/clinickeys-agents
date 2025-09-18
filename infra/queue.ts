@@ -7,7 +7,7 @@ export const chatbotQueueDLQ = new sst.aws.Queue(`chatbotQueueDLQ${SUFFIX}`, {
 
 export const chatbotQueue = new sst.aws.Queue(`ChaybotQueue${SUFFIX}`, {
   fifo: { contentBasedDeduplication: false },
-  visibilityTimeout: "420 seconds",
+  visibilityTimeout: "60 seconds",
   delay: "10 seconds",
   dlq: {
     queue: chatbotQueueDLQ.arn,
@@ -15,7 +15,7 @@ export const chatbotQueue = new sst.aws.Queue(`ChaybotQueue${SUFFIX}`, {
   },
   transform: {
     queue: {
-      messageRetentionSeconds: 10800,
+      messageRetentionSeconds: 180,
     }
   }
 });

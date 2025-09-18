@@ -70,9 +70,7 @@ async function loadSystemPrompt(): Promise<string> {
   const promptsPath = path.resolve(__dirname, "packages/core/src/.ia/instructions/prompts/bot_presentador_disponibilidades.md");
 
   try {
-    const content = await readFile(promptsPath, "utf8");
-    cachedSystemPrompt = content;
-    Logger.info("[presentAndFilterAvailability] Prompt de sistema cargado", { promptsPath });
+    cachedSystemPrompt = await readFile(promptsPath, "utf8");
     return cachedSystemPrompt;
   } catch (err) {
     Logger.error("[presentAndFilterAvailability] No se pudo leer el .md del prompt; usando fallback inline", err);
@@ -87,12 +85,12 @@ async function loadSystemPrompt(): Promise<string> {
 
 export async function presentAndFilterAvailability(
   openAIService: IOpenAIService,
-  disponibilidades: Disponibilidad[],
+  raw_disponibilidades: Disponibilidad[],
   contexto: string,
 ): Promise<PresentacionYDisponibilidades> {
   const systemPrompt = await loadSystemPrompt();
 
-  const userPrompt = `CONFIGURACION_DE_DISPONIBILIDADES:\n\nCONTEXTO:\n${JSON.stringify(contexto || {}, null, 2)}\n\nDISPONIBILIDADES_ORIGINALES:\n${JSON.stringify(disponibilidades, null, 2)}`;
+  const userPrompt = `CONFIGURACION_DE_DISPONIBILIDADES:\n\nCONTEXTO:\n${JSON.stringify(contexto || {}, null, 2)}\n\nDISPONIBILIDADES_ORIGINALES:\n${JSON.stringify(raw_disponibilidades, null, 2)}`;
 
   try {
     const result = await openAIService.getSchemaStructuredResponse(
@@ -103,7 +101,7 @@ export async function presentAndFilterAvailability(
     );
     const {
       presentacion,
-      disponibilidades: disponibilidadesInJSON,
+      disponibilidades,
       disclaimer_fechas,
       dias_mostrados,
       criterio_orden,
@@ -114,7 +112,7 @@ export async function presentAndFilterAvailability(
       Logger.warn("[presentAndFilterAvailability] No se pudo parsear respuesta de OpenAI, devolviendo fallback");
       return {
         presentacion: "Lo siento, no encontré horarios que cumplan tus preferencias.",
-        disponibilidades,
+        disponibilidades: [],
         metadata: { extras: { fallback: true } },
       };
     }
@@ -128,7 +126,7 @@ export async function presentAndFilterAvailability(
     Logger.error("[presentAndFilterAvailability] Error al procesar disponibilidades:", error);
     return {
       presentacion: "Lo siento, ocurrió un error al procesar las disponibilidades.",
-      disponibilidades,
+      disponibilidades: [],
       metadata: { extras: { error: true } },
     };
   }
