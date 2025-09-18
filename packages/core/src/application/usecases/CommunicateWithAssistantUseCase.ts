@@ -2,7 +2,7 @@
 
 import { KommoService, OpenAIService } from '@clinickeys-agents/core/application/services';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
-import { localTime } from '@clinickeys-agents/core/utils';
+import { localTime, CHAT_BOT_CUSTOM_FIELDS } from '@clinickeys-agents/core/utils';
 import { z } from 'zod';
 import {
   CheckReprogramAvailabilityUseCase,
@@ -361,7 +361,7 @@ export class CommunicateWithAssistantUseCase {
         baseFields,
         ucCustomFields: ucResponse.customFields,
         mergedCustomFieldsCount: normalizedLeadCF.length,
-        mergedCustomFieldsSample: normalizedLeadCF.slice(0, 5).map(cf => ({ name: cf.field_name, id: cf.field_id })),
+        mergedCustomFieldsSample: normalizedLeadCF?.filter(cf => CHAT_BOT_CUSTOM_FIELDS.includes(cf.field_name)).map(cf => ({ name: cf.field_name, value: cf.value, id: cf.field_id })) || [],
       });
 
       Logger.debug('[CommunicateWithAssistant] Llamando a replyToLead', { customFields });

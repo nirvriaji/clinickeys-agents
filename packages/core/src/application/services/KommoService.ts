@@ -232,11 +232,11 @@ export class KommoService {
     // Intersección de claves (para detectar descalces de nombre)
     const mergedNames = new Set((input.normalizedLeadCF || []).map(cf => cf.field_name));
     const matches = customFieldKeys.filter(k => mergedNames.has(k));
-    Logger.info('[KommoService.replyToLead] Matching keys', {
-      matchesCount: matches.length,
-      matchesSample: matches.slice(0, 10),
-      nonMatchedSample: customFieldKeys.filter(k => !mergedNames.has(k)).slice(0, 10),
-    });
+    // Logger.info('[KommoService.replyToLead] Matching keys', {
+    //   matchesCount: matches.length,
+    //   matchesSample: matches.slice(0, 10),
+    //   nonMatchedSample: customFieldKeys.filter(k => !mergedNames.has(k)).slice(0, 10),
+    // });
 
     const values = (input.normalizedLeadCF || [])
       .map(cf => (cf.field_name in input.customFields)

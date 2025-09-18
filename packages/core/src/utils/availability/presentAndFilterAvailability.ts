@@ -27,13 +27,33 @@ const DisponibilidadSchema = z.object({
 
 export type Disponibilidad = z.infer<typeof DisponibilidadSchema>;
 
+const FlexibleValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+
+const MetadataSchema = z.object({
+  tipo_busqueda: z.enum(["original", "original_filtrado", "sin_disponibilidad"]).nullable().optional(),
+  reglas_aplicadas: z.record(FlexibleValue).nullable().optional(),
+  warnings: z.array(z.string()).nullable().optional(),
+  sugerencias: z.array(z.string()).nullable().optional(),
+  conteos: z.object({
+    total_original: z.number(),
+    total_filtrado: z.number(),
+    dias_presentados: z.number()
+  }).nullable().optional(),
+  primer_hueco: z.object({
+    fecha: z.string(),
+    hora: z.string()
+  }).nullable().optional(),
+  criterios: z.record(FlexibleValue).nullable().optional(),
+  extras: z.record(FlexibleValue).nullable().optional()
+}).strict().nullable().optional();
+
 const PresentacionYDisponibilidadesSchema = z.object({
   presentacion: z.string(),
   disponibilidades: z.array(DisponibilidadSchema),
   disclaimer_fechas: z.string().nullable().optional(),
   dias_mostrados: z.array(z.string()).nullable().optional(),
   criterio_orden: z.string().nullable().optional(),
-  metadata: z.record(z.any()).nullable().optional(),
+  metadata: MetadataSchema
 });
 
 export type PresentacionYDisponibilidades = z.infer<typeof PresentacionYDisponibilidadesSchema>;
@@ -75,29 +95,41 @@ export async function presentAndFilterAvailability(
   const userPrompt = `CONFIGURACION_DE_DISPONIBILIDADES:\n\nCONTEXTO:\n${JSON.stringify(contexto || {}, null, 2)}\n\nDISPONIBILIDADES_ORIGINALES:\n${JSON.stringify(disponibilidades, null, 2)}`;
 
   try {
-    const { parsed } = await openAIService.getSchemaStructuredResponse(
+    const result = await openAIService.getSchemaStructuredResponse(
       systemPrompt,
       userPrompt,
       PresentacionYDisponibilidadesSchema,
       "PresentacionYDisponibilidadesSchema"
     );
+    const {
+      presentacion,
+      disponibilidades: disponibilidadesInJSON,
+      disclaimer_fechas,
+      dias_mostrados,
+      criterio_orden,
+      metadata
+    } = result;
 
-    if (!parsed) {
+    if (!presentacion) {
       Logger.warn("[presentAndFilterAvailability] No se pudo parsear respuesta de OpenAI, devolviendo fallback");
       return {
         presentacion: "Lo siento, no encontré horarios que cumplan tus preferencias.",
         disponibilidades,
-        metadata: { fallback: true },
+        metadata: { extras: { fallback: true } },
       };
     }
 
-    return parsed;
+    return {
+      presentacion,
+      disponibilidades,
+      metadata: { extras: { fallback: true } },
+    };
   } catch (error) {
     Logger.error("[presentAndFilterAvailability] Error al procesar disponibilidades:", error);
     return {
       presentacion: "Lo siento, ocurrió un error al procesar las disponibilidades.",
       disponibilidades,
-      metadata: { error: true },
+      metadata: { extras: { error: true } },
     };
   }
 }
