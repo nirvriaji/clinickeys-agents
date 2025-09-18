@@ -3,6 +3,7 @@
 import { ejecutarConReintento, ejecutarExecConReintento, ejecutarUnicoResultado } from "@clinickeys-agents/core/infrastructure/helpers";
 import { AppointmentDTO } from "@clinickeys-agents/core/domain/appointment/dtos";
 import { CreateAppointmentInput, UpdateAppointmentInput, CitaDetallePackTratamientoDTO } from "@clinickeys-agents/core/domain/appointment/IAppointmentRepository";
+import { CITAS_ESTADOS_VISIBLES } from "@clinickeys-agents/core/utils";
 
 export class AppointmentRepositoryMySQL {
   /**
@@ -119,7 +120,7 @@ export class AppointmentRepositoryMySQL {
       LEFT JOIN estado_cita ON citas.id_estado_cita = estado_cita.id_estado_cita
       WHERE citas.id_paciente = ?
         AND citas.id_clinica = ?
-        AND citas.id_estado_cita IN (1, 2, 3, 5, 7, 8, 9)
+        AND citas.id_estado_cita IN (${CITAS_ESTADOS_VISIBLES.join(", ")})
         AND citas.fecha_cita BETWEEN DATE_SUB(CURDATE(), INTERVAL ${DAYS_LIMIT} DAY) AND DATE_ADD(CURDATE(), INTERVAL 1 DAY)
       ORDER BY citas.fecha_cita ASC, citas.hora_inicio ASC
     `;

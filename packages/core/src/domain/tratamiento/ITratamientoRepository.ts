@@ -1,21 +1,42 @@
+// packages/core/src/domain/tratamiento/ITratamientoRepository.ts
+
+import {
+  TratamientoDTO,
+  TratamientoBasicDTO,
+  TratamientoWithClinicDTO,
+  TratamientoSearchResultDTO,
+} from "./dtos";
+
 export interface ITratamientoRepository {
   /**
-   * Returns all active treatments for a clinic and super clinic.
+   * Obtiene todos los tratamientos activos de una clínica y super clínica.
    */
-  getActiveTreatmentsForClinic(clinicId: number, superClinicId: number): Promise<any[]>;
+  getActiveTreatmentsForClinic(
+    id_clinica: number,
+    id_super_clinica: number
+  ): Promise<TratamientoDTO[]>;
 
   /**
-   * Returns tratamiento details by tratamiento ID.
+   * Obtiene los detalles de un tratamiento por su ID.
    */
-  getTreatmentDetailsById(treatmentId: number): Promise<any | undefined>;
+  getTreatmentDetailsById(
+    id_tratamiento: number
+  ): Promise<TratamientoDTO | undefined>;
 
   /**
-   * Finds treatments that contain the provided name (LIKE %...%).
+   * Busca tratamientos que contengan el nombre proporcionado (LIKE %...%).
    */
-  findTreatmentsContainingName(name: string, clinicId: number, superClinicId: number): Promise<any[]>;
+  findTreatmentsContainingName(
+    nombre: string,
+    id_clinica: number,
+    id_super_clinica: number
+  ): Promise<TratamientoDTO[]>;
 
   /**
-   * Finds treatments by array of names, with relevance and exact match info.
+   * Busca tratamientos por un array de nombres, devolviendo relevancia y coincidencia exacta.
    */
-  findTreatmentsByNamesWithRelevance(names: string[], clinicId: number): Promise<any[]>;
+  findTreatmentsByNamesWithRelevance(
+    nombres: string[],
+    id_clinica: number
+  ): Promise<TratamientoSearchResultDTO[]>;
 }

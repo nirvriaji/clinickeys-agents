@@ -116,3 +116,17 @@ export const NOTIFICATION_BOT_CUSTOM_FIELDS = [
   APPOINTMENT_START_TIME,
   APPOINTMENT_WEEKDAY_NAME,
 ];
+
+// packages/core/src/utils/constants/appointmentStates.ts
+
+/**
+ * Estados de citas que bloquean disponibilidad (usados al calcular disponibilidad).
+ * Ejemplo: citas confirmadas, en curso, reagendadas.
+ */
+export const CITAS_ESTADOS_BLOQUEO: number[] = [1, 4, 7, 8, 9];
+
+/**
+ * Estados de citas visibles para consultas de paciente (historial, agenda futura).
+ * Incluye canceladas y otros estados que deben mostrarse en la UI.
+ */
+export const CITAS_ESTADOS_VISIBLES: number[] = [1, 2, 3, 5, 7, 8, 9];

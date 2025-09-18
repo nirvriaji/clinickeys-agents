@@ -1,3 +1,5 @@
+// packages/core/src/infrastructure/helpers/MySQLHelpers.ts
+
 import mysql, { Pool, PoolOptions } from "mysql2/promise";
 import type { OkPacket } from "mysql2";
 

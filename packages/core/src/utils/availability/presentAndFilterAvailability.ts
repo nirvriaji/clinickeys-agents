@@ -5,6 +5,7 @@ import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { readFile } from "fs/promises";
 import path from "path";
+import { SlotDisponibilidad } from "@clinickeys-agents/core/domain/availability"
 
 // =============================
 // Schemas
@@ -34,18 +35,27 @@ const MetadataSchema = z.object({
   reglas_aplicadas: z.record(FlexibleValue).nullable().optional(),
   warnings: z.array(z.string()).nullable().optional(),
   sugerencias: z.array(z.string()).nullable().optional(),
-  conteos: z.object({
-    total_original: z.number(),
-    total_filtrado: z.number(),
-    dias_presentados: z.number()
-  }).nullable().optional(),
-  primer_hueco: z.object({
-    fecha: z.string(),
-    hora: z.string()
-  }).nullable().optional(),
+  conteos: z
+    .object({
+      total_original: z.number(),
+      total_filtrado: z.number(),
+      dias_presentados: z.number(),
+    })
+    .nullable()
+    .optional(),
+  primer_hueco: z
+    .object({
+      fecha: z.string(),
+      hora: z.string(),
+    })
+    .nullable()
+    .optional(),
   criterios: z.record(FlexibleValue).nullable().optional(),
-  extras: z.record(FlexibleValue).nullable().optional()
-}).strict().nullable().optional();
+  extras: z.record(FlexibleValue).nullable().optional(),
+})
+  .strict()
+  .nullable()
+  .optional();
 
 const PresentacionYDisponibilidadesSchema = z.object({
   presentacion: z.string(),
@@ -53,7 +63,7 @@ const PresentacionYDisponibilidadesSchema = z.object({
   disclaimer_fechas: z.string().nullable().optional(),
   dias_mostrados: z.array(z.string()).nullable().optional(),
   criterio_orden: z.string().nullable().optional(),
-  metadata: MetadataSchema
+  metadata: MetadataSchema,
 });
 
 export type PresentacionYDisponibilidades = z.infer<typeof PresentacionYDisponibilidadesSchema>;
@@ -67,14 +77,21 @@ let cachedSystemPrompt: string | null = null;
 async function loadSystemPrompt(): Promise<string> {
   if (cachedSystemPrompt) return cachedSystemPrompt;
 
-  const promptsPath = path.resolve(__dirname, "packages/core/src/.ia/instructions/prompts/bot_presentador_disponibilidades.md");
+  const promptsPath = path.resolve(
+    __dirname,
+    "packages/core/src/.ia/instructions/prompts/bot_presentador_disponibilidades.md"
+  );
 
   try {
     cachedSystemPrompt = await readFile(promptsPath, "utf8");
     return cachedSystemPrompt;
   } catch (err) {
-    Logger.error("[presentAndFilterAvailability] No se pudo leer el .md del prompt; usando fallback inline", err);
-    cachedSystemPrompt = `Eres un presentador de disponibilidades médicas.\nRecibirás un array de disponibilidades y un conjunto de restricciones.\nDebes filtrar, ordenar y luego generar un texto para el paciente con las reglas definidas.\nResponde siempre en JSON cumpliendo el schema indicado.`;
+    Logger.error(
+      "[presentAndFilterAvailability] No se pudo leer el .md del prompt; usando fallback inline",
+      err
+    );
+    cachedSystemPrompt =
+      "Eres un presentador de disponibilidades médicas.\nRecibirás un array de disponibilidades y un conjunto de restricciones.\nDebes filtrar, ordenar y luego generar un texto para el paciente con las reglas definidas.\nResponde siempre en JSON cumpliendo el schema indicado.";
     return cachedSystemPrompt;
   }
 }
@@ -85,12 +102,20 @@ async function loadSystemPrompt(): Promise<string> {
 
 export async function presentAndFilterAvailability(
   openAIService: IOpenAIService,
-  raw_disponibilidades: Disponibilidad[],
-  contexto: string,
+  raw_disponibilidades: SlotDisponibilidad[],
+  contexto: string
 ): Promise<PresentacionYDisponibilidades> {
   const systemPrompt = await loadSystemPrompt();
 
-  const userPrompt = `CONFIGURACION_DE_DISPONIBILIDADES:\n\nCONTEXTO:\n${JSON.stringify(contexto || {}, null, 2)}\n\nDISPONIBILIDADES_ORIGINALES:\n${JSON.stringify(raw_disponibilidades, null, 2)}`;
+  const userPrompt = `CONFIGURACION_DE_DISPONIBILIDADES:\n\nCONTEXTO:\n${JSON.stringify(
+    contexto || {},
+    null,
+    2
+  )}\n\nDISPONIBILIDADES_ORIGINALES:\n${JSON.stringify(
+    raw_disponibilidades,
+    null,
+    2
+  )}`;
 
   try {
     const result = await openAIService.getSchemaStructuredResponse(
@@ -105,14 +130,20 @@ export async function presentAndFilterAvailability(
       disclaimer_fechas,
       dias_mostrados,
       criterio_orden,
-      metadata
+      metadata,
     } = result;
 
     if (!presentacion) {
-      Logger.warn("[presentAndFilterAvailability] No se pudo parsear respuesta de OpenAI, devolviendo fallback");
+      Logger.warn(
+        "[presentAndFilterAvailability] No se pudo parsear respuesta de OpenAI, devolviendo fallback"
+      );
       return {
-        presentacion: "Lo siento, no encontré horarios que cumplan tus preferencias.",
+        presentacion:
+          "Lo siento, no encontré horarios que cumplan tus preferencias.",
         disponibilidades: [],
+        disclaimer_fechas,
+        dias_mostrados,
+        criterio_orden,
         metadata: { extras: { fallback: true } },
       };
     }
@@ -120,13 +151,20 @@ export async function presentAndFilterAvailability(
     return {
       presentacion,
       disponibilidades,
-      metadata: { extras: { fallback: true } },
+      disclaimer_fechas,
+      dias_mostrados,
+      criterio_orden,
+      metadata,
     };
   } catch (error) {
     Logger.error("[presentAndFilterAvailability] Error al procesar disponibilidades:", error);
     return {
-      presentacion: "Lo siento, ocurrió un error al procesar las disponibilidades.",
+      presentacion:
+        "Lo siento, ocurrió un error al procesar las disponibilidades.",
       disponibilidades: [],
+      disclaimer_fechas: null,
+      dias_mostrados: null,
+      criterio_orden: null,
       metadata: { extras: { error: true } },
     };
   }

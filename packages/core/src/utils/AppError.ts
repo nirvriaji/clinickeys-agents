@@ -1,15 +1,16 @@
 // packages/core/src/utils/AppError.ts
 
-/**
- * Clase base para errores de aplicación (custom business errors) en ClinicKeys.
- * Permite códigos, mensajes humanos, contexto adicional y marcaje para logs.
- */
 export class AppError extends Error {
   code: string;
   context: Record<string, any>;
   isLogOnly: boolean;
 
-  constructor({ code, humanMessage, context = {}, isLogOnly = false }: {
+  constructor({
+    code,
+    humanMessage,
+    context = {},
+    isLogOnly = false,
+  }: {
     code: string;
     humanMessage: string;
     context?: Record<string, any>;
@@ -25,9 +26,6 @@ export class AppError extends Error {
     }
   }
 
-  /**
-   * Convierte el error a un objeto amigable para la API/UI.
-   */
   toJSON() {
     return {
       success: false,
@@ -37,9 +35,6 @@ export class AppError extends Error {
     };
   }
 
-  /**
-   * String para logs (CloudWatch, Sentry, etc).
-   */
   toString() {
     let base = `[${this.code}] ${this.message}`;
     if (Object.keys(this.context).length > 0) {
@@ -48,14 +43,15 @@ export class AppError extends Error {
     return base;
   }
 
-  // -----------------------------------
-  // Métodos estáticos por tipo de error (domain-specific)
-  // -----------------------------------
+  // -------------------
+  // Errores de negocio
+  // -------------------
 
   static FALTA_ID_CLINICA() {
     return new AppError({
       code: "ERR100",
-      humanMessage: "Falta el ID de la clínica en la solicitud. Por favor avisar al equipo de desarrollo.",
+      humanMessage:
+        "Falta el ID de la clínica en la solicitud. Por favor avisar al equipo de desarrollo.",
     });
   }
 
@@ -70,21 +66,25 @@ export class AppError extends Error {
   static NINGUN_TRATAMIENTO_SELECCIONADO() {
     return new AppError({
       code: "ERR101",
-      humanMessage: "No se ha detectado ningún tratamiento en la solicitud. Por favor avisar al equipo de desarrollo.",
+      humanMessage:
+        "No se ha detectado ningún tratamiento en la solicitud. Por favor avisar al equipo de desarrollo.",
     });
   }
 
   static NINGUNA_FECHA_SELECCIONADA() {
     return new AppError({
       code: "ERR102",
-      humanMessage: "No se ha detectado ninguna fecha en la solicitud. Por favor avisar al equipo de desarrollo.",
+      humanMessage:
+        "No se ha detectado ninguna fecha en la solicitud. Por favor avisar al equipo de desarrollo.",
     });
   }
 
   static TRATAMIENTOS_NO_ENCONTRADOS(tratamientos: string[] = []) {
     return new AppError({
       code: "ERR200",
-      humanMessage: `Los tratamientos en la solicitud no existen en la base de datos: ${tratamientos.join(", ")}. Por favor, revise si existe o cree los tratamientos.`,
+      humanMessage: `Los tratamientos en la solicitud no existen en la base de datos: ${tratamientos.join(
+        ", "
+      )}. Por favor, revise si existe o cree los tratamientos.`,
       context: { tratamientos },
     });
   }
@@ -92,51 +92,70 @@ export class AppError extends Error {
   static TRATAMIENTOS_NO_EXACTOS(tratamientos: string[] = []) {
     return new AppError({
       code: "ERR201",
-      humanMessage: `Ninguno de los tratamientos proporcionados coincide exactamente en la base de datos: ${tratamientos.join(", ")}. Por favor, revise o ajuste los nombres de los tratamientos.`,
+      humanMessage: `Ninguno de los tratamientos proporcionados coincide exactamente en la base de datos: ${tratamientos.join(
+        ", "
+      )}. Por favor, revise o ajuste los nombres de los tratamientos.`,
       context: { tratamientos },
     });
   }
 
   static NINGUN_MEDICO_ENCONTRADO(tratamientos: string[] = []) {
-    const tratamientosStr = tratamientos.join(", ");
     return new AppError({
       code: "ERR202",
-      humanMessage: `No hay médicos configurados para el tratamiento(s) "${tratamientosStr}". Por favor, asigne el tratamiento a un médico.`,
+      humanMessage: `No hay médicos configurados para el tratamiento(s) "${tratamientos.join(
+        ", "
+      )}".`,
       context: { tratamientos },
+      isLogOnly: true,
     });
   }
 
   static MEDICOS_SOLICITADOS_NO_ENCONTRADOS(medicos: string[] = []) {
-    const medicosStr = medicos.join(", ");
     return new AppError({
       code: "ERR203",
-      humanMessage: `Los médicos solicitados no se encontraron: "${medicosStr}". Por favor, verifique si los nombres solicitados existen en la base de datos.`,
+      humanMessage: `Los médicos solicitados no se encontraron: "${medicos.join(
+        ", "
+      )}". Por favor, verifique si los nombres solicitados existen en la base de datos.`,
       context: { medicos },
     });
   }
 
-  static MEDICO_NO_ASOCIADO_A_TRATAMIENTO(medicos: string[] = [], tratamientos: string[] = []) {
-    const medicosStr = medicos.join(", ");
-    const tratamientosStr = tratamientos.join(", ");
+  static MEDICO_NO_ASOCIADO_A_TRATAMIENTO(
+    medicos: string[] = [],
+    tratamientos: string[] = []
+  ) {
     return new AppError({
       code: "ERR203",
-      humanMessage: `El médico(s) "${medicosStr}" no está asociado a los tratamientos "${tratamientosStr}". Por favor, asigne el tratamiento al médico o seleccione un médico diferente.`,
-      context: { medicos, tratamientos }
+      humanMessage: `El médico(s) "${medicos.join(
+        ", "
+      )}" no está asociado a los tratamientos "${tratamientos.join(", ")}".`,
+      context: { medicos, tratamientos },
+      isLogOnly: true,
     });
   }
 
-  static NINGUN_ESPACIO_ENCONTRADO(tratamientos: string[] = [], medicos: string[] = []) {
+  static NINGUN_ESPACIO_ENCONTRADO(
+    tratamientos: string[] = [],
+    medicos: string[] = []
+  ) {
     return new AppError({
       code: "ERR203",
-      humanMessage: `No hay espacios disponibles para el tratamiento(s) "${tratamientos.join(", ")}" con los médicos [${medicos.join(", ")}]. Por favor configure espacios para el tratamiento y/o verifique que ese espacio esté habilitado para un médico.`,
+      humanMessage: `No hay espacios disponibles para el tratamiento(s) "${tratamientos.join(
+        ", "
+      )}" con los médicos [${medicos.join(", ")}].`,
       context: { tratamientos, medicos },
+      isLogOnly: true,
     });
   }
+
+  // -------------------
+  // Errores técnicos
+  // -------------------
 
   static ERROR_CONSULTA_SQL(errorOriginal: Error) {
     return new AppError({
       code: "ERR204",
-      humanMessage: `Ha ocurrido un error interno al consultar la base de datos. Por favor avisar al equipo de desarrollo. Detalle: ${errorOriginal.message}`,
+      humanMessage: `Ha ocurrido un error interno al consultar la base de datos. Detalle: ${errorOriginal.message}`,
       context: { errorOriginal },
     });
   }
@@ -144,51 +163,56 @@ export class AppError extends Error {
   static NO_PROG_MEDICOS(medicos: string[] = [], fechas: string[] = []) {
     return new AppError({
       code: "ERR210",
-      humanMessage: `No se encontró programación para los médicos [${medicos.join(", ")}] en las fechas [${fechas.join(", ")}]. Por favor registre la programación en esas fechas.`,
+      humanMessage: `No se encontró programación para los médicos [${medicos.join(
+        ", "
+      )}] en las fechas [${fechas.join(", ")}].`,
       context: { medicos, fechas },
+      isLogOnly: true,
     });
   }
 
   static NO_PROG_ESPACIOS(espacios: string[] = [], fechas: string[] = []) {
     return new AppError({
       code: "ERR211",
-      humanMessage: `No se encontró programación de espacios para [${espacios.join(", ")}] en las fechas [${fechas.join(", ")}]. Por favor registre la programación en esas fechas.`,
+      humanMessage: `No se encontró programación de espacios para [${espacios.join(
+        ", "
+      )}] en las fechas [${fechas.join(", ")}].`,
       context: { espacios, fechas },
+      isLogOnly: true,
     });
   }
 
-  static SIN_HORARIOS_DISPONIBLES(tratamientos: string[] = [], fechas: any[] = []) {
+  static SIN_HORARIOS_DISPONIBLES(
+    tratamientos: string[] = [],
+    fechas: any[] = []
+  ) {
     const tratamientosStr = tratamientos.join(", ");
-    const fechasFormateadas = fechas.map(fechaObj => {
+    const fechasFormateadas = fechas.map((fechaObj) => {
       const fechaDate = new Date(fechaObj.fecha);
       const dia = String(fechaDate.getDate()).padStart(2, "0");
       const mes = String(fechaDate.getMonth() + 1).padStart(2, "0");
       const anio = fechaDate.getFullYear();
       let fechaStr = `${dia}/${mes}/${anio}`;
-      const horasPresentes = (fechaObj.horas || []).filter((horaObj: any) => horaObj.hora_inicio || horaObj.hora_fin);
-      const horasStr = horasPresentes.map((horaObj: any) => {
-        const { hora_inicio, hora_fin } = horaObj;
-        if (hora_inicio && hora_fin) {
-          return `entre las ${hora_inicio} y las ${hora_fin}`;
-        } else if (hora_inicio) {
-          return `a partir de las ${hora_inicio}`;
-        } else if (hora_fin) {
-          return `hasta las ${hora_fin}`;
-        } else {
+      const horasPresentes = (fechaObj.horas || []).filter(
+        (horaObj: any) => horaObj.hora_inicio || horaObj.hora_fin
+      );
+      const horasStr = horasPresentes
+        .map((horaObj: any) => {
+          const { hora_inicio, hora_fin } = horaObj;
+          if (hora_inicio && hora_fin)
+            return `entre las ${hora_inicio} y las ${hora_fin}`;
+          if (hora_inicio) return `a partir de las ${hora_inicio}`;
+          if (hora_fin) return `hasta las ${hora_fin}`;
           return "";
-        }
-      }).filter((s: string) => s !== "").join(", ");
-      if (horasStr) {
-        return `${fechaStr} ${horasStr}`;
-      } else {
-        return `${fechaStr}`;
-      }
+        })
+        .filter((s: string) => s !== "")
+        .join(", ");
+      return horasStr ? `${fechaStr} ${horasStr}` : fechaStr;
     });
     const fechasStr = fechasFormateadas.join(", ");
-    const humanMessage = `No se encontraron horarios disponibles para los tratamientos [${tratamientosStr}] en las siguientes fechas: ${fechasStr}.`;
     return new AppError({
       code: "ERR300",
-      humanMessage,
+      humanMessage: `No se encontraron horarios disponibles para los tratamientos [${tratamientosStr}] en las siguientes fechas: ${fechasStr}.`,
       context: { tratamientos, fechas },
       isLogOnly: true,
     });
@@ -197,28 +221,32 @@ export class AppError extends Error {
   static ERROR_CALCULO_DISPONIBILIDAD() {
     return new AppError({
       code: "ERR301",
-      humanMessage: "Ocurrió un error al calcular la disponibilidad. Por favor avisar al equipo de desarrollo.",
+      humanMessage:
+        "Ocurrió un error al calcular la disponibilidad. Por favor avisar al equipo de desarrollo.",
     });
   }
 
   static CONEXION_BD() {
     return new AppError({
       code: "ERR400",
-      humanMessage: "Se ha perdido la conexión a la base de datos. Por favor avisar al equipo de desarrollo.",
+      humanMessage:
+        "Se ha perdido la conexión a la base de datos. Por favor avisar al equipo de desarrollo.",
     });
   }
 
   static TIEMPO_ESPERA_BD() {
     return new AppError({
       code: "ERR401",
-      humanMessage: "La consulta a la base de datos tardó demasiado. Por favor avisar al equipo de desarrollo.",
+      humanMessage:
+        "La consulta a la base de datos tardó demasiado. Por favor avisar al equipo de desarrollo.",
     });
   }
 
   static ERROR_INTERNO_SERVIDOR() {
     return new AppError({
       code: "ERR500",
-      humanMessage: "Error interno en el servidor. Por favor avisar al equipo de desarrollo.",
+      humanMessage:
+        "Error interno en el servidor. Por favor avisar al equipo de desarrollo.",
     });
   }
 

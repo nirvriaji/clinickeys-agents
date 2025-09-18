@@ -1,3 +1,5 @@
+// packages/core/src/utils/schemas.ts
+
 import { z } from 'zod';
 
 export const ConsultaCitaSchema = z.object({

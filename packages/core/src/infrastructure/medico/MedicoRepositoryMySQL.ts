@@ -1,14 +1,23 @@
 // packages/core/src/infrastructure/medico/MedicoRepositoryMySQL.ts
 
-import { ejecutarConReintento, ejecutarUnicoResultado } from "@clinickeys-agents/core/infrastructure/helpers";
-import { MedicoDTO, MedicoWithFullNameDTO } from "@clinickeys-agents/core/domain/medico/dtos";
+import {
+  ejecutarConReintento,
+  ejecutarUnicoResultado,
+} from "@clinickeys-agents/core/infrastructure/helpers";
+import {
+  MedicoDTO,
+  MedicoWithFullNameDTO,
+} from "@clinickeys-agents/core/domain/medico/dtos";
 import { IMedicoRepository } from "@clinickeys-agents/core/domain/medico/IMedicoRepository";
 
 export class MedicoRepositoryMySQL implements IMedicoRepository {
   /**
    * Obtiene todos los médicos activos de una clínica y super clínica.
    */
-  async getMedicos(id_clinica: number, id_super_clinica: number): Promise<MedicoWithFullNameDTO[]> {
+  async getMedicos(
+    id_clinica: number,
+    id_super_clinica: number
+  ): Promise<MedicoWithFullNameDTO[]> {
     const query = `
       SELECT 
         m.id_medico,
@@ -19,14 +28,20 @@ export class MedicoRepositoryMySQL implements IMedicoRepository {
         AND m.id_estado_registro = 1
       ORDER BY nombre_completo ASC
     `;
-    const rows = await ejecutarConReintento<MedicoWithFullNameDTO>(query, [id_clinica, id_super_clinica]);
+    const rows = await ejecutarConReintento<MedicoWithFullNameDTO>(query, [
+      id_clinica,
+      id_super_clinica,
+    ]);
     return rows;
   }
 
   /**
    * Obtiene los médicos activos asociados a un tratamiento específico.
    */
-  async getMedicosByTratamiento(id_tratamiento: number, id_clinica: number): Promise<MedicoWithFullNameDTO[]> {
+  async getMedicosByTratamiento(
+    id_tratamiento: number,
+    id_clinica: number
+  ): Promise<MedicoWithFullNameDTO[]> {
     const query = `
       SELECT 
         m.id_medico,
@@ -37,7 +52,10 @@ export class MedicoRepositoryMySQL implements IMedicoRepository {
         AND m.id_clinica = ?
         AND m.id_estado_registro = 1
     `;
-    const rows = await ejecutarConReintento<MedicoWithFullNameDTO>(query, [id_tratamiento, id_clinica]);
+    const rows = await ejecutarConReintento<MedicoWithFullNameDTO>(query, [
+      id_tratamiento,
+      id_clinica,
+    ]);
     return rows;
   }
 
@@ -48,7 +66,8 @@ export class MedicoRepositoryMySQL implements IMedicoRepository {
     nombresSolicitados: string[],
     id_clinica: number
   ): Promise<{ id_medico: number; nombre_medico: string }[]> {
-    if (!Array.isArray(nombresSolicitados) || nombresSolicitados.length === 0) return [];
+    if (!Array.isArray(nombresSolicitados) || nombresSolicitados.length === 0)
+      return [];
 
     const nombresNormalizados = nombresSolicitados.map((str) =>
       str.toLowerCase().trim().replace(/\s+/g, " ")
@@ -65,7 +84,10 @@ export class MedicoRepositoryMySQL implements IMedicoRepository {
     `;
 
     const params = [id_clinica, ...nombresNormalizados];
-    const rows = await ejecutarConReintento<{ id_medico: number; nombre_medico: string }>(query, params);
+    const rows = await ejecutarConReintento<{
+      id_medico: number;
+      nombre_medico: string;
+    }>(query, params);
     return rows;
   }
 

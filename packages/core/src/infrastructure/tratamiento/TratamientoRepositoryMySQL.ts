@@ -1,11 +1,23 @@
-import { ITratamientoRepository } from "@clinickeys-agents/core/domain/tratamiento";
-import { ejecutarConReintento, ejecutarUnicoResultado } from "@clinickeys-agents/core/infrastructure/helpers";
+// packages/core/src/infrastructure/tratamiento/TratamientoRepositoryMySQL.ts
+
+import {
+  ejecutarConReintento,
+  ejecutarUnicoResultado,
+} from "@clinickeys-agents/core/infrastructure/helpers";
+import {
+  TratamientoDTO,
+  TratamientoSearchResultDTO,
+} from "@clinickeys-agents/core/domain/tratamiento/dtos";
+import { ITratamientoRepository } from "@clinickeys-agents/core/domain/tratamiento/ITratamientoRepository";
 
 export class TratamientoRepositoryMySQL implements ITratamientoRepository {
   /**
-   * Returns all active treatments for a clinic and super clinic.
+   * Obtiene todos los tratamientos activos de una clínica y super clínica.
    */
-  async getActiveTreatmentsForClinic(clinicId: number, superClinicId: number): Promise<any[]> {
+  async getActiveTreatmentsForClinic(
+    id_clinica: number,
+    id_super_clinica: number
+  ): Promise<TratamientoDTO[]> {
     const query = `
       SELECT 
         t.id_tratamiento,
@@ -22,13 +34,15 @@ export class TratamientoRepositoryMySQL implements ITratamientoRepository {
         AND t.id_estado_registro = 1
       ORDER BY t.nombre_tratamiento ASC
     `;
-    return await ejecutarConReintento(query, [clinicId, superClinicId]);
+    return await ejecutarConReintento<TratamientoDTO>(query, [id_clinica, id_super_clinica]);
   }
 
   /**
-   * Returns tratamiento details by tratamiento ID.
+   * Obtiene los detalles de un tratamiento por su ID.
    */
-  async getTreatmentDetailsById(treatmentId: number): Promise<any | undefined> {
+  async getTreatmentDetailsById(
+    id_tratamiento: number
+  ): Promise<TratamientoDTO | undefined> {
     const query = `
       SELECT 
         t.id_tratamiento,
@@ -43,14 +57,18 @@ export class TratamientoRepositoryMySQL implements ITratamientoRepository {
       WHERE t.id_tratamiento = ?
       LIMIT 1
     `;
-    const row = await ejecutarUnicoResultado(query, [treatmentId]);
+    const row = await ejecutarUnicoResultado<TratamientoDTO>(query, [id_tratamiento]);
     return row || undefined;
   }
 
   /**
-   * Finds treatments that contain the provided name (LIKE %...%).
+   * Busca tratamientos que contengan el nombre proporcionado (LIKE %...%).
    */
-  async findTreatmentsContainingName(name: string, clinicId: number, superClinicId: number): Promise<any[]> {
+  async findTreatmentsContainingName(
+    nombre: string,
+    id_clinica: number,
+    id_super_clinica: number
+  ): Promise<TratamientoDTO[]> {
     const query = `
       SELECT 
         t.id_tratamiento,
@@ -68,15 +86,19 @@ export class TratamientoRepositoryMySQL implements ITratamientoRepository {
         AND t.nombre_tratamiento LIKE ?
       ORDER BY t.nombre_tratamiento ASC
     `;
-    return await ejecutarConReintento(query, [clinicId, superClinicId, `%${name}%`]);
+    return await ejecutarConReintento<TratamientoDTO>(query, [id_clinica, id_super_clinica, `%${nombre}%`]);
   }
 
   /**
-   * Finds treatments by array of names, with relevance and exact match info.
+   * Busca tratamientos por un array de nombres, devolviendo relevancia y coincidencia exacta.
    */
-  async findTreatmentsByNamesWithRelevance(names: string[], clinicId: number): Promise<any[]> {
-    const searchTerms = names.join(" ");
-    const exactMarkers = names.map(() => "LOWER(TRIM(?))").join(", ");
+  async findTreatmentsByNamesWithRelevance(
+    nombres: string[],
+    id_clinica: number
+  ): Promise<TratamientoSearchResultDTO[]> {
+    const searchTerms = nombres.join(" ");
+    const exactMarkers = nombres.map(() => "LOWER(TRIM(?))").join(", ");
+
     const query = `
       SELECT DISTINCT
         t.id_tratamiento,
@@ -98,12 +120,14 @@ export class TratamientoRepositoryMySQL implements ITratamientoRepository {
         AND MATCH(t.nombre_tratamiento, t.descripcion) AGAINST(?)
       ORDER BY is_exact DESC, relevance DESC, t.nombre_tratamiento ASC
     `;
+
     const params = [
       searchTerms,
-      ...names.map(n => n.toLowerCase().trim()),
-      clinicId,
-      searchTerms
+      ...nombres.map((n) => n.toLowerCase().trim()),
+      id_clinica,
+      searchTerms,
     ];
-    return await ejecutarConReintento(query, params);
+
+    return await ejecutarConReintento<TratamientoSearchResultDTO>(query, params);
   }
 }

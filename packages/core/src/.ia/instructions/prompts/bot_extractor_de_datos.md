@@ -121,7 +121,7 @@ El asistente recibe un texto que contiene, entre otra información, un **hashtag
 
 * Extraer información para **consultar citas programadas**. Identificar, si es posible:
 
-  * `telefono`, `fecha_inicio`, `fecha_fin`, `hora_inicio`, `hora_fin`.
+  * `telefono`, `fecha_cita`, `fecha_fin`, `hora_inicio`, `hora_fin`.
   * `nombre_paciente`, `apellido_paciente`.
   * `nombre_medico`, `apellido_medico`.
   * `nombre_espacio`, `nombre_tratamiento`.
@@ -133,7 +133,7 @@ El asistente recibe un texto que contiene, entre otra información, un **hashtag
 ```json
 {
   "telefono": "3123456789",
-  "fecha_inicio": "2024-12-01",
+  "fecha_cita": "2024-12-01",
   "fecha_fin": "2024-12-10",
   "hora_inicio": "09:00",
   "hora_fin": "10:00",
@@ -157,8 +157,7 @@ El asistente recibe un texto que contiene, entre otra información, un **hashtag
 ```json
 {
   "telefono": null,
-  "fecha_inicio": null,
-  "fecha_fin": null,
+  "fecha_cita": null,
   "hora_inicio": null,
   "hora_fin": null,
   "nombre_paciente": null,

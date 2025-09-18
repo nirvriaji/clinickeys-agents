@@ -83,7 +83,7 @@ export type OrigenVentana = "general" | "especifica";
  * Ventana base (antes de transformar a slots).
  */
 export interface VentanaBase {
-  fecha: string; // YYYY-MM-DD
+  fecha_cita: string; // YYYY-MM-DD
   id_medico: number;
   nombre_medico: string;
   id_espacio: number;
@@ -106,7 +106,7 @@ export interface Ventana extends VentanaBase {
  * Slot final de disponibilidad que se expone a otras capas.
  */
 export interface SlotDisponibilidad {
-  fecha_inicio: string;          // YYYY-MM-DD (compatibilidad con ajustarDisponibilidad)
+  fecha_cita: string;          // YYYY-MM-DD (compatibilidad con ajustarDisponibilidad)
   hora_inicio_minima: string;    // HH:mm:ss
   hora_inicio_maxima: string;    // HH:mm:ss
   id_medico: number;
@@ -117,5 +117,5 @@ export interface SlotDisponibilidad {
   nombre_tratamiento: string;
   duracion_tratamiento: number;  // minutos
   especifica: boolean;           // true si proviene de ventana específica
-  fecha_legible?: string;        // p.ej. "Lunes, 16 de septiembre"
+  fecha_legible?: string | null;        // p.ej. "Lunes, 16 de septiembre"
 }
