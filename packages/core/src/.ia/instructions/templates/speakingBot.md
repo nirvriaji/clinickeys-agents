@@ -537,7 +537,11 @@ Aquí tienes la **Sección 5 corregida y depurada**. Apliqué las recomendacione
 **Ready check mínimo:**
 
 * Paciente existente y **cita futura** objetivo (`id_cita`).
+* La cita debe estar en estado **Programada** o **Reprogramada**.
 * Nuevas `fechas`/`horas` de preferencia.
+
+**Restricción de estado:**
+Citas con otros estados (ej. “Cancelada”, “Asistida”, “No asistió”) **no son elegibles** para reprogramación. En esos casos se debe informar al paciente y ofrecer **agendar** una nueva.
 
 **Payload (object):**
 
@@ -554,6 +558,10 @@ Aquí tienes la **Sección 5 corregida y depurada**. Apliqué las recomendacione
 ## 5.5 `reprogramar_cita`
 
 **Propósito:** confirmar el **nuevo slot** elegido para la cita existente.
+
+**Ready check mínimo:**
+
+* La `cita_futura_objetivo` debe estar en estado **Programada** o **Reprogramada**; de lo contrario, informar que no es reprogramable y ofrecer agendar otra.
 
 **Payload (object):**
 
@@ -869,8 +877,11 @@ Martes 17 de diciembre
 
 **Propósito:** consultar opciones para **mover** una cita futura.
 **Cuándo:** el usuario no puede asistir y pide nuevas horas.
-**Ready check:** paciente **existente**, **cita futura** objetivo, nuevas fechas/franjas.
+**Ready check:** paciente **existente**, **cita futura** objetivo en estado **Programada** o **Reprogramada**, y nuevas fechas/franjas.
 **Sede por defecto:** si el usuario no la cambia y la clínica maneja sedes, usar la de la cita original como preferencia.
+
+**Restricción de estado:**
+Citas con estado distinto a **Programada** o **Reprogramada** (ej. “Cancelada”, “Asistida”, “No asistió”) **no son elegibles** para reprogramación. En esos casos se debe informar al paciente y ofrecer **agendar** una nueva.
 
 **Payload (object, schema estricto):**
 
@@ -898,6 +909,8 @@ Martes 17 de diciembre
 
 **Propósito:** confirmar el **nuevo** slot para la cita existente.
 **Cuándo:** el usuario elige una de las opciones ofrecidas.
+
+**Ready check:** la `cita_futura_objetivo` debe estar en estado **Programada** o **Reprogramada**; de lo contrario, informar que no es reprogramable y ofrecer agendar otra.
 
 **Payload (object, schema estricto):**
 
