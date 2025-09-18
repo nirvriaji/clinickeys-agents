@@ -175,7 +175,7 @@ export class CommunicateWithAssistantUseCase {
         botConfig,
       } as any);
 
-      const { intent: intentName, params, assistantResult, patientInfo } = intentResult;
+      const { intent: intentName, params, assistantResult } = intentResult;
       const { threadId: thId, runId, functionCalls, message: assistantPlainMessage } = assistantResult || {};
       Logger.info('[CommunicateWithAssistant] Intent detectada', { intentName, thId, runId });
       Logger.debug('[CommunicateWithAssistant] Parámetros de intent', { params });

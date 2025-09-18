@@ -8,7 +8,7 @@ export const placeholdersApi = {
    * Devuelve la lista de placeholders por defecto que el backend expone
    * para la creación de `chatBot`.
    */
-  async getDefaultPlaceholders(): Promise<Placeholder[]> {
-    return fetchJson<Placeholder[]>("/bot-configs/default-placeholders");
+  async getDefaultPlaceholders(): Promise<any> {
+    return fetchJson<any>("/bot-configs/default-placeholders");
   },
 };

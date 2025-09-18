@@ -211,7 +211,6 @@ export class KommoService {
     Logger.info('[KommoService.replyToLead] Inicio', {
       leadId: input.leadId,
       salesbotId: input.salesbotId,
-      customFieldKeys,
       customFieldsCount: customFieldKeys.length,
       mergedCFCount: input.normalizedLeadCF?.length || 0,
       mergedCFSample: input.normalizedLeadCF?.filter(cf => CHAT_BOT_CUSTOM_FIELDS.includes(cf.field_name)).map(cf => ({ id: cf.field_id, name: cf.field_name })) || [],
@@ -253,7 +252,6 @@ export class KommoService {
     if (!values.length) {
       Logger.warn('[KommoService.replyToLead] custom_fields_values vacío. No se enviará PATCH.', {
         leadId: input.leadId,
-        customFieldKeys,
       });
     }
 

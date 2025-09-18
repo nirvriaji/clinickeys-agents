@@ -21,7 +21,7 @@ const DisponibilidadSchema = z.object({
   nombre_tratamiento: z.string(),
   duracion_tratamiento: z.number(),
   especifica: z.boolean(),
-  fecha_legible: z.string().optional(),
+  fecha_legible: z.string().nullable().optional(),
   fecha_cita: z.string(),
 });
 
@@ -30,10 +30,10 @@ export type Disponibilidad = z.infer<typeof DisponibilidadSchema>;
 const PresentacionYDisponibilidadesSchema = z.object({
   presentacion: z.string(),
   disponibilidades: z.array(DisponibilidadSchema),
-  disclaimer_fechas: z.string().optional(),
-  dias_mostrados: z.array(z.string()).optional(),
-  criterio_orden: z.string().optional(),
-  metadata: z.record(z.any()).optional(),
+  disclaimer_fechas: z.string().nullable().optional(),
+  dias_mostrados: z.array(z.string()).nullable().optional(),
+  criterio_orden: z.string().nullable().optional(),
+  metadata: z.record(z.any()).nullable().optional(),
 });
 
 export type PresentacionYDisponibilidades = z.infer<typeof PresentacionYDisponibilidadesSchema>;

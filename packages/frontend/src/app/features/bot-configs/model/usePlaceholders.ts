@@ -9,7 +9,7 @@ import type { ApiError } from "@/app/shared/types/api";
 const PLACEHOLDERS_QUERY_KEY = ["bot-configs", "placeholders"] as const;
 
 export function usePlaceholders() {
-  const { data, isLoading, error, refetch } = useQuery<Placeholder[], ApiError>({
+  const { data, isLoading, error, refetch } = useQuery<any, ApiError>({
     queryKey: PLACEHOLDERS_QUERY_KEY,
     queryFn: placeholdersApi.getDefaultPlaceholders,
   });

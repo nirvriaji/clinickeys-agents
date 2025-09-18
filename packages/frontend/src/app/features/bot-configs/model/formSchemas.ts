@@ -8,7 +8,7 @@ import { z } from "zod";
 export const botConfigTypeSchema = z.enum(["notificationBot", "chatBot"]);
 
 export const baseBotConfigSchema = z.object({
-  description: z.string().trim().optional(),
+  description: z.string().trim().nullable().optional(),
   kommoSubdomain: z.string().min(1, "Subdominio Kommo requerido"),
   kommoLongLivedToken: z.string().min(1, "Token Kommo requerido"),
   kommoResponsibleUserId: z.number().min(1, "ID Responsable Kommo requerido"),
@@ -24,8 +24,8 @@ export const baseBotConfigSchema = z.object({
 
 export const createBotConfigSchema = baseBotConfigSchema.extend({
   botConfigType: botConfigTypeSchema,
-  openaiApikey: z.string().optional().or(z.literal("")),
-  placeholders: z.record(z.string()).optional(),
+  openaiApikey: z.string().nullable().optional().or(z.literal("")),
+  placeholders: z.record(z.string()).nullable().optional(),
 }).superRefine((data, ctx) => {
   if (data.botConfigType === "chatBot") {
     if (!data.openaiApikey || data.openaiApikey.trim() === "") {
@@ -45,14 +45,14 @@ export const updateBotConfigSchema = baseBotConfigSchema
     clinicSource: z.literal("legacy"),                 // siempre "legacy"
     fieldsProfile: z.literal("default_kommo_profile"), // siempre "default_kommo_profile"
     botConfigType: botConfigTypeSchema,
-    openaiApikey: z.string().optional(),
-    assistants: z.record(z.string(), z.string()).optional(),
+    openaiApikey: z.string().nullable().optional(),
+    assistants: z.record(z.string(), z.string()).nullable().optional(),
   });
 
 export const placeholderSchema = z.object({
   key: z.string().min(1),
   label: z.string().min(1),
-  value: z.string().optional(),
+  value: z.string().nullable().optional(),
 });
 
 export const placeholdersArraySchema = z.array(placeholderSchema);

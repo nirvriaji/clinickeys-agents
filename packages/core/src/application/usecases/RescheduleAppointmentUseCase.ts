@@ -30,7 +30,7 @@ interface RescheduleAppointmentInput {
     id_espacio?: number | null;
     fechas: string;
     horas: string;
-    rango_dias_extra?: number;
+    rango_dias_extra?: number | null;
     summary: string;
   };
   timezone: string;

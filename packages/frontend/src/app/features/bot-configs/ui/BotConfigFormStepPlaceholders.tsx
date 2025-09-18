@@ -17,10 +17,10 @@ export function BotConfigFormStepPlaceholders({
 
   // Sincronizar placeholders locales con los default al montar (solo en creación)
   useEffect(() => {
-    if (!isEditMode && defaultPlaceholders.length > 0) {
+    if (!isEditMode && Object.keys(defaultPlaceholders).length > 0) {
       const initial: Record<string, string> = {};
-      defaultPlaceholders.forEach((ph) => {
-        initial[ph.key] = '';
+      Object.keys(defaultPlaceholders).forEach((key, index) => {
+        initial[key] = defaultPlaceholders[key] || '';
       });
       setPlaceholders(initial);
     }
@@ -54,7 +54,7 @@ export function BotConfigFormStepPlaceholders({
         <TextArea
           key={index}
           label={key}
-          value={placeholders[key] || ''}
+          value={placeholders[key] || defaultPlaceholders[key] || ''}
           onChange={(val) => handleChange(key, val)}
           disabled={isEditMode}
           error={error ? 'Error al cargar placeholders' : undefined}

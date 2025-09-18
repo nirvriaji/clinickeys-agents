@@ -45,10 +45,6 @@ export interface UpdateBotConfigPayload {
   // No permite editar placeholders ni assistantIds
 }
 
-export interface Placeholder {
-  key: string;     // Clave del placeholder, ej: "doctorName"
-  label: string;   // Label descriptivo para el usuario
-  value: string;   // Valor por defecto (editable en creación)
-}
+export type Placeholder = Record<string, string>;
 
 // Otras entidades y tipos auxiliares, si fueran necesarios para el feature, deben agregarse aquí y estar tipados estrictamente.

@@ -32,7 +32,7 @@ interface ScheduleAppointmentInput {
     espacio?: string | null;
     fechas: string;
     horas: string;
-    rango_dias_extra?: number;
+    rango_dias_extra?: number | null;
     summary: string;
     isThirdParty: boolean;
   };
