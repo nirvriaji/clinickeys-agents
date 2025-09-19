@@ -14,6 +14,7 @@ export * from "./CheckAvailabilityUseCase";
 export * from "./CancelAppointmentUseCase";
 export * from "./FetchPatientInfoUseCase";
 export * from "./UpdateBotConfigUseCase";
+export * from "./IdentifyPatientUseCase";
 export * from "./UpdateBotConfigUseCase";
 export * from "./FetchKommoDataUseCase";
 export * from "./ClarifyPatientUseCase";

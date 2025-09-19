@@ -20,6 +20,7 @@ import {
   FetchKommoDataUseCase,
   GetBotConfigUseCase,
   UpdatePatientMessageUseCase,
+  IdentifyPatientUseCase,
 } from "@clinickeys-agents/core/application/usecases";
 
 import {
@@ -54,7 +55,7 @@ export class LeadProcessorController {
   constructor(
     private readonly getBotConfigUC: GetBotConfigUseCase,
     private readonly logger: typeof Logger = Logger,
-  ) {}
+  ) { }
 
   async handle(event: SQSEvent): Promise<void> {
     for (const rec of event.Records) {
@@ -169,21 +170,26 @@ export class LeadProcessorController {
     const markPatientOnTheWayUC = new MarkPatientOnTheWayUseCase(appointmentService);
     const handleUrgencyUC = new HandleUrgencyUseCase(kommoService);
     const regularConversationUC = new RegularConversationUseCase();
+    const identifyPatientUC = new IdentifyPatientUseCase(
+      kommoService,
+      patientService,
+    );
 
     const communicateUC = new CommunicateWithAssistantUseCase({
-      kommoService,
-      openAIService,
-      recognizeIntentUC,
-      scheduleAppointmentUC,
-      checkAvailabilityUC,
       checkReprogramAvailabilityUC,
       rescheduleAppointmentUC,
-      cancelAppointmentUC,
       unconfirmAppointmentUC,
-      confirmAppointmentUC,
-      markPatientOnTheWayUC,
-      handleUrgencyUC,
+      scheduleAppointmentUC,
       regularConversationUC,
+      markPatientOnTheWayUC,
+      confirmAppointmentUC,
+      cancelAppointmentUC,
+      checkAvailabilityUC,
+      recognizeIntentUC,
+      identifyPatientUC,
+      handleUrgencyUC,
+      openAIService,
+      kommoService,
     });
 
     this.logger.debug("Fetching Kommo data for lead");

@@ -1,5 +1,3 @@
-// packages/core/src/application/usecases/RecognizeUserIntentUseCase.ts
-
 import { BotConfigType, BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
@@ -10,15 +8,16 @@ import type { DateTime } from 'luxon';
 
 type KnownIntent =
   | "conversación_regular"
+  | "identificar_paciente"
+  | "consulta_reprogramar"
+  | "clarificar_paciente"
+  | "paciente_en_camino"
+  | "reprogramar_cita"
   | "consulta_agendar"
   | "confirmar_cita"
-  | "paciente_en_camino"
-  | "agendar_cita"
-  | "consulta_reprogramar"
-  | "reprogramar_cita"
   | "cancelar_cita"
-  | "tarea"
-  | "identificar_paciente";
+  | "agendar_cita"
+  | "tarea";
 
 export interface RecognizeUserIntentInput {
   botConfigType: BotConfigType;

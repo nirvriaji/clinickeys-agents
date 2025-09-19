@@ -1,11 +1,8 @@
-// packages/core/src/application/usecases/FetchPatientInfoUseCase.ts
-
 import { CHAT_BOT_CUSTOM_FIELDS, PATIENT_PHONE } from '@clinickeys-agents/core/utils';
 import { PatientService } from '@clinickeys-agents/core/application/services';
 import { PackBonoConUsoDTO } from '@clinickeys-agents/core/domain/packBono';
 import { AppointmentDTO } from '@clinickeys-agents/core/domain/appointment';
 import { PresupuestoDTO } from '@clinickeys-agents/core/domain/presupuesto';
-import { AvailabilityError } from '@clinickeys-agents/core/domain/errors';
 import { BotConfigType } from '@clinickeys-agents/core/domain/botConfig';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { PatientDTO } from '@clinickeys-agents/core/domain/patient';
@@ -81,13 +78,14 @@ export class FetchPatientInfoUseCase {
       leadPhones
     );
 
-    if (!patientInfo || !patientInfo.patients?.length) {
-      Logger.error('[FetchPatientInfo] No se encontró información del paciente', { leadId });
-      throw new AvailabilityError({
-        code: 'ERR_PATIENT_INFO_NOT_FOUND',
-        humanMessage: 'Patient info not found for this lead/contact.',
-        context: { botConfigId, clinicSource, clinicId, leadId }
-      });
+    if (!patientInfo || !patientInfo.patients) {
+      Logger.warn('[FetchPatientInfo] No se encontró información del paciente', { leadId });
+      return { patients: [] };
+    }
+
+    if (!patientInfo.patients.length) {
+      Logger.warn('[FetchPatientInfo] Pacientes vacío', { leadId });
+      return { patients: [] };
     }
 
     await this.syncKommoLeadId(patientInfo.patients, kommoData.leadData.id);

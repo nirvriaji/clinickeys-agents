@@ -45,6 +45,33 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
   {
     type: "function",
     function: {
+      name: "identificar_paciente",
+      description: "Identifica o registra a un paciente cuando no se encontraron asociados al lead/contacto.",
+      parameters: {
+        type: "object",
+        properties: {
+          nombre: {
+            type: "string",
+            description: "Nombre del paciente (NO PUEDE ESTAR VACÍO)",
+          },
+          apellido: {
+            type: "string",
+            description: "Apellido del paciente (NO PUEDE ESTAR VACÍO)",
+          },
+          telefono: {
+            type: "string",
+            description: "Teléfono del paciente (NO PUEDE ESTAR VACÍO)",
+          },
+        },
+        required: ["nombre", "apellido", "telefono"],
+        additionalProperties: false,
+      },
+      strict: true,
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "consulta_agendar",
       description: "Busca huecos disponibles para agendar una cita.",
       parameters: {

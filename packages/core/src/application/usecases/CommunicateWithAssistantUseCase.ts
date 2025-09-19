@@ -1,5 +1,3 @@
-// packages/core/src/application/usecases/CommunicateWithAssistantUseCase.ts
-
 import {
   CheckReprogramAvailabilityUseCase,
   RescheduleAppointmentUseCase,
@@ -39,6 +37,7 @@ import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructur
 import { KommoService, OpenAIService } from '@clinickeys-agents/core/application/services';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { z } from 'zod';
+import { IdentifyPatientUseCase } from './IdentifyPatientUseCase';
 
 import type { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 
@@ -113,6 +112,12 @@ const RegularConversationSchema = z.object({
   assistantMessage: z.string(),
 });
 
+const IdentifyPatientSchema = z.object({
+  nombre: z.string(),
+  apellido: z.string(),
+  telefono: z.string(),
+});
+
 export interface CommunicateInput {
   botConfig: BotConfigDTO;
   leadId: number;
@@ -150,6 +155,7 @@ export interface CommunicateWithAssistantUseCaseDeps {
   markPatientOnTheWayUC: MarkPatientOnTheWayUseCase;
   handleUrgencyUC: HandleUrgencyUseCase;
   regularConversationUC: RegularConversationUseCase;
+  identifyPatientUC: IdentifyPatientUseCase;
 }
 
 export class CommunicateWithAssistantUseCase {
@@ -306,6 +312,15 @@ export class CommunicateWithAssistantUseCase {
           ucResponse = await this.deps.markPatientOnTheWayUC.execute({
             leadId,
             params: MarkOnTheWaySchema.parse(params),
+          });
+          break;
+        case 'identificar_paciente':
+          Logger.debug('[CommunicateWithAssistant] Ejecutando identificar_paciente', { params });
+          ucResponse = await this.deps.identifyPatientUC.execute({
+            leadId,
+            botConfig,
+            params: IdentifyPatientSchema.parse(params),
+            tiempoActualDT: localTime(botConfig.timezone),
           });
           break;
         default:
