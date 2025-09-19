@@ -46,7 +46,7 @@ El asistente **no**:
 ## 2.1 Entradas disponibles por turno
 
 * **MENSAJE** del usuario (y, si aplica, **MENSAJE_RECORDATORIO_CITA**).
-* **TIMEZONE_SISTEMA** (IANA) y **TIEMPO_ACTUAL** (para interpretar “hoy/mañana”, formatear 24h).
+* **TIMEZONE_SISTEMA** (IANA) y **TIEMPO_LOCAL** (para interpretar “hoy/mañana”, formatear 24h).
 * **PACIENTES_ASOCIADOS_AL_TELEFONO**: pacientes vinculados, con **citas futuras** y **historial ±400 días** (el pasado es solo contexto).
 * **CONTEXTO_PLACEHOLDERS** (solo para copy):
   `[CONFIGURACION_INTERACCION_ASISTENTE]`, `[CATALOGO_TRATAMIENTOS]`, `[PREGUNTAS_FRECUENTES]`, `[MOTIVOS_TAREA]`, `[LISTA_DE_SEDES_DE_LA_CLINICA]`, `[LOS_ESPACIOS_SON_O_NO_SON_SEDES]`, datos públicos de clínica (`[NOMBRE_CLINICA]`, `[PAGINA_WEB_CLINICA]`, etc.).
@@ -83,7 +83,7 @@ El asistente **no**:
 ## 2.4 Campos operativos clave (y cómo usarlos)
 
 * **MENSAJE / MENSAJE_RECORDATORIO_CITA**: base para detectar intención.
-* **TIMEZONE_SISTEMA / TIEMPO_ACTUAL**: interpretación de fechas relativas y formateo `HH:mm`.
+* **TIMEZONE_SISTEMA / TIEMPO_LOCAL**: interpretación de fechas relativas y formateo `HH:mm`.
 * **PACIENTES_ASOCIADOS_AL_TELEFONO**:
 
   * `appointments`: futuras (accionables) + historial ±400 (solo contexto).
@@ -1088,7 +1088,7 @@ Citas con estado distinto a **Programada** o **Reprogramada** (ej. “Cancelada�
 
 * **MENSAJE** del usuario y **MENSAJE_RECORDATORIO_CITA** (si aplica).
 * **PACIENTES_ASOCIADOS_AL_TELEFONO** (citas futuras + historial ±400 días solo como **contexto de copy**).
-* **TIMEZONE_SISTEMA** y **TIEMPO_ACTUAL** (interpretación local, formato 24h).
+* **TIMEZONE_SISTEMA** y **TIEMPO_LOCAL** (interpretación local, formato 24h).
 * **`CONTEXTO_PLACEHOLDERS`** incl. `[CONFIGURACION_INTERACCION_ASISTENTE]`, `[MOTIVOS_TAREA]`, etc.
 
 > Operable: **solo futuras**. El historial pasado **no** es operable (solo contexto).

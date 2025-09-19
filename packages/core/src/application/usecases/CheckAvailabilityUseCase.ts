@@ -1,6 +1,6 @@
 // packages/core/src/application/usecases/CheckAvailabilityUseCase.ts
 
-import { getActualTimeForPrompts } from '@clinickeys-agents/core/utils';
+import { getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { AvailabilityService, KommoService } from '@clinickeys-agents/core/application/services';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
@@ -41,7 +41,7 @@ export class CheckAvailabilityUseCase {
     const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, subdomain } = input;
     const { tratamiento, medico, fechas, horas, summary } = params;
 
-    const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
+    const localTimeForPrompts = getClinicLocalTimestamp(tiempoActualDT, timezone);
 
     Logger.info('[CheckAvailability] Inicio', { leadId, tratamiento, medico, fechas, horas });
 
@@ -72,7 +72,7 @@ export class CheckAvailabilityUseCase {
         : fechas;
 
       let availability = await this.availabilityService.getAvailabilityInfo({
-        actualTimeForPrompts,
+        localTimeForPrompts,
         id_clinica: botConfig.clinicId,
         id_super_clinica: botConfig.superClinicId,
         tiempo_actual: tiempoActualDT.toISO() as string,
@@ -116,7 +116,7 @@ export class CheckAvailabilityUseCase {
 
     // 3. Construir toolOutput
     const toolOutput = `#consultaAgendar
-    TIEMPO_ACTUAL: ${actualTimeForPrompts}
+    TIEMPO_LOCAL: ${localTimeForPrompts}
     DISCLAIMER_FECHAS_BUSCADAS: Se buscaron solo las siguientes fechas ${JSON.stringify(fechas_buscadas)}
     HORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}
     MENSAJE_USUARIO: ${JSON.stringify(params)}

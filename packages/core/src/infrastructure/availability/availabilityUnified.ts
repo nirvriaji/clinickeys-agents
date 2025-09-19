@@ -1,3 +1,4 @@
+import { Logger } from "@clinickeys-agents/core/infrastructure/external/Logger";
 import {
   SlotDisponibilidad,
   TratamientoEntrada,
@@ -15,8 +16,7 @@ import {
   isSameYMD,
   intersectRange,
   subtractRanges,
-} from "../timeUtils";
-import { Logger } from "@clinickeys-agents/core/infrastructure/external/Logger";
+} from "../../utils/timeUtils";
 
 // =============================
 // Builders (raw windows)
@@ -30,7 +30,8 @@ export function buildGeneralRaw(
   const out: Ventana[] = [];
 
   for (const t of tratamientos) {
-    const { id_tratamiento, nombre_tratamiento, duracion_tratamiento } = t.tratamiento;
+    const { id_tratamiento, nombre_tratamiento, duracion_tratamiento } =
+      t.tratamiento;
 
     for (const med of t.medicos) {
       const pmList = prog_medicos.filter((pm) => pm.id_medico === med.id_medico);
@@ -86,7 +87,8 @@ export function buildSpecificRaw(
     if (start >= end) continue;
 
     for (const t of tratamientos) {
-      const { id_tratamiento, nombre_tratamiento, duracion_tratamiento } = t.tratamiento;
+      const { id_tratamiento, nombre_tratamiento, duracion_tratamiento } =
+        t.tratamiento;
 
       const medico = t.medicos.find((m) => m.id_medico === pme.id_medico);
       if (!medico) continue;
@@ -117,7 +119,14 @@ export function buildSpecificRaw(
 // =============================
 
 function ventanaKey(v: Ventana): string {
-  return [v.fecha_cita, v.id_medico, v.id_espacio, v.id_tratamiento, v.startMin, v.endMin].join("|");
+  return [
+    v.fecha_cita,
+    v.id_medico,
+    v.id_espacio,
+    v.id_tratamiento,
+    v.startMin,
+    v.endMin,
+  ].join("|");
 }
 
 export function mergeWindows(a: Ventana[], b: Ventana[]): Ventana[] {
@@ -234,7 +243,11 @@ export function calcularDisponibilidadUnificada(input: {
     return [];
   }
 
-  const generalRaw = buildGeneralRaw(input.tratamientos, input.prog_medicos, input.prog_espacios);
+  const generalRaw = buildGeneralRaw(
+    input.tratamientos,
+    input.prog_medicos,
+    input.prog_espacios
+  );
   const specificRaw = buildSpecificRaw(input.tratamientos, input.prog_medico_espacio);
   const allRaw = mergeWindows(generalRaw, specificRaw);
   const freeWindows = subtractAppointments(allRaw, input.citas_programadas);

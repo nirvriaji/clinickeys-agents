@@ -1,6 +1,6 @@
 // packages/core/src/application/usecases/ScheduleAppointmentUseCase.ts
 
-import { isAppointmentSoon, getActualTimeForPrompts, formatFechaCita, PATIENT_FIRST_NAME, PATIENT_LAST_NAME, PATIENT_PHONE } from '@clinickeys-agents/core/utils';
+import { isAppointmentSoon, getClinicLocalTimestamp, formatFechaCita, PATIENT_FIRST_NAME, PATIENT_LAST_NAME, PATIENT_PHONE } from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
@@ -63,7 +63,7 @@ export class ScheduleAppointmentUseCase {
     const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, subdomain } = input;
     const { id_paciente, shouldCreatePatient, nombre, apellido, telefono, tratamiento, medico, fechas, horas, summary } = params;
 
-    const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
+    const localTimeForPrompts = getClinicLocalTimestamp(tiempoActualDT, timezone);
 
     Logger.info('[ScheduleAppointment] Inicio', { leadId, nombre, apellido, telefono, tratamiento, medico, id_paciente, shouldCreatePatient });
 
@@ -115,7 +115,7 @@ export class ScheduleAppointmentUseCase {
         : fechas;
 
       let availability = await this.availabilityService.getAvailabilityInfo({
-        actualTimeForPrompts,
+        localTimeForPrompts,
         id_clinica: botConfig.clinicId,
         id_super_clinica: botConfig.superClinicId,
         tiempo_actual: tiempoActualDT.toISO() as string,
@@ -144,7 +144,7 @@ export class ScheduleAppointmentUseCase {
 
         Logger.debug('[ScheduleAppointment] FinalPayload con horarios disponibles', { finalPayload });
 
-        const extractorPrompt = `#agendarCita\n\nTIEMPO_ACTUAL: ${actualTimeForPrompts}\n\nLos HORARIOS_DISPONIBLES para citas son: ${JSON.stringify(finalPayload)}\n\nMENSAJE_USUARIO: ${JSON.stringify(params)}`;
+        const extractorPrompt = `#agendarCita\n\nTIEMPO_ACTUAL: ${localTimeForPrompts}\n\nLos HORARIOS_DISPONIBLES para citas son: ${JSON.stringify(finalPayload)}\n\nMENSAJE_USUARIO: ${JSON.stringify(params)}`;
         Logger.debug('[ScheduleAppointment] Extractor prompt', extractorPrompt);
         const systemPrompt = await readFile(
           path.resolve(__dirname, 'packages/core/src/.ia/instructions/prompts/bot_extractor_de_datos.md'),

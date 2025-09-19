@@ -1,6 +1,6 @@
 // packages/core/src/application/usecases/RecognizeUserIntentUseCase.ts
 
-import { AppError, getActualTimeForPrompts } from '@clinickeys-agents/core/utils';
+import { AppError, getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
 import { BotConfigType, BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { IOpenAIService } from '@clinickeys-agents/core/domain/openai';
@@ -56,7 +56,7 @@ type PatientInfo = Awaited<ReturnType<FetchPatientInfoUseCase['execute']>>;
 type IntentContext = {
   MENSAJE: string;
   TIMEZONE_SISTEMA: string;
-  TIEMPO_ACTUAL: string;
+  TIEMPO_LOCAL: string;
   PACIENTES_ASOCIADOS_AL_TELEFONO: PatientInfo['patients'];
   CONTEXTO_PLACEHOLDERS: string;
 };
@@ -109,7 +109,7 @@ export class RecognizeUserIntentUseCase {
     const contextForAI: IntentContext = {
       MENSAJE,
       TIMEZONE_SISTEMA: timezone,
-      TIEMPO_ACTUAL: getActualTimeForPrompts(tiempoActualDT, timezone),
+      TIEMPO_LOCAL: getClinicLocalTimestamp(tiempoActualDT, timezone),
       PACIENTES_ASOCIADOS_AL_TELEFONO: patientInfo.patients ?? [],
       CONTEXTO_PLACEHOLDERS: botConfig?.placeholders ? JSON.stringify(botConfig.placeholders) : ""
     };
@@ -118,7 +118,7 @@ export class RecognizeUserIntentUseCase {
       contextSample: {
         MENSAJE,
         TIMEZONE_SISTEMA: timezone,
-        TIEMPO_ACTUAL: getActualTimeForPrompts(tiempoActualDT, timezone),
+        TIEMPO_LOCAL: getClinicLocalTimestamp(tiempoActualDT, timezone),
         PACIENTES_ASOCIADOS_AL_TELEFONO: patientInfo.patients ?? [],
       }
     });

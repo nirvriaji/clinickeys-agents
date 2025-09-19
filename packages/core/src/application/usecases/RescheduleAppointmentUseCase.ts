@@ -1,6 +1,6 @@
 // packages/core/src/application/usecases/RescheduleAppointmentUseCase.ts
 
-import { isAppointmentSoon, getActualTimeForPrompts, formatFechaCita } from '@clinickeys-agents/core/utils';
+import { isAppointmentSoon, getClinicLocalTimestamp, formatFechaCita } from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
@@ -59,7 +59,7 @@ export class RescheduleAppointmentUseCase {
     const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, subdomain } = input;
     const { id_cita, id_tratamiento, tratamiento, medico, id_medico, fechas, horas, summary, id_paciente } = params;
 
-    const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
+    const localTimeForPrompts = getClinicLocalTimestamp(tiempoActualDT, timezone);
 
     Logger.info('[RescheduleAppointment] Inicio', { leadId, id_cita, tratamiento, medico, id_medico, fechas, horas });
 
@@ -90,7 +90,7 @@ export class RescheduleAppointmentUseCase {
       let availability = await this.availabilityService.getAvailabilityInfo({
         id_clinica: botConfig.clinicId,
         id_super_clinica: botConfig.superClinicId,
-        actualTimeForPrompts,
+        localTimeForPrompts,
         tiempo_actual: tiempoActualDT.toISO() as string,
         mensajeBotParlante: JSON.stringify({
           id_tratamiento: step.params.id_tratamiento,
@@ -156,7 +156,7 @@ export class RescheduleAppointmentUseCase {
           };
         });
 
-        const extractorPrompt = `#reprogramarCita\n\nTIEMPO_ACTUAL: ${actualTimeForPrompts}\n\nLa CITA_A_REPROGRAMAR tiene ID ${id_cita}.\nLos HORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}\nMENSAJE_USUARIO: ${JSON.stringify(params)}\nCITAS_PACIENTE: ${JSON.stringify(citas_paciente)}`;
+        const extractorPrompt = `#reprogramarCita\n\nTIEMPO_ACTUAL: ${localTimeForPrompts}\n\nLa CITA_A_REPROGRAMAR tiene ID ${id_cita}.\nLos HORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}\nMENSAJE_USUARIO: ${JSON.stringify(params)}\nCITAS_PACIENTE: ${JSON.stringify(citas_paciente)}`;
         Logger.debug('[RescheduleAppointment] Extractor prompt', extractorPrompt);
 
         const systemPrompt = await readFile(

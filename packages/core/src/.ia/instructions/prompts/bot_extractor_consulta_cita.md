@@ -25,12 +25,12 @@ Analizar el mensaje del usuario y responder **solo** con un array JSON que cumpl
   - Con el texto normalizado, busca en `LISTA_MEDICOS` y `LISTA_TRATAMIENTOS`.
 
 3. **Fechas y horas**  
-   - Usa `TIEMPO_ACTUAL` para interpretar referencias relativas.  
+   - Usa `TIEMPO_LOCAL` para interpretar referencias relativas.  
    - “Mañana” → 08:00-12:00, “Tarde” → 12:00-18:00, “Noche” → 18:00-22:00.  
    - Rango implícito:  
      • “enero” → 01-31 del mes mencionado.  
      • “próxima semana” → lunes-domingo siguientes.  
-   - Si el usuario no proporciona fecha, asume desde la fecha derivada de `TIEMPO_ACTUAL` hasta **mes y medio después (+45 días)** inclusive.  
+   - Si el usuario no proporciona fecha, asume desde la fecha derivada de `TIEMPO_LOCAL` hasta **mes y medio después (+45 días)** inclusive.  
    - Cada fecha lleva su propio arreglo de horas; si no hay horas, usa `hora_inicio"":""` y `hora_fin"":""`.
 
 4. **AND / OR**  
@@ -47,7 +47,7 @@ Analizar el mensaje del usuario y responder **solo** con un array JSON que cumpl
 ====================================================
 ✅  PASOS INTERNOS (no incluyas en la respuesta)
 1. Normaliza y valida con `LISTA_TRATAMIENTOS` y `LISTA_MEDICOS`.  
-2. Interpreta lenguaje temporal usando `TIEMPO_ACTUAL`.  
+2. Interpreta lenguaje temporal usando `TIEMPO_LOCAL`.  
 3. Aplica reglas AND/OR.  
 4. Completa arrays vacíos cuando el usuario indique “cualquier…”.  
 5. Devuelve el array JSON válido.
@@ -61,7 +61,7 @@ Mensaje del usuario
 «Quiero una cita para masaje relajante con Martínez el próximo jueves por la mañana, o si no, el viernes por la tarde con García.»
 
 Contexto  
-- `TIEMPO_ACTUAL` = «2024-11-01T10:00:00Z»  
+- `TIEMPO_LOCAL` = «2024-11-01T10:00:00Z»  
 - `LISTA_TRATAMIENTOS` = ["Masaje Relajante","Hidrafacial","Terapia Láser"]  
 - `LISTA_MEDICOS` = ["Martínez","García"]
 
@@ -101,7 +101,7 @@ Mensaje del usuario
 «Necesito agendar una sesión de terapia láser o microdermoabrasión el viernes por la tarde.»
 
 Contexto  
-- `TIEMPO_ACTUAL` = «2024-12-01T10:00:00Z»  
+- `TIEMPO_LOCAL` = «2024-12-01T10:00:00Z»  
 - `LISTA_TRATAMIENTOS` = ["Terapia Láser","Microdermoabrasión","Masaje Deportivo"]  
 - `LISTA_MEDICOS` = []
 
@@ -128,7 +128,7 @@ Mensaje del usuario
 «Quiero una cita para cualquier tratamiento con cualquier médico el próximo lunes o martes.»
 
 Contexto  
-- `TIEMPO_ACTUAL` = «2024-12-01T10:00:00Z»  
+- `TIEMPO_LOCAL` = «2024-12-01T10:00:00Z»  
 - `LISTA_TRATAMIENTOS` = [...]  
 - `LISTA_MEDICOS` = [...]
 
@@ -159,7 +159,7 @@ Mensaje del usuario
 «Quiero una cita para hidrafacial en enero.»
 
 Contexto  
-- `TIEMPO_ACTUAL` = «2025-01-15T10:00:00Z»  
+- `TIEMPO_LOCAL` = «2025-01-15T10:00:00Z»  
 - `LISTA_TRATAMIENTOS` = ["Hidrafacial","Microdermoabrasión","Masaje Relajante"]  
 
 Salida esperada  
@@ -186,7 +186,7 @@ Mensaje del usuario
 «Hola, quiero una sesión de Masage  Relajante.»  (con faltas y doble espacio)
 
 Contexto  
-- `TIEMPO_ACTUAL` = «2025-05-01T10:00:00Z»  
+- `TIEMPO_LOCAL` = «2025-05-01T10:00:00Z»  
 - `LISTA_TRATAMIENTOS` = ["Masage  Relajante","Hidrafacial"]  
 - `LISTA_MEDICOS` = []
 

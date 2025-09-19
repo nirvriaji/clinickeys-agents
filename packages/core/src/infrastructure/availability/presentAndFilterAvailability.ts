@@ -1,72 +1,9 @@
-// packages/core/src/utils/availability/presentAndFilterAvailability.ts
-
-import { z } from "zod";
-import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
+import { PresentacionYDisponibilidades, PresentacionYDisponibilidadesSchema } from "@clinickeys-agents/core/domain/availability";
+import { SlotDisponibilidad } from "@clinickeys-agents/core/domain/availability";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
+import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
 import { readFile } from "fs/promises";
 import path from "path";
-import { SlotDisponibilidad } from "@clinickeys-agents/core/domain/availability"
-
-// =============================
-// Schemas
-// =============================
-
-const DisponibilidadSchema = z.object({
-  hora_inicio_minima: z.string(),
-  hora_inicio_maxima: z.string(),
-  id_medico: z.number(),
-  nombre_medico: z.string(),
-  id_espacio: z.number(),
-  nombre_espacio: z.string(),
-  id_tratamiento: z.number(),
-  nombre_tratamiento: z.string(),
-  duracion_tratamiento: z.number(),
-  especifica: z.boolean(),
-  fecha_legible: z.string().nullable().optional(),
-  fecha_cita: z.string(),
-});
-
-export type Disponibilidad = z.infer<typeof DisponibilidadSchema>;
-
-const FlexibleValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
-
-const MetadataSchema = z.object({
-  tipo_busqueda: z.enum(["original", "original_filtrado", "sin_disponibilidad"]).nullable().optional(),
-  reglas_aplicadas: z.record(FlexibleValue).nullable().optional(),
-  warnings: z.array(z.string()).nullable().optional(),
-  sugerencias: z.array(z.string()).nullable().optional(),
-  conteos: z
-    .object({
-      total_original: z.number(),
-      total_filtrado: z.number(),
-      dias_presentados: z.number(),
-    })
-    .nullable()
-    .optional(),
-  primer_hueco: z
-    .object({
-      fecha: z.string(),
-      hora: z.string(),
-    })
-    .nullable()
-    .optional(),
-  criterios: z.record(FlexibleValue).nullable().optional(),
-  extras: z.record(FlexibleValue).nullable().optional(),
-})
-  .strict()
-  .nullable()
-  .optional();
-
-const PresentacionYDisponibilidadesSchema = z.object({
-  presentacion: z.string(),
-  disponibilidades: z.array(DisponibilidadSchema),
-  disclaimer_fechas: z.string().nullable().optional(),
-  dias_mostrados: z.array(z.string()).nullable().optional(),
-  criterio_orden: z.string().nullable().optional(),
-  metadata: MetadataSchema,
-});
-
-export type PresentacionYDisponibilidades = z.infer<typeof PresentacionYDisponibilidadesSchema>;
 
 // =============================
 // Prompt caching
@@ -124,6 +61,7 @@ export async function presentAndFilterAvailability(
       PresentacionYDisponibilidadesSchema,
       "PresentacionYDisponibilidadesSchema"
     );
+
     const {
       presentacion,
       disponibilidades,
@@ -157,7 +95,10 @@ export async function presentAndFilterAvailability(
       metadata,
     };
   } catch (error) {
-    Logger.error("[presentAndFilterAvailability] Error al procesar disponibilidades:", error);
+    Logger.error(
+      "[presentAndFilterAvailability] Error al procesar disponibilidades:",
+      error
+    );
     return {
       presentacion:
         "Lo siento, ocurrió un error al procesar las disponibilidades.",

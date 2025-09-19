@@ -1,10 +1,12 @@
+// packages/core/src/application/services/AvailabilityService.ts
+
 import {
   presentAndFilterAvailability,
   generarConsultasSQL,
   calcularDisponibilidad,
   ajustarDisponibilidad,
   AppError,
-} from "@clinickeys-agents/core/utils";
+} from "@clinickeys-agents/core/infrastructure/availability";
 import { ejecutarConReintento } from "@clinickeys-agents/core/infrastructure/helpers";
 import { ITratamientoRepository } from "@clinickeys-agents/core/domain/tratamiento";
 import { IEspacioRepository } from "@clinickeys-agents/core/domain/espacio";
@@ -15,9 +17,10 @@ import {
   MedicoEntrada,
   EspacioEntrada,
   SlotDisponibilidad,
-} from "@clinickeys-agents/core/domain/availability/dtos";
-import { EspacioBasicDTO } from "@clinickeys-agents/core/domain/espacio/dtos";
-import { AvailabilityFilterExtractor } from "@clinickeys-agents/core/infrastructure/availability/AvailabilityFilterExtractor";
+} from "@clinickeys-agents/core/domain/availability";
+import { EspacioBasicDTO } from "@clinickeys-agents/core/domain/espacio";
+import { AvailabilityFilterExtractor } from "@clinickeys-agents/core/infrastructure/availability";
+import { TratamientoSearchResultDTO } from "@clinickeys-agents/core/domain/tratamiento";
 
 interface GetAvailabilityInfoInput {
   leadId?: number;
@@ -26,13 +29,28 @@ interface GetAvailabilityInfoInput {
   tiempo_actual: string;
   id_super_clinica: number;
   mensajeBotParlante: string;
-  actualTimeForPrompts: string;
+  localTimeForPrompts: string;
   contextoDisponibilidades: string;
 }
 
 export interface GetTreatmentsDataInput {
   clinicId: number;
   tratamientosConsultados: string[];
+}
+
+export interface AppointmentAvailabilityInput {
+  tratamientos: string[];
+  medicos?: string[];
+  espacios?: string[];
+  fechas: { fecha: string }[];
+  id_clinica: number;
+  tiempo_actual: string;
+}
+
+export interface AppointmentAvailabilityResult {
+  success: boolean;
+  message: string | null;
+  analisis_agenda: SlotDisponibilidad[];
 }
 
 export class AvailabilityService {
@@ -58,7 +76,7 @@ export class AvailabilityService {
     tratamientosConsultados,
   }: GetTreatmentsDataInput): Promise<TratamientoEntrada[]> {
     Logger.info("[AvailabilityService] Starting tratamiento search...");
-    const treatmentsFound =
+    const treatmentsFound: TratamientoSearchResultDTO[] =
       await this.treatmentRepo.findTreatmentsByNamesWithRelevance(
         tratamientosConsultados,
         clinicId
@@ -70,7 +88,7 @@ export class AvailabilityService {
     }
 
     const tratamientosExactos = treatmentsFound.filter(
-      (t: any) => t.is_exact == 1
+      (t) => t.is_exact === 1
     );
     if (!tratamientosExactos.length) {
       Logger.warn("None of the treatments is an exact match.");
@@ -78,7 +96,7 @@ export class AvailabilityService {
     }
 
     const result: TratamientoEntrada[] = await Promise.all(
-      tratamientosExactos.map(async (tratamiento: any) => {
+      tratamientosExactos.map(async (tratamiento) => {
         let medicos: MedicoEntrada[] = [];
         try {
           const medicosRaw = await this.doctorRepo.getMedicosByTratamiento(
@@ -140,11 +158,9 @@ export class AvailabilityService {
     return result;
   }
 
-  async getAppointmentAvailability(input: any): Promise<{
-    success: boolean;
-    message: string | null;
-    analisis_agenda: SlotDisponibilidad[];
-  }> {
+  async getAppointmentAvailability(
+    input: AppointmentAvailabilityInput
+  ): Promise<AppointmentAvailabilityResult> {
     try {
       const {
         tratamientos: tratamientosConsultados,
@@ -152,7 +168,7 @@ export class AvailabilityService {
         espacios: espaciosConsultados = [],
         fechas: fechasSeleccionadas,
         id_clinica: clinicId,
-        tiempo_actual: tiempo_actual,
+        tiempo_actual,
       } = input;
 
       if (!clinicId) throw AppError.FALTA_ID_CLINICA();
@@ -198,9 +214,7 @@ export class AvailabilityService {
 
       if (espaciosConsultados.length > 0) {
         const setNombresEspacios = new Set(
-          espaciosConsultados.map((n: string) =>
-            String(n).trim().toLowerCase()
-          )
+          espaciosConsultados.map((n) => String(n).trim().toLowerCase())
         );
         tratamientosFiltrados = tratamientosFiltrados
           .map((t) => ({
@@ -265,10 +279,22 @@ export class AvailabilityService {
 
       let citas, progMedicos, progEspacios, progMedicoEspacio;
       try {
-        citas = await ejecutarConReintento(consultasSQL.sql_citas.text, consultasSQL.sql_citas.params);
-        progMedicos = await ejecutarConReintento(consultasSQL.sql_prog_medicos.text, consultasSQL.sql_prog_medicos.params);
-        progEspacios = await ejecutarConReintento(consultasSQL.sql_prog_espacios.text, consultasSQL.sql_prog_espacios.params);
-        progMedicoEspacio = await ejecutarConReintento(consultasSQL.sql_prog_medico_espacio.text, consultasSQL.sql_prog_medico_espacio.params);
+        citas = await ejecutarConReintento(
+          consultasSQL.sql_citas.text,
+          consultasSQL.sql_citas.params
+        );
+        progMedicos = await ejecutarConReintento(
+          consultasSQL.sql_prog_medicos.text,
+          consultasSQL.sql_prog_medicos.params
+        );
+        progEspacios = await ejecutarConReintento(
+          consultasSQL.sql_prog_espacios.text,
+          consultasSQL.sql_prog_espacios.params
+        );
+        progMedicoEspacio = await ejecutarConReintento(
+          consultasSQL.sql_prog_medico_espacio.text,
+          consultasSQL.sql_prog_medico_espacio.params
+        );
       } catch (error) {
         Logger.error("Error executing SQL queries:", error);
         throw AppError.ERROR_CONSULTA_SQL(
@@ -279,13 +305,13 @@ export class AvailabilityService {
       if (!progMedicos?.length) {
         throw AppError.NO_PROG_MEDICOS(
           idsMedicos.map(String),
-          fechasSeleccionadas.map((f: any) => f.fecha)
+          fechasSeleccionadas.map((f) => f.fecha)
         );
       }
       if (!progEspacios?.length) {
         throw AppError.NO_PROG_ESPACIOS(
           idsEspacios.map(String),
-          fechasSeleccionadas.map((f: any) => f.fecha)
+          fechasSeleccionadas.map((f) => f.fecha)
         );
       }
 
@@ -317,7 +343,7 @@ export class AvailabilityService {
         message: null,
         analisis_agenda: adjustedAvailability,
       };
-    } catch (e: any) {
+    } catch (e) {
       Logger.error("Error in getAppointmentAvailability:", e);
       if (e instanceof AppError) {
         if (e.isLogOnly) {
@@ -356,7 +382,7 @@ export class AvailabilityService {
       id_clinica,
       id_super_clinica,
       tiempo_actual,
-      actualTimeForPrompts,
+      localTimeForPrompts,
       mensajeBotParlante,
       contextoDisponibilidades,
     } = input;
@@ -376,12 +402,12 @@ export class AvailabilityService {
       id_clinica,
       id_super_clinica,
       tiempo_actual,
-      actualTimeForPrompts,
+      localTimeForPrompts,
       tratamientosDisponibles: nombresTratamientos,
       medicosDisponibles: nombresMedicos,
     });
 
-    const lambdaBody = {
+    const availabilityRequest: AppointmentAvailabilityInput = {
       tratamientos: filters[0]?.tratamientos ?? [],
       medicos: filters[0]?.medicos ?? [],
       espacios: filters[0]?.espacios ?? [],
@@ -390,7 +416,7 @@ export class AvailabilityService {
       tiempo_actual,
     };
 
-    if (!lambdaBody.tratamientos.length) {
+    if (!availabilityRequest.tratamientos.length) {
       return {
         success: false,
         message: "No se encontraron tratamientos disponibles en la clínica.",
@@ -400,12 +426,12 @@ export class AvailabilityService {
       };
     }
 
-    const baseResult = await this.getAppointmentAvailability(lambdaBody);
+    const baseResult = await this.getAppointmentAvailability(availabilityRequest);
 
     if (!baseResult.success || !baseResult.analisis_agenda) {
       return {
         ...baseResult,
-        fechas_buscadas: JSON.stringify(lambdaBody.fechas),
+        fechas_buscadas: JSON.stringify(availabilityRequest.fechas),
         presentacion_disponibilidades: "",
         disponibilidades: [],
       };
@@ -418,13 +444,13 @@ export class AvailabilityService {
 
       const result = await presentAndFilterAvailability(
         this.filterExtractor["openAIService"],
-        presenterSlots as any,
+        presenterSlots,
         contextoDisponibilidades
       );
 
       return {
         ...baseResult,
-        fechas_buscadas: JSON.stringify(lambdaBody.fechas),
+        fechas_buscadas: JSON.stringify(availabilityRequest.fechas),
         presentacion_disponibilidades: result.presentacion,
         disponibilidades: result.disponibilidades as SlotDisponibilidad[],
       };
@@ -432,7 +458,7 @@ export class AvailabilityService {
 
     return {
       ...baseResult,
-      fechas_buscadas: JSON.stringify(lambdaBody.fechas),
+      fechas_buscadas: JSON.stringify(availabilityRequest.fechas),
       presentacion_disponibilidades: "",
       disponibilidades: [],
     };

@@ -1,5 +1,7 @@
 // packages/core/src/domain/availability/dtos.ts
 
+import { z } from 'zod';
+
 /**
  * Representa un espacio físico (cabina, sala) en el que se atienden pacientes.
  */
@@ -119,3 +121,88 @@ export interface SlotDisponibilidad {
   especifica: boolean;           // true si proviene de ventana específica
   fecha_legible?: string | null;        // p.ej. "Lunes, 16 de septiembre"
 }
+
+export const ConsultaCitaSchema = z.object({
+  filters: z.array(
+    z.object({
+      tratamientos: z.array(z.string()),
+      medicos:     z.array(z.string()),
+      espacios:    z.array(z.string()),
+      aparatologias: z.array(z.string()),
+      especialidades: z.array(z.string()),
+      fechas: z.array(
+        z.object({
+          fecha: z.string().refine(s => /^\d{4}-\d{2}-\d{2}$/.test(s)),
+          horas: z.array(z.object({ hora_inicio: z.string(), hora_fin: z.string() }))
+        })
+      )
+    })
+  )
+});
+
+// =============================
+// Schemas
+// =============================
+
+const DisponibilidadSchema = z.object({
+  hora_inicio_minima: z.string(),
+  hora_inicio_maxima: z.string(),
+  id_medico: z.number(),
+  nombre_medico: z.string(),
+  id_espacio: z.number(),
+  nombre_espacio: z.string(),
+  id_tratamiento: z.number(),
+  nombre_tratamiento: z.string(),
+  duracion_tratamiento: z.number(),
+  especifica: z.boolean(),
+  fecha_legible: z.string().nullable().optional(),
+  fecha_cita: z.string(),
+});
+
+export type Disponibilidad = z.infer<typeof DisponibilidadSchema>;
+
+const FlexibleValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+
+const MetadataSchema = z
+  .object({
+    tipo_busqueda: z
+      .enum(["original", "original_filtrado", "sin_disponibilidad"])
+      .nullable()
+      .optional(),
+    reglas_aplicadas: z.record(FlexibleValue).nullable().optional(),
+    warnings: z.array(z.string()).nullable().optional(),
+    sugerencias: z.array(z.string()).nullable().optional(),
+    conteos: z
+      .object({
+        total_original: z.number(),
+        total_filtrado: z.number(),
+        dias_presentados: z.number(),
+      })
+      .nullable()
+      .optional(),
+    primer_hueco: z
+      .object({
+        fecha: z.string(),
+        hora: z.string(),
+      })
+      .nullable()
+      .optional(),
+    criterios: z.record(FlexibleValue).nullable().optional(),
+    extras: z.record(FlexibleValue).nullable().optional(),
+  })
+  .strict()
+  .nullable()
+  .optional();
+
+export const PresentacionYDisponibilidadesSchema = z.object({
+  presentacion: z.string(),
+  disponibilidades: z.array(DisponibilidadSchema),
+  disclaimer_fechas: z.string().nullable().optional(),
+  dias_mostrados: z.array(z.string()).nullable().optional(),
+  criterio_orden: z.string().nullable().optional(),
+  metadata: MetadataSchema,
+});
+
+export type PresentacionYDisponibilidades = z.infer<
+  typeof PresentacionYDisponibilidadesSchema
+>;

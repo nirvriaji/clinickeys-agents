@@ -1,7 +1,7 @@
 // packages/core/src/application/usecases/CheckReprogramAvailabilityUseCase.ts
 
 import { AvailabilityService, KommoService, OpenAIService } from '@clinickeys-agents/core/application/services';
-import { getActualTimeForPrompts } from '@clinickeys-agents/core/utils';
+import { getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
@@ -71,7 +71,7 @@ export class CheckReprogramAvailabilityUseCase {
       summary,
     } = params;
 
-    const actualTimeForPrompts = getActualTimeForPrompts(tiempoActualDT, timezone);
+    const localTimeForPrompts = getClinicLocalTimestamp(tiempoActualDT, timezone);
 
     Logger.info('[CheckReprogramAvailability] Inicio', {
       leadId,
@@ -115,7 +115,7 @@ export class CheckReprogramAvailabilityUseCase {
         : fechas;
 
       let availability = await this.availabilityService.getAvailabilityInfo({
-        actualTimeForPrompts,
+        localTimeForPrompts,
         id_clinica: botConfig.clinicId,
         id_super_clinica: botConfig.superClinicId,
         tiempo_actual: tiempoActualDT.toISO() as string,
@@ -170,7 +170,7 @@ export class CheckReprogramAvailabilityUseCase {
 
     // 3. Construir toolOutput para resolver run
     const toolOutput = `#consultaReprogramar
-    TIEMPO_ACTUAL: ${actualTimeForPrompts}
+    TIEMPO_LOCAL: ${localTimeForPrompts}
     PACIENTE: ${JSON.stringify({id_paciente, nombre, apellido, telefono,})}
     CITA: ${JSON.stringify({ id_cita })}
     DISCLAIMER_FECHAS_BUSCADAS: Se buscaron solo las siguientes fechas ${JSON.stringify(fechas_buscadas)}

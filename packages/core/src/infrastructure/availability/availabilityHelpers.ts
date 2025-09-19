@@ -6,7 +6,7 @@ import { CITAS_ESTADOS_BLOQUEO } from "@clinickeys-agents/core/utils";
 
 export interface SQLQuery {
   text: string;
-  params: any[];
+  params: Array<string | number | Date>;
 }
 
 // =============================
@@ -27,7 +27,7 @@ function generarConsultaSQL({
   idClinica: number;
 }): SQLQuery {
   const condicionesTiempo: string[] = [];
-  const params: any[] = [];
+  const params: Array<string | number | Date> = [];
 
   for (const fechaObj of listaFechas) {
     if (nombreTabla === "citas") {

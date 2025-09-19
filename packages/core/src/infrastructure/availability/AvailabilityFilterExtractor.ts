@@ -1,8 +1,8 @@
-import { readFile } from "fs/promises";
-import path from "path";
+import { ConsultaCitaSchema } from "@clinickeys-agents/core/domain/availability";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
-import { ConsultaCitaSchema } from "@clinickeys-agents/core/utils";
+import { readFile } from "fs/promises";
+import path from "path";
 
 // =============================
 // Tipos
@@ -62,7 +62,7 @@ export class AvailabilityFilterExtractor {
       id_clinica: number;
       id_super_clinica: number;
       tiempo_actual: string;
-      actualTimeForPrompts: string;
+      localTimeForPrompts: string;
       tratamientosDisponibles: string[];
       medicosDisponibles: string[];
     }
@@ -75,7 +75,7 @@ El paciente consultó por una cita y le respondimos esto: ${mensajeBotParlante}
 Contexto:
 - id_clinica: ${contexto.id_clinica}
 - id_super_clinica: ${contexto.id_super_clinica}
-- tiempo_actual: ${contexto.actualTimeForPrompts}
+- tiempo_actual: ${contexto.localTimeForPrompts}
 - tratamientos disponibles: ${JSON.stringify(
       contexto.tratamientosDisponibles
     )}

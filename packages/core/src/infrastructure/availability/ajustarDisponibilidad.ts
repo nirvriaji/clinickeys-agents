@@ -1,6 +1,6 @@
-import { DateTime } from "luxon";
+import { Disponibilidad } from "@clinickeys-agents/core/domain/availability";
 import { formatFechaLegible } from "@clinickeys-agents/core/utils";
-import { Disponibilidad } from "@clinickeys-agents/core/utils/availability/presentAndFilterAvailability";
+import { DateTime } from "luxon";
 
 /**
  * Ajusta la lista de disponibilidades para que solo incluya slots
@@ -45,7 +45,8 @@ export function ajustarDisponibilidad(
     if (!startDT.isValid || !latestStartDT.isValid) continue;
     if (latestStartDT <= minDT) continue;
 
-    if (startDT < minDT && startDT.hasSame(minDT, "day")) {
+    // Ajustar inicio si está en el mismo día y es anterior al umbral
+    if (startDT.hasSame(minDT, "day") && startDT < minDT) {
       startDT = minDT;
     }
 

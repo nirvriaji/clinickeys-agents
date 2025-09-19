@@ -83,16 +83,38 @@ export function isAppointmentSoon(appointmentDate: string, nowISO: string, tz: s
   return diff === 0 || diff === 1;
 }
 
-export function getActualTimeForPrompts(tiempoActualDT: DateTime, timezone: string) {
-  const LANGUAGE = 'es';
-  const weekDay = new Intl.DateTimeFormat(LANGUAGE, {
-    weekday: 'long',
-    timeZone: timezone,
-  }).format(tiempoActualDT.toJSDate());
-  const fechaISO = tiempoActualDT.toISODate() + "T00:00:00.000Z";
-  const hora = tiempoActualDT.toFormat("HH:mm") + ":00";
+export function getClinicLocalTimestamp(
+  tiempoActualDT: DateTime,
+  timezone: string,
+): string {
+  // Aseguramos que el DateTime esté en la zona horaria de la clínica
+  const dtLocal = tiempoActualDT.setZone(timezone, { keepLocalTime: false });
 
-  return `Hoy es ${weekDay}, fecha ${fechaISO} y hora ${hora}`;
+  // Fecha y hora locales con ceros a la izquierda
+  const date = dtLocal.toFormat("yyyy-LL-dd");
+  const time = dtLocal.toFormat("HH:mm:ss");
+
+  // Nombre del día en español, forzado a minúsculas para consistencia
+  const weekday = new Intl.DateTimeFormat("es", {
+    weekday: "long",
+    timeZone: timezone,
+  })
+    .format(dtLocal.toJSDate())
+    .toLocaleLowerCase();
+
+  // DOW (1=lunes … 7=domingo) según Luxon
+  const dow = dtLocal.weekday; // 1..7
+
+  // OFFSET en minutos a ±HH:MM
+  const offsetMinutes = dtLocal.offset; // minutos respecto a UTC
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absMin = Math.abs(offsetMinutes);
+  const offHH = String(Math.floor(absMin / 60)).padStart(2, "0");
+  const offMM = String(absMin % 60).padStart(2, "0");
+  const offset = `${sign}${offHH}:${offMM}`;
+
+  // Línea final canónica
+  return `DATE=${date}; TIME=${time}; TIMEZONE=${timezone}; OFFSET=${offset}; DOW=${dow}; WEEKDAY=${weekday}`;
 }
 
 /** Convierte fecha u objeto Date a DateTime en TZ */
