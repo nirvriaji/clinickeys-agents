@@ -1,4 +1,4 @@
-// /features/bot-configs/api/botConfigsApi.ts
+// packages/frontend/src/app/features/bot-configs/api/botConfigsApi.ts
 
 import fetchJson from "@/app/shared/lib/fetchJson";
 import type { Paginated } from "@/app/shared/types/api";

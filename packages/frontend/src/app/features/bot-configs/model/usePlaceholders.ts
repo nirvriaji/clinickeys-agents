@@ -1,4 +1,4 @@
-// /features/bot-configs/model/usePlaceholders.ts
+// packages/frontend/src/app/features/bot-configs/model/usePlaceholders.ts
 
 import { useQuery } from "@tanstack/react-query";
 

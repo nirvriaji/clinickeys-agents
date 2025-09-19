@@ -1,4 +1,4 @@
-// /features/bot-configs/model/formSchemas.ts
+// packages/frontend/src/app/features/bot-configs/model/formSchemas.ts
 
 import { z } from "zod";
 

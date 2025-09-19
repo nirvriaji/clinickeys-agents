@@ -1,9 +1,11 @@
+// packages/core/src/application/usecases/RecognizeUserIntentUseCase.ts
+
+import { FetchPatientInfoUseCase } from '@clinickeys-agents/core/application/usecases';
 import { BotConfigType, BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
+import { AvailabilityError } from '@clinickeys-agents/core/domain/errors';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
 import { IOpenAIService } from '@clinickeys-agents/core/domain/openai';
-import { FetchPatientInfoUseCase } from './FetchPatientInfoUseCase';
-import { AvailabilityError } from '@clinickeys-agents/core/domain/errors';
 import type { DateTime } from 'luxon';
 
 type KnownIntent =

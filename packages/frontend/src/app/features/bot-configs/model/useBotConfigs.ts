@@ -1,4 +1,4 @@
-// /features/bot-configs/model/useBotConfigs.ts
+// packages/frontend/src/app/features/bot-configs/model/useBotConfigs.ts
 
 import {
   useInfiniteQuery,

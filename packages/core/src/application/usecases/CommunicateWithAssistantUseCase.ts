@@ -1,3 +1,5 @@
+// packages/core/src/application/usecases/CommunicateWithAssistantUseCase.ts
+
 import {
   CheckReprogramAvailabilityUseCase,
   RescheduleAppointmentUseCase,

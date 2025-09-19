@@ -1,4 +1,4 @@
-// packages/core/src/application/usecases/AvailabilityRequestExtractorService.ts
+// packages/core/src/application/services/AvailabilityRequestExtractorService.ts
 
 import { ConsultaCitaSchema } from "@clinickeys-agents/core/domain/availability";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";

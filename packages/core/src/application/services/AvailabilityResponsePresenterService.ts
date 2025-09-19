@@ -1,4 +1,4 @@
-// packages/core/src/application/usecases/AvailabilityResponsePresenterService.ts
+// packages/core/src/application/services/AvailabilityResponsePresenterService.ts
 
 import { PresentacionYDisponibilidades, PresentacionYDisponibilidadesSchema } from "@clinickeys-agents/core/domain/availability";
 import { SlotDisponibilidad } from "@clinickeys-agents/core/domain/availability";

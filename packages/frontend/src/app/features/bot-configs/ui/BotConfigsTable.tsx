@@ -1,5 +1,6 @@
+// packages/frontend/src/app/features/bot-configs/ui/BotConfigsTable.tsx
+
 "use client";
-// /features/bot-configs/ui/BotConfigsTable.tsx
 
 import { useEffect, useState } from 'react';
 import { useBotConfigs } from '@/app/features/bot-configs/model/useBotConfigs';

@@ -1,4 +1,4 @@
-// /features/bot-configs/ui/BotConfigFormStepType.tsx
+// packages/frontend/src/app/features/bot-configs/ui/BotConfigFormStepType.tsx
 
 import { Button } from '@/app/shared/ui/Button';
 import type { BotConfigType } from '@/app/entities/bot-config/types';

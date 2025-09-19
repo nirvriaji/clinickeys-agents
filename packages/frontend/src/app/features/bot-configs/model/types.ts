@@ -1,4 +1,4 @@
-// /features/bot-configs/model/types.ts
+// packages/frontend/src/app/features/bot-configs/model/types.ts
 
 import type { BotConfigType } from "@/app/entities/bot-config/types";
 

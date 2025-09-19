@@ -1,4 +1,5 @@
-// /features/bot-configs/ui/BotConfigFormStepReview.tsx
+// packages/frontend/src/app/features/bot-configs/ui/BotConfigFormStepReview.tsx
+
 import { TextInput } from '@/app/shared/ui/TextInput';
 import { AssistantsList } from '@/app/shared/ui/AssistantsList';
 import type { UseFormReturn } from 'react-hook-form';

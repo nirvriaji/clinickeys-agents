@@ -1,6 +1,6 @@
 // packages/core/src/domain/availability/AvailabilityWindowBuilder.ts
 
-import { Logger } from "@clinickeys-agents/core/infrastructure/external/Logger";
+import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import {
   SlotDisponibilidad,
   TratamientoEntrada,
@@ -18,7 +18,7 @@ import {
   isSameYMD,
   intersectRange,
   subtractRanges,
-} from "../../utils/timeUtils";
+} from "@clinickeys-agents/core/utils";
 
 // =============================
 // Builders (raw windows)

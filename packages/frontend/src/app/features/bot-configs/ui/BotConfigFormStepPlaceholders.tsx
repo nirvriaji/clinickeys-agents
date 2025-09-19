@@ -1,3 +1,5 @@
+// packages/frontend/src/app/features/bot-configs/ui/BotConfigFormStepPlaceholders.tsx
+
 import { useEffect } from 'react';
 import { TextArea } from '@/app/shared/ui/TextArea';
 import { usePlaceholders } from '@/app/features/bot-configs/model/usePlaceholders';

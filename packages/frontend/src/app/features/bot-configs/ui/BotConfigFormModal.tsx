@@ -1,3 +1,5 @@
+// packages/frontend/src/app/features/bot-configs/ui/BotConfigFormModal.tsx
+
 "use client";
 
 import { useState, useEffect } from 'react';

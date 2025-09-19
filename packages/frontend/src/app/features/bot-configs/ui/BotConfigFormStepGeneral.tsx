@@ -1,4 +1,5 @@
-// /features/bot-configs/ui/BotConfigFormStepGeneral.tsx
+// packages/frontend/src/app/features/bot-configs/ui/BotConfigFormStepGeneral.tsx
+
 'use client';
 
 import React from 'react';
