@@ -107,12 +107,12 @@ export class FetchPatientInfoUseCase {
   }
 
   private prepareLeadPhones(kommoData: any) {
-    const contactPhone = kommoData.normalizedContactCF?.find((cf: { field_code: string; values: Array<{ value: string }> }) => cf.field_code === 'PHONE')?.values?.[0]?.value || '';
+    const contactCFPhone = kommoData.normalizedContactCF?.find((cf: { field_code: string; values: Array<{ value: string }> }) => cf.field_code === 'PHONE')?.values?.[0]?.value || '';
     const leadCFPhone = kommoData.normalizedLeadCF?.find((cf: { field_name: string; value: string }) => cf.field_name === PATIENT_PHONE)?.value || '';
     return {
       in_conversation: '',
-      in_field: leadCFPhone,
-      in_contact: contactPhone
+      in_lead_cf: leadCFPhone,
+      in_contact_cf: contactCFPhone
     };
   }
 

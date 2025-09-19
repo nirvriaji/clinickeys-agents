@@ -149,7 +149,7 @@ export class PatientService {
   async getPatientInfo(
     tiempoActualDT: DateTime,
     id_clinica: number,
-    lead_phones: { in_conversation?: string; in_field?: string; in_contact?: string }
+    lead_phones: { in_conversation?: string; in_lead_cf?: string; in_contact_cf?: string }
   ): Promise<{
     success: boolean;
     message: string | null;
@@ -175,37 +175,48 @@ export class PatientService {
       return { success: true, message: "No se pudo encontrar el paciente", patients: [] };
     }
 
-    let telefono =
-      lead_phones.in_conversation?.trim() ||
-      lead_phones.in_field?.trim() ||
-      lead_phones.in_contact?.trim();
-    if (!telefono) {
+    const telefonos = [
+      lead_phones.in_conversation,
+      lead_phones.in_lead_cf,
+      lead_phones.in_contact_cf,
+    ].filter(Boolean).map((t) => t!.trim());
+
+    if (!telefonos.length) {
       Logger.warn("[PatientService] No phone available from lead_phones");
       return { success: true, message: "No se pudo encontrar el paciente", patients: [] };
     }
 
-    let telefonoSinPrefijo = telefono;
-    try {
-      const phoneNumber = parsePhoneNumberFromString(telefono);
-      if (phoneNumber) telefonoSinPrefijo = phoneNumber.nationalNumber;
-      Logger.debug("[PatientService] Extracted national phone", {
+    const pacientesMap = new Map<number, PatientDTO>();
+
+    for (const tel of telefonos) {
+      let telefonoSinPrefijo = tel;
+      try {
+        const phoneNumber = parsePhoneNumberFromString(tel);
+        if (phoneNumber) telefonoSinPrefijo = phoneNumber.nationalNumber;
+        Logger.debug("[PatientService] Extracted national phone", {
+          telefonoSinPrefijo,
+        });
+      } catch (err) {
+        Logger.warn("[PatientService] Phone parse failed for lead phone", {
+          tel,
+          error: err,
+        });
+      }
+
+      const encontrados = await this.patientRepo.findByNationalPhoneAndClinic(
         telefonoSinPrefijo,
-      });
-    } catch (err) {
-      Logger.warn("[PatientService] Phone parse failed for lead phone", {
-        telefono,
-        error: err,
-      });
+        id_clinica
+      );
+
+      (encontrados || []).forEach((p) => pacientesMap.set(p.id_paciente, p));
     }
 
-    const pacientes = await this.patientRepo.findByNationalPhoneAndClinic(
-      telefonoSinPrefijo,
-      id_clinica
-    );
-    if (!pacientes || !pacientes.length) {
+    const pacientes = Array.from(pacientesMap.values());
+
+    if (!pacientes.length) {
       Logger.warn("[PatientService] Patients not found", {
-        telefonoSinPrefijo,
         id_clinica,
+        telefonos,
       });
       return {
         success: true,
