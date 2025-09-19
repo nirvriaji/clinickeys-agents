@@ -1,3 +1,5 @@
+// packages/core/src/application/services/AvailabilityDomainService/AvailabilityAdjuster.ts
+
 import { Disponibilidad } from "@clinickeys-agents/core/domain/availability";
 import { formatFechaLegible } from "@clinickeys-agents/core/utils";
 import { DateTime } from "luxon";
@@ -13,7 +15,7 @@ import { DateTime } from "luxon";
  * @param disponibilidades Array de disponibilidades
  * @param tiempoActual Fecha/hora actual en formato ISO
  */
-export function ajustarDisponibilidad(
+export function AvailabilityAdjuster(
   disponibilidades: Disponibilidad[],
   tiempoActual: string
 ): Disponibilidad[] {
@@ -65,4 +67,4 @@ export function ajustarDisponibilidad(
   return out;
 }
 
-export default ajustarDisponibilidad;
+export default AvailabilityAdjuster;

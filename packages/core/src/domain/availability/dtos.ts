@@ -108,7 +108,7 @@ export interface Ventana extends VentanaBase {
  * Slot final de disponibilidad que se expone a otras capas.
  */
 export interface SlotDisponibilidad {
-  fecha_cita: string;          // YYYY-MM-DD (compatibilidad con ajustarDisponibilidad)
+  fecha_cita: string;          // YYYY-MM-DD (compatibilidad con AvailabilityAdjuster)
   hora_inicio_minima: string;    // HH:mm:ss
   hora_inicio_maxima: string;    // HH:mm:ss
   id_medico: number;

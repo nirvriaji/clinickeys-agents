@@ -1,5 +1,3 @@
-export * from "./GetEstructuredAvailabilityRequestUseCase";
-export * from "./GetFinalAvailabilityResponseUseCase";
 export * from "./CheckReprogramAvailabilityUseCase";
 export * from "./CommunicateWithAssistantUseCase";
 export * from "./RescheduleAppointmentUseCase";

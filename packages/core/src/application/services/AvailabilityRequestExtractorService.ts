@@ -1,4 +1,4 @@
-// packages/core/src/infrastructure/availability/GetEstructuredAvailabilityRequestUseCase.ts
+// packages/core/src/application/usecases/AvailabilityRequestExtractorService.ts
 
 import { ConsultaCitaSchema } from "@clinickeys-agents/core/domain/availability";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
@@ -21,7 +21,7 @@ export interface AvailabilityFilterResult {
 // Clase Extractor
 // =============================
 
-export class GetEstructuredAvailabilityRequestUseCase {
+export class AvailabilityRequestExtractorService {
   private readonly openAIService: IOpenAIService;
   private static cachedSystemPrompt: string | null = null;
 
@@ -30,8 +30,8 @@ export class GetEstructuredAvailabilityRequestUseCase {
   }
 
   private async loadSystemPrompt(): Promise<string> {
-    if (GetEstructuredAvailabilityRequestUseCase.cachedSystemPrompt) {
-      return GetEstructuredAvailabilityRequestUseCase.cachedSystemPrompt;
+    if (AvailabilityRequestExtractorService.cachedSystemPrompt) {
+      return AvailabilityRequestExtractorService.cachedSystemPrompt;
     }
 
     const promptsPath = path.resolve(
@@ -41,16 +41,16 @@ export class GetEstructuredAvailabilityRequestUseCase {
 
     try {
       const content = await readFile(promptsPath, "utf8");
-      GetEstructuredAvailabilityRequestUseCase.cachedSystemPrompt = content;
+      AvailabilityRequestExtractorService.cachedSystemPrompt = content;
       return content;
     } catch (err) {
       Logger.error(
-        "[GetEstructuredAvailabilityRequestUseCase] No se pudo leer el prompt; usando fallback inline",
+        "[AvailabilityRequestExtractorService] No se pudo leer el prompt; usando fallback inline",
         err
       );
       const fallback =
         "Eres un extractor de filtros para disponibilidad de citas. Devuelves un objeto JSON con tratamientos, médicos, espacios y fechas.";
-      GetEstructuredAvailabilityRequestUseCase.cachedSystemPrompt = fallback;
+      AvailabilityRequestExtractorService.cachedSystemPrompt = fallback;
       return fallback;
     }
   }
@@ -93,14 +93,14 @@ Contexto:
       );
 
       Logger.info(
-        "[GetEstructuredAvailabilityRequestUseCase] Filtros obtenidos:",
+        "[AvailabilityRequestExtractorService] Filtros obtenidos:",
         JSON.stringify(filters)
       );
 
       return filters as AvailabilityFilterResult[];
     } catch (error) {
       Logger.error(
-        "[GetEstructuredAvailabilityRequestUseCase] Error al extraer filtros:",
+        "[AvailabilityRequestExtractorService] Error al extraer filtros:",
         error
       );
       return [];

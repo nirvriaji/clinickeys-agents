@@ -26,7 +26,7 @@ import {
   KommoService,
   OpenAIService,
   PatientService,
-  AvailabilityService,
+  AvailabilityDomainService,
   AppointmentService,
   PackBonoService
 } from "@clinickeys-agents/core/application/services";
@@ -43,7 +43,7 @@ import { EspacioRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/e
 import { PatientRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/patient";
 import { AppointmentRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/appointment";
 import { PresupuestoRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/presupuesto";
-import { GetEstructuredAvailabilityRequestUseCase } from '@clinickeys-agents/core/application/usecases';
+import { AvailabilityRequestExtractorService } from '@clinickeys-agents/core/application/services';
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { THREAD_ID, REMINDER_MESSAGE } from "@clinickeys-agents/core/utils";
 
@@ -109,9 +109,9 @@ export class LeadProcessorController {
       packBonoRepo,
     });
 
-    const getEstructuredAvailabilityRequestUC = new GetEstructuredAvailabilityRequestUseCase(openAIService);
+    const getEstructuredAvailabilityRequestUC = new AvailabilityRequestExtractorService(openAIService);
 
-    const availabilityService = new AvailabilityService(
+    const availabilityService = new AvailabilityDomainService(
       tratamientoRepo,
       medicoRepo,
       espacioRepo,

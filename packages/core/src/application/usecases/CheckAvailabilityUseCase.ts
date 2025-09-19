@@ -1,8 +1,8 @@
 // packages/core/src/application/usecases/CheckAvailabilityUseCase.ts
 
-import { GetEstructuredAvailabilityRequestUseCase, AvailabilityFilterResult } from '@clinickeys-agents/core/application/usecases';
+import { AvailabilityRequestExtractorService, AvailabilityFilterResult } from '@clinickeys-agents/core/application/services';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
-import { AvailabilityService, KommoService } from '@clinickeys-agents/core/application/services';
+import { AvailabilityDomainService, KommoService } from '@clinickeys-agents/core/application/services';
 import { ITratamientoRepository } from '@clinickeys-agents/core/domain/tratamiento';
 import { IMedicoRepository } from '@clinickeys-agents/core/domain/medico';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
@@ -43,8 +43,8 @@ interface StepDefinition {
 export class CheckAvailabilityUseCase {
   constructor(
     private readonly kommoService: KommoService,
-    private readonly availabilityService: AvailabilityService,
-    private readonly getEstructuredAvailabilityRequestUseCase: GetEstructuredAvailabilityRequestUseCase,
+    private readonly availabilityService: AvailabilityDomainService,
+    private readonly availabilityResponsePresenterService: AvailabilityRequestExtractorService,
     private readonly tratamientoRepositoryMySQL: ITratamientoRepository,
     private readonly medicoRepositoryMySQL: IMedicoRepository,
   ) { }
@@ -79,7 +79,7 @@ export class CheckAvailabilityUseCase {
     const nombresMedicos = medicos.map((m) => m.nombre_completo);
 
     Logger.debug('[CheckAvailability] Extrayendo filtros estructurados');
-    const structuredFilters = await this.getEstructuredAvailabilityRequestUseCase.extract(JSON.stringify(params), {
+    const structuredFilters = await this.availabilityResponsePresenterService.extract(JSON.stringify(params), {
       id_clinica: botConfig.clinicId,
       id_super_clinica: botConfig.superClinicId,
       tiempo_actual: tiempoActualDT.toISO() as string,

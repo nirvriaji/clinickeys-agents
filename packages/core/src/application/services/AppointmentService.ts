@@ -1,6 +1,6 @@
 // packages/core/src/application/services/AppointmentService.ts
 
-import { AppError } from '@clinickeys-agents/core/utils';
+import { AvailabilityError } from '@clinickeys-agents/core/domain/errors';
 
 import {
   IAppointmentRepository,
@@ -34,7 +34,7 @@ export class AppointmentService {
   async confirmAppointment(appointmentId: number, summary: string): Promise<any | undefined> {
     const appointment = await this.getAppointmentById(appointmentId);
     if (!appointment) {
-      throw new AppError({
+      throw new AvailabilityError({
         code: 'ERR_APPOINTMENT_NOT_FOUND',
         humanMessage: `No se encontró la cita con id ${appointmentId}`,
         context: { appointmentId }
@@ -55,7 +55,7 @@ export class AppointmentService {
   async unconfirmAppointment(appointmentId: number, summary: string): Promise<any | undefined> {
     const appointment = await this.getAppointmentById(appointmentId);
     if (!appointment) {
-      throw new AppError({
+      throw new AvailabilityError({
         code: 'ERR_APPOINTMENT_NOT_FOUND',
         humanMessage: `No se encontró la cita con id ${appointmentId}`,
         context: { appointmentId }
@@ -74,7 +74,7 @@ export class AppointmentService {
   async cancelAppointment(appointmentId: number, summary: string): Promise<any | undefined> {
     const appointment = await this.getAppointmentById(appointmentId);
     if (!appointment) {
-      throw new AppError({
+      throw new AvailabilityError({
         code: 'ERR_APPOINTMENT_NOT_FOUND',
         humanMessage: `No se encontró la cita con id ${appointmentId}`,
         context: { appointmentId }

@@ -1,10 +1,11 @@
 // packages/core/src/application/usecases/RecognizeUserIntentUseCase.ts
 
-import { AppError, getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
 import { BotConfigType, BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
+import { getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
 import { IOpenAIService } from '@clinickeys-agents/core/domain/openai';
 import { FetchPatientInfoUseCase } from './FetchPatientInfoUseCase';
+import { AvailabilityError } from '@clinickeys-agents/core/domain/errors';
 import type { DateTime } from 'luxon';
 
 type KnownIntent =
@@ -57,7 +58,7 @@ type IntentContext = {
   MENSAJE_USUARIO: string;
   TIMEZONE_SISTEMA: string;
   TIEMPO_LOCAL: string;
-  PACIENTES_ASOCIADOS_AL_TELEFONO: PatientInfo['patients'];
+  PACIENTES_ASOCIADOS_AL_INTERLOCUTOR: PatientInfo['patients'];
   CONTEXTO_PLACEHOLDERS: string;
 };
 
@@ -110,7 +111,7 @@ export class RecognizeUserIntentUseCase {
       MENSAJE_USUARIO,
       TIMEZONE_SISTEMA: timezone,
       TIEMPO_LOCAL: getClinicLocalTimestamp(tiempoActualDT, timezone),
-      PACIENTES_ASOCIADOS_AL_TELEFONO: patientInfo.patients ?? [],
+      PACIENTES_ASOCIADOS_AL_INTERLOCUTOR: patientInfo.patients ?? [],
       CONTEXTO_PLACEHOLDERS: botConfig?.placeholders ? JSON.stringify(botConfig.placeholders) : ""
     };
 
@@ -119,7 +120,7 @@ export class RecognizeUserIntentUseCase {
         MENSAJE_USUARIO,
         TIMEZONE_SISTEMA: timezone,
         TIEMPO_LOCAL: getClinicLocalTimestamp(tiempoActualDT, timezone),
-        PACIENTES_ASOCIADOS_AL_TELEFONO: patientInfo.patients ?? [],
+        PACIENTES_ASOCIADOS_AL_INTERLOCUTOR: patientInfo.patients ?? [],
       }
     });
 
@@ -146,7 +147,7 @@ export class RecognizeUserIntentUseCase {
         clinicId,
         leadId
       });
-      throw new AppError({
+      throw new AvailabilityError({
         code: 'ERR_OPENAI_INTENT',
         humanMessage: 'Ocurrió un problema al analizar la intención. Inténtalo nuevamente.',
         context: { error, speakingBotId, clinicId, leadId }

@@ -1,6 +1,6 @@
 import { BotConfigType } from '@clinickeys-agents/core/domain/botConfig';
 import { FetchPatientInfoUseCase } from './FetchPatientInfoUseCase';
-import { AppError } from '@clinickeys-agents/core/utils';
+import { AvailabilityError } from "@clinickeys-agents/core/domain/errors";
 
 export interface ProcessLeadInput {
   event: any;
@@ -47,7 +47,7 @@ export class ProcessLeadUseCase {
       !Array.isArray(body.leads.add) ||
       !body.leads.add.length
     ) {
-      throw new AppError({
+      throw new AvailabilityError({
         code: 'ERR_INVALID_WEBHOOK_EVENT',
         humanMessage: 'Invalid webhook event: missing leads info',
         context: { body }

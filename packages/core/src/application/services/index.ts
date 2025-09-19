@@ -1,3 +1,5 @@
+export * from "./AvailabilityResponsePresenterService";
+export * from "./AvailabilityRequestExtractorService";
 export * from "./AvailabilityService";
 export * from "./NotificationService";
 export * from "./AppointmentService";

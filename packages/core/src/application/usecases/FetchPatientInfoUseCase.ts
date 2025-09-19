@@ -1,10 +1,11 @@
 // packages/core/src/application/usecases/FetchPatientInfoUseCase.ts
 
-import { AppError, CHAT_BOT_CUSTOM_FIELDS, PATIENT_PHONE } from '@clinickeys-agents/core/utils';
+import { CHAT_BOT_CUSTOM_FIELDS, PATIENT_PHONE } from '@clinickeys-agents/core/utils';
 import { PatientService } from '@clinickeys-agents/core/application/services';
-import { AppointmentDTO } from '@clinickeys-agents/core/domain/appointment';
 import { PackBonoConUsoDTO } from '@clinickeys-agents/core/domain/packBono';
+import { AppointmentDTO } from '@clinickeys-agents/core/domain/appointment';
 import { PresupuestoDTO } from '@clinickeys-agents/core/domain/presupuesto';
+import { AvailabilityError } from '@clinickeys-agents/core/domain/errors';
 import { BotConfigType } from '@clinickeys-agents/core/domain/botConfig';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { PatientDTO } from '@clinickeys-agents/core/domain/patient';
@@ -82,7 +83,7 @@ export class FetchPatientInfoUseCase {
 
     if (!patientInfo || !patientInfo.patients?.length) {
       Logger.error('[FetchPatientInfo] No se encontró información del paciente', { leadId });
-      throw new AppError({
+      throw new AvailabilityError({
         code: 'ERR_PATIENT_INFO_NOT_FOUND',
         humanMessage: 'Patient info not found for this lead/contact.',
         context: { botConfigId, clinicSource, clinicId, leadId }

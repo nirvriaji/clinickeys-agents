@@ -1,6 +1,6 @@
-// packages/core/src/utils/AppError.ts
+// packages/core/src/application/services/AvailabilityDomainService/AvailabilityError.ts
 
-export class AppError extends Error {
+export class AvailabilityError extends Error {
   code: string;
   context: Record<string, any>;
   isLogOnly: boolean;
@@ -17,7 +17,7 @@ export class AppError extends Error {
     isLogOnly?: boolean;
   }) {
     super(humanMessage);
-    this.name = "AppError";
+    this.name = "AvailabilityError";
     this.code = code;
     this.context = context;
     this.isLogOnly = isLogOnly;
@@ -48,7 +48,7 @@ export class AppError extends Error {
   // -------------------
 
   static FALTA_ID_CLINICA() {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR100",
       humanMessage:
         "Falta el ID de la clínica en la solicitud. Por favor avisar al equipo de desarrollo.",
@@ -56,7 +56,7 @@ export class AppError extends Error {
   }
 
   static CLINICA_NO_ENCONTRADA(id_clinica: number) {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR202",
       humanMessage: `No se encontró la clínica con ID ${id_clinica}. Por favor, verifique la información o contacte al soporte.`,
       context: { id_clinica },
@@ -64,7 +64,7 @@ export class AppError extends Error {
   }
 
   static NINGUN_TRATAMIENTO_SELECCIONADO() {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR101",
       humanMessage:
         "No se ha detectado ningún tratamiento en la solicitud. Por favor avisar al equipo de desarrollo.",
@@ -72,7 +72,7 @@ export class AppError extends Error {
   }
 
   static NINGUNA_FECHA_SELECCIONADA() {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR102",
       humanMessage:
         "No se ha detectado ninguna fecha en la solicitud. Por favor avisar al equipo de desarrollo.",
@@ -80,7 +80,7 @@ export class AppError extends Error {
   }
 
   static TRATAMIENTOS_NO_ENCONTRADOS(tratamientos: string[] = []) {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR200",
       humanMessage: `Los tratamientos en la solicitud no existen en la base de datos: ${tratamientos.join(
         ", "
@@ -90,7 +90,7 @@ export class AppError extends Error {
   }
 
   static TRATAMIENTOS_NO_EXACTOS(tratamientos: string[] = []) {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR201",
       humanMessage: `Ninguno de los tratamientos proporcionados coincide exactamente en la base de datos: ${tratamientos.join(
         ", "
@@ -100,7 +100,7 @@ export class AppError extends Error {
   }
 
   static NINGUN_MEDICO_ENCONTRADO(tratamientos: string[] = []) {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR202",
       humanMessage: `No hay médicos configurados para el tratamiento(s) "${tratamientos.join(
         ", "
@@ -111,7 +111,7 @@ export class AppError extends Error {
   }
 
   static MEDICOS_SOLICITADOS_NO_ENCONTRADOS(medicos: string[] = []) {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR203",
       humanMessage: `Los médicos solicitados no se encontraron: "${medicos.join(
         ", "
@@ -124,7 +124,7 @@ export class AppError extends Error {
     medicos: string[] = [],
     tratamientos: string[] = []
   ) {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR203",
       humanMessage: `El médico(s) "${medicos.join(
         ", "
@@ -138,7 +138,7 @@ export class AppError extends Error {
     tratamientos: string[] = [],
     medicos: string[] = []
   ) {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR203",
       humanMessage: `No hay espacios disponibles para el tratamiento(s) "${tratamientos.join(
         ", "
@@ -153,7 +153,7 @@ export class AppError extends Error {
   // -------------------
 
   static ERROR_CONSULTA_SQL(errorOriginal: Error) {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR204",
       humanMessage: `Ha ocurrido un error interno al consultar la base de datos. Detalle: ${errorOriginal.message}`,
       context: { errorOriginal },
@@ -161,7 +161,7 @@ export class AppError extends Error {
   }
 
   static NO_PROG_MEDICOS(medicos: string[] = [], fechas: string[] = []) {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR210",
       humanMessage: `No se encontró programación para los médicos [${medicos.join(
         ", "
@@ -172,7 +172,7 @@ export class AppError extends Error {
   }
 
   static NO_PROG_ESPACIOS(espacios: string[] = [], fechas: string[] = []) {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR211",
       humanMessage: `No se encontró programación de espacios para [${espacios.join(
         ", "
@@ -210,7 +210,7 @@ export class AppError extends Error {
       return horasStr ? `${fechaStr} ${horasStr}` : fechaStr;
     });
     const fechasStr = fechasFormateadas.join(", ");
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR300",
       humanMessage: `No se encontraron horarios disponibles para los tratamientos [${tratamientosStr}] en las siguientes fechas: ${fechasStr}.`,
       context: { tratamientos, fechas },
@@ -219,7 +219,7 @@ export class AppError extends Error {
   }
 
   static ERROR_CALCULO_DISPONIBILIDAD() {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR301",
       humanMessage:
         "Ocurrió un error al calcular la disponibilidad. Por favor avisar al equipo de desarrollo.",
@@ -227,7 +227,7 @@ export class AppError extends Error {
   }
 
   static CONEXION_BD() {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR400",
       humanMessage:
         "Se ha perdido la conexión a la base de datos. Por favor avisar al equipo de desarrollo.",
@@ -235,7 +235,7 @@ export class AppError extends Error {
   }
 
   static TIEMPO_ESPERA_BD() {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR401",
       humanMessage:
         "La consulta a la base de datos tardó demasiado. Por favor avisar al equipo de desarrollo.",
@@ -243,7 +243,7 @@ export class AppError extends Error {
   }
 
   static ERROR_INTERNO_SERVIDOR() {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR500",
       humanMessage:
         "Error interno en el servidor. Por favor avisar al equipo de desarrollo.",
@@ -251,7 +251,7 @@ export class AppError extends Error {
   }
 
   static ERROR_DESCONOCIDO(error: any) {
-    return new AppError({
+    return new AvailabilityError({
       code: "ERR501",
       humanMessage: `Error desconocido: ${error.message}. Por favor avisar al equipo de desarrollo.`,
       context: { error },

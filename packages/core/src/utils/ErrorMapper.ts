@@ -1,9 +1,9 @@
 // packages/core/src/utils/errorMapper.ts
 
-import { AppError } from "../application/services/AvailabilityService/AppError";
+import { AvailabilityError } from "@clinickeys-agents/core/domain/errors";
 
 /**
- * Mapea cualquier error recibido (AppError, Error nativo, error de infra, etc)
+ * Mapea cualquier error recibido (AvailabilityError, Error nativo, error de infra, etc)
  * a un objeto estandarizado para API/UI y logging.
  *
  * @param error El error capturado (puede ser de cualquier tipo)
@@ -15,8 +15,8 @@ export function ErrorMapper(error: unknown): {
   message: string;
   context: Record<string, any>;
 } {
-  // Si es una instancia de AppError, usar su mapeo.
-  if (error instanceof AppError) {
+  // Si es una instancia de AvailabilityError, usar su mapeo.
+  if (error instanceof AvailabilityError) {
     return {
       success: false,
       code: error.code,

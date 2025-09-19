@@ -13,10 +13,10 @@ import path from 'path';
 import {
   KommoService,
   AppointmentService,
-  AvailabilityService,
+  AvailabilityDomainService,
   OpenAIService,
 } from '@clinickeys-agents/core/application/services';
-import { GetEstructuredAvailabilityRequestUseCase, AvailabilityFilterResult } from '@clinickeys-agents/core/application/usecases';
+import { AvailabilityRequestExtractorService, AvailabilityFilterResult } from '@clinickeys-agents/core/application/services';
 
 interface RescheduleAppointmentInput {
   botConfig: BotConfigDTO;
@@ -60,9 +60,9 @@ export class RescheduleAppointmentUseCase {
   constructor(
     private readonly kommoService: KommoService,
     private readonly appointmentService: AppointmentService,
-    private readonly availabilityService: AvailabilityService,
+    private readonly availabilityService: AvailabilityDomainService,
     private readonly openAIService: OpenAIService,
-    private readonly getEstructuredAvailabilityRequestUseCase: GetEstructuredAvailabilityRequestUseCase,
+    private readonly availabilityResponsePresenterService: AvailabilityRequestExtractorService,
     private readonly tratamientoRepositoryMySQL: ITratamientoRepository,
     private readonly medicoRepositoryMySQL: IMedicoRepository,
   ) { }
@@ -96,7 +96,7 @@ export class RescheduleAppointmentUseCase {
 
     // Obtener filtros estructurados
     Logger.debug('[RescheduleAppointment] Extrayendo filtros estructurados');
-    const structuredFilters = await this.getEstructuredAvailabilityRequestUseCase.extract(JSON.stringify(params), {
+    const structuredFilters = await this.availabilityResponsePresenterService.extract(JSON.stringify(params), {
       id_clinica: botConfig.clinicId,
       id_super_clinica: botConfig.superClinicId,
       tiempo_actual: tiempoActualDT.toISO() as string,

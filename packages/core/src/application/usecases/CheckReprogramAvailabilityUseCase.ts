@@ -1,14 +1,14 @@
 // packages/core/src/application/usecases/CheckReprogramAvailabilityUseCase.ts
 
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
-import { AvailabilityService, KommoService } from '@clinickeys-agents/core/application/services';
+import { AvailabilityDomainService, KommoService } from '@clinickeys-agents/core/application/services';
 import { ITratamientoRepository } from '@clinickeys-agents/core/domain/tratamiento';
 import { IMedicoRepository } from '@clinickeys-agents/core/domain/medico';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
 import { DateTime } from 'luxon';
-import { GetEstructuredAvailabilityRequestUseCase, AvailabilityFilterResult } from '@clinickeys-agents/core/application/usecases';
+import { AvailabilityRequestExtractorService, AvailabilityFilterResult } from '@clinickeys-agents/core/application/services';
 
 interface CheckReprogramAvailabilityInput {
   botConfig: BotConfigDTO;
@@ -50,8 +50,8 @@ interface ReprogramStepDefinition {
 export class CheckReprogramAvailabilityUseCase {
   constructor(
     private readonly kommoService: KommoService,
-    private readonly availabilityService: AvailabilityService,
-    private readonly getEstructuredAvailabilityRequestUseCase: GetEstructuredAvailabilityRequestUseCase,
+    private readonly availabilityService: AvailabilityDomainService,
+    private readonly availabilityResponsePresenterService: AvailabilityRequestExtractorService,
     private readonly tratamientoRepositoryMySQL: ITratamientoRepository,
     private readonly medicoRepositoryMySQL: IMedicoRepository,
   ) { }
@@ -120,7 +120,7 @@ export class CheckReprogramAvailabilityUseCase {
 
     // 2. Obtener filtros estructurados desde el extractor
     Logger.debug('[CheckReprogramAvailability] Extrayendo filtros estructurados');
-    const structuredFilters = await this.getEstructuredAvailabilityRequestUseCase.extract(JSON.stringify(params), {
+    const structuredFilters = await this.availabilityResponsePresenterService.extract(JSON.stringify(params), {
       id_clinica: botConfig.clinicId,
       id_super_clinica: botConfig.superClinicId,
       tiempo_actual: tiempoActualDT.toISO() as string,

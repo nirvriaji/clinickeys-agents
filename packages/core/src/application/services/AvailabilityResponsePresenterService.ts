@@ -1,4 +1,4 @@
-// packages/core/src/infrastructure/availability/GetFinalAvailabilityResponseUseCase.ts
+// packages/core/src/application/usecases/AvailabilityResponsePresenterService.ts
 
 import { PresentacionYDisponibilidades, PresentacionYDisponibilidadesSchema } from "@clinickeys-agents/core/domain/availability";
 import { SlotDisponibilidad } from "@clinickeys-agents/core/domain/availability";
@@ -26,7 +26,7 @@ async function loadSystemPrompt(): Promise<string> {
     return cachedSystemPrompt;
   } catch (err) {
     Logger.error(
-      "[GetFinalAvailabilityResponseUseCase] No se pudo leer el .md del prompt; usando fallback inline",
+      "[AvailabilityResponsePresenterService] No se pudo leer el .md del prompt; usando fallback inline",
       err
     );
     cachedSystemPrompt =
@@ -39,7 +39,7 @@ async function loadSystemPrompt(): Promise<string> {
 // Main function
 // =============================
 
-export async function GetFinalAvailabilityResponseUseCase(
+export async function AvailabilityResponsePresenterService(
   openAIService: IOpenAIService,
   raw_disponibilidades: SlotDisponibilidad[],
   contexto: string
@@ -75,7 +75,7 @@ export async function GetFinalAvailabilityResponseUseCase(
 
     if (!presentacion) {
       Logger.warn(
-        "[GetFinalAvailabilityResponseUseCase] No se pudo parsear respuesta de OpenAI, devolviendo fallback"
+        "[AvailabilityResponsePresenterService] No se pudo parsear respuesta de OpenAI, devolviendo fallback"
       );
       return {
         presentacion:
@@ -98,7 +98,7 @@ export async function GetFinalAvailabilityResponseUseCase(
     };
   } catch (error) {
     Logger.error(
-      "[GetFinalAvailabilityResponseUseCase] Error al procesar disponibilidades:",
+      "[AvailabilityResponsePresenterService] Error al procesar disponibilidades:",
       error
     );
     return {

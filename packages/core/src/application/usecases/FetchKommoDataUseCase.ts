@@ -1,8 +1,9 @@
 import { KommoCustomFieldDefinitionBase, KommoContactResponse, KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { BotConfigType, BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
-import { normalizeEntityCustomFields, AppError } from '@clinickeys-agents/core/utils';
 import { GetBotConfigUseCase } from '@clinickeys-agents/core/application/usecases';
+import { normalizeEntityCustomFields } from '@clinickeys-agents/core/utils';
 import { KommoService } from '@clinickeys-agents/core/application/services';
+import { AvailabilityError } from "@clinickeys-agents/core/domain/errors";
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 
 export interface FetchKommoDataInput {
@@ -42,7 +43,7 @@ export class FetchKommoDataUseCase {
 
     if (!botConfig) {
       Logger.error('[FetchKommoData] BotConfig no encontrado', { botConfigId, clinicSource, clinicId });
-      throw new AppError({
+      throw new AvailabilityError({
         code: 'ERR_BOTCONFIG_NOT_FOUND',
         humanMessage: `Bot config not found for botConfigId: ${botConfigId}, clinicSource: ${clinicSource}, clinicId: ${clinicId}`,
         context: { botConfigId, clinicSource, clinicId },
@@ -55,7 +56,7 @@ export class FetchKommoDataUseCase {
     const leadData = await this.kommoService.getLeadById(leadId);
     if (!leadData) {
       Logger.error('[FetchKommoData] Lead no encontrado', { leadId });
-      throw new AppError({
+      throw new AvailabilityError({
         code: 'ERR_LEAD_NOT_FOUND',
         humanMessage: `Lead not found for ID: ${leadId}`,
         context: { leadId },
@@ -67,7 +68,7 @@ export class FetchKommoDataUseCase {
     Logger.debug('[FetchKommoData] Contactos asociados al lead', { totalContacts: contacts.length });
     if (!contacts.length) {
       Logger.error('[FetchKommoData] Lead no tiene contactos', { leadId });
-      throw new AppError({
+      throw new AvailabilityError({
         code: 'ERR_LEAD_NO_CONTACTS',
         humanMessage: 'Lead has no contacts',
         context: { leadId, leadData },
@@ -79,7 +80,7 @@ export class FetchKommoDataUseCase {
     const contactData = await this.kommoService.getContactById(contactId);
     if (!contactData) {
       Logger.error('[FetchKommoData] Contacto sin datos', { contactId });
-      throw new AppError({
+      throw new AvailabilityError({
         code: 'ERR_NO_CONTACT_DATA',
         humanMessage: 'Contact has no data',
         context: { contactId },

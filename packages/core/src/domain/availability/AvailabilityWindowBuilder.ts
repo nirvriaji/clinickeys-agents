@@ -1,4 +1,4 @@
-// packages/core/src/infrastructure/availability/availabilityUnified.ts
+// packages/core/src/domain/availability/AvailabilityWindowBuilder.ts
 
 import { Logger } from "@clinickeys-agents/core/infrastructure/external/Logger";
 import {
@@ -18,7 +18,7 @@ import {
   isSameYMD,
   intersectRange,
   subtractRanges,
-} from "../../../utils/timeUtils";
+} from "../../utils/timeUtils";
 
 // =============================
 // Builders (raw windows)
@@ -233,7 +233,7 @@ export function windowsToSlots(ventanas: Ventana[]): SlotDisponibilidad[] {
 // Orquestador principal
 // =============================
 
-export function calcularDisponibilidadUnificada(input: {
+export function AvailabilityWindowBuilder(input: {
   tratamientos: TratamientoEntrada[];
   citas_programadas: CitaProgramadaRow[];
   prog_medicos: ProgramacionMedicoRow[];

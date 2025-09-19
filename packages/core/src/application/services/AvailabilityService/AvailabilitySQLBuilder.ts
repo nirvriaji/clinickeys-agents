@@ -1,3 +1,5 @@
+// packages/core/src/application/services/AvailabilityDomainService/availabilityHelpers.ts
+
 import { CITAS_ESTADOS_BLOQUEO } from "@clinickeys-agents/core/utils";
 
 // =============================
@@ -80,7 +82,7 @@ function generarConsultaSQL({
 // Main
 // =============================
 
-export function generarConsultasSQL({
+export function AvailabilitySQLBuilder({
   fechas,
   id_medicos,
   id_espacios,

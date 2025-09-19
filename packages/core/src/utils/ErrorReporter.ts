@@ -1,7 +1,7 @@
 // packages/core/src/utils/ErrorReporter.ts
 
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
-import { AppError } from "../application/services/AvailabilityService/AppError";
+import { AvailabilityError } from "@clinickeys-agents/core/domain/errors";
 
 /**
  * Servicio centralizado para registrar y reportar errores críticos del sistema.
@@ -14,8 +14,8 @@ export class ErrorReporter {
    * @param contexto Contexto adicional relevante (opcional)
    */
   static report(error: unknown, contexto?: Record<string, any>): void {
-    // Si es AppError, log personalizado
-    if (error instanceof AppError) {
+    // Si es AvailabilityError, log personalizado
+    if (error instanceof AvailabilityError) {
       Logger.error(error.toString(), contexto ?? error.context);
       // Aquí puedes enviar el error a Sentry/Datadog, etc., si se desea
       return;

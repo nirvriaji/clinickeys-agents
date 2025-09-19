@@ -1,4 +1,6 @@
-import { calcularDisponibilidadUnificada } from "./availabilityUnified";
+// packages/core/src/application/services/AvailabilityDomainService/AvailabilityCalculator.ts
+
+import { AvailabilityWindowBuilder } from "@clinickeys-agents/core/domain/availability";
 
 import {
   SlotDisponibilidad,
@@ -17,7 +19,7 @@ export interface CalcularDisponibilidadInput {
   prog_medico_espacio: ProgramacionMedicoEspacioRow[];
 }
 
-export function calcularDisponibilidad(
+export function AvailabilityCalculator(
   entrada: CalcularDisponibilidadInput
 ): SlotDisponibilidad[] {
   const tratamientos = entrada.tratamientos ?? [];
@@ -26,7 +28,7 @@ export function calcularDisponibilidad(
   const prog_espacios = entrada.prog_espacios ?? [];
   const prog_medico_espacio = entrada.prog_medico_espacio ?? [];
 
-  const slots: SlotDisponibilidad[] = calcularDisponibilidadUnificada({
+  const slots: SlotDisponibilidad[] = AvailabilityWindowBuilder({
     tratamientos,
     citas_programadas,
     prog_medicos,
@@ -37,4 +39,4 @@ export function calcularDisponibilidad(
   return slots;
 }
 
-export default calcularDisponibilidad;
+export default AvailabilityCalculator;

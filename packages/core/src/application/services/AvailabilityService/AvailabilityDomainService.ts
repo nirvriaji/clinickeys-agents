@@ -1,25 +1,21 @@
-// packages/core/src/application/services/AvailabilityService.ts
+// packages/core/src/application/services/AvailabilityDomainService/Service.ts
 
-import {
-  generarConsultasSQL,
-  calcularDisponibilidad,
-  ajustarDisponibilidad,
-  AppError,
-} from "@clinickeys-agents/core/application/services";
+import { AvailabilityRequestExtractorService, AvailabilityResponsePresenterService } from "@clinickeys-agents/core/application/services";
+import { ITratamientoRepository, TratamientoSearchResultDTO } from "@clinickeys-agents/core/domain/tratamiento";
+import { AvailabilityCalculator, AvailabilityAdjuster } from "@clinickeys-agents/core/domain/availability";
 import { ejecutarConReintento } from "@clinickeys-agents/core/infrastructure/helpers";
-import { ITratamientoRepository } from "@clinickeys-agents/core/domain/tratamiento";
+import { AvailabilitySQLBuilder } from "@clinickeys-agents/core/application/services";
 import { IEspacioRepository } from "@clinickeys-agents/core/domain/espacio";
 import { IMedicoRepository } from "@clinickeys-agents/core/domain/medico";
+import { EspacioBasicDTO } from "@clinickeys-agents/core/domain/espacio";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
+import { AvailabilityError } from "@clinickeys-agents/core/domain/errors";
 import {
   TratamientoEntrada,
   MedicoEntrada,
   EspacioEntrada,
   SlotDisponibilidad,
 } from "@clinickeys-agents/core/domain/availability";
-import { EspacioBasicDTO } from "@clinickeys-agents/core/domain/espacio";
-import { GetEstructuredAvailabilityRequestUseCase, GetFinalAvailabilityResponseUseCase } from "@clinickeys-agents/core/application/usecases";
-import { TratamientoSearchResultDTO } from "@clinickeys-agents/core/domain/tratamiento";
 
 interface GetAvailabilityInfoInput {
   leadId?: number;
@@ -52,29 +48,29 @@ export interface AppointmentAvailabilityResult {
   analisis_agenda: SlotDisponibilidad[];
 }
 
-export class AvailabilityService {
+export class AvailabilityDomainService {
   private treatmentRepo: ITratamientoRepository;
   private doctorRepo: IMedicoRepository;
   private spaceRepo: IEspacioRepository;
-  private readonly getEstructuredAvailabilityRequestUseCase: GetEstructuredAvailabilityRequestUseCase;
+  private readonly availabilityResponsePresenterService: AvailabilityRequestExtractorService;
 
   constructor(
     treatmentRepo: ITratamientoRepository,
     doctorRepo: IMedicoRepository,
     spaceRepo: IEspacioRepository,
-    getEstructuredAvailabilityRequestUseCase: GetEstructuredAvailabilityRequestUseCase
+    availabilityResponsePresenterService: AvailabilityRequestExtractorService
   ) {
     this.treatmentRepo = treatmentRepo;
     this.doctorRepo = doctorRepo;
     this.spaceRepo = spaceRepo;
-    this.getEstructuredAvailabilityRequestUseCase = getEstructuredAvailabilityRequestUseCase;
+    this.availabilityResponsePresenterService = availabilityResponsePresenterService;
   }
 
   async fetchTreatmentsWithDoctorsAndSpaces({
     clinicId,
     tratamientosConsultados,
   }: GetTreatmentsDataInput): Promise<TratamientoEntrada[]> {
-    Logger.info("[AvailabilityService] Starting tratamiento search...");
+    Logger.info("[AvailabilityDomainService] Starting tratamiento search...");
     const treatmentsFound: TratamientoSearchResultDTO[] =
       await this.treatmentRepo.findTreatmentsByNamesWithRelevance(
         tratamientosConsultados,
@@ -83,7 +79,7 @@ export class AvailabilityService {
 
     if (!treatmentsFound.length) {
       Logger.warn("No treatments found in the database.");
-      throw AppError.TRATAMIENTOS_NO_ENCONTRADOS(tratamientosConsultados);
+      throw AvailabilityError.TRATAMIENTOS_NO_ENCONTRADOS(tratamientosConsultados);
     }
 
     const tratamientosExactos = treatmentsFound.filter(
@@ -91,7 +87,7 @@ export class AvailabilityService {
     );
     if (!tratamientosExactos.length) {
       Logger.warn("None of the treatments is an exact match.");
-      throw AppError.TRATAMIENTOS_NO_EXACTOS(tratamientosConsultados);
+      throw AvailabilityError.TRATAMIENTOS_NO_EXACTOS(tratamientosConsultados);
     }
 
     const result: TratamientoEntrada[] = await Promise.all(
@@ -116,7 +112,7 @@ export class AvailabilityService {
                   `Error getting espacios for medico ${medico.nombre_completo}:`,
                   error
                 );
-                throw AppError.ERROR_CONSULTA_SQL(
+                throw AvailabilityError.ERROR_CONSULTA_SQL(
                   error instanceof Error ? error : new Error(String(error))
                 );
               }
@@ -138,7 +134,7 @@ export class AvailabilityService {
             `Error getting medicos for ${tratamiento.nombre_tratamiento}:`,
             error
           );
-          throw AppError.ERROR_CONSULTA_SQL(
+          throw AvailabilityError.ERROR_CONSULTA_SQL(
             error instanceof Error ? error : new Error(String(error))
           );
         }
@@ -170,12 +166,12 @@ export class AvailabilityService {
         tiempo_actual,
       } = input;
 
-      if (!clinicId) throw AppError.FALTA_ID_CLINICA();
+      if (!clinicId) throw AvailabilityError.FALTA_ID_CLINICA();
       if (!Array.isArray(tratamientosConsultados) || !tratamientosConsultados.length)
-        throw AppError.NINGUN_TRATAMIENTO_SELECCIONADO();
+        throw AvailabilityError.NINGUN_TRATAMIENTO_SELECCIONADO();
       if (!Array.isArray(fechasSeleccionadas) || !fechasSeleccionadas.length)
-        throw AppError.NINGUNA_FECHA_SELECCIONADA();
-      Logger.info("[AvailabilityService] Input data processed correctly.");
+        throw AvailabilityError.NINGUNA_FECHA_SELECCIONADA();
+      Logger.info("[AvailabilityDomainService] Input data processed correctly.");
 
       let datosTratamientos = await this.fetchTreatmentsWithDoctorsAndSpaces({
         clinicId,
@@ -193,7 +189,7 @@ export class AvailabilityService {
         );
         idsMedicosSolicitados = rows.map((f) => f.id_medico);
         if (!idsMedicosSolicitados.length)
-          throw AppError.MEDICOS_SOLICITADOS_NO_ENCONTRADOS(medicosConsultados);
+          throw AvailabilityError.MEDICOS_SOLICITADOS_NO_ENCONTRADOS(medicosConsultados);
 
         const setIds = new Set(idsMedicosSolicitados);
         tratamientosFiltrados = datosTratamientos
@@ -204,7 +200,7 @@ export class AvailabilityService {
           .filter((t) => t.medicos.length > 0);
 
         if (!tratamientosFiltrados.length) {
-          throw AppError.MEDICO_NO_ASOCIADO_A_TRATAMIENTO(
+          throw AvailabilityError.MEDICO_NO_ASOCIADO_A_TRATAMIENTO(
             medicosConsultados,
             tratamientosConsultados
           );
@@ -235,12 +231,12 @@ export class AvailabilityService {
       const idsMedicos = idsMedicosSolicitados.length
         ? idsMedicosSolicitados
         : [
-            ...new Set(
-              tratamientosFiltrados.flatMap((t) =>
-                t.medicos.map((m) => m.id_medico)
-              )
-            ),
-          ];
+          ...new Set(
+            tratamientosFiltrados.flatMap((t) =>
+              t.medicos.map((m) => m.id_medico)
+            )
+          ),
+        ];
 
       const idsEspacios = [
         ...new Set(
@@ -255,21 +251,21 @@ export class AvailabilityService {
           (t) => t.tratamiento.nombre_tratamiento
         );
         if (medicosConsultados.length)
-          throw AppError.MEDICO_NO_ASOCIADO_A_TRATAMIENTO(
+          throw AvailabilityError.MEDICO_NO_ASOCIADO_A_TRATAMIENTO(
             medicosConsultados,
             tratamientosConsultados
           );
-        else throw AppError.NINGUN_MEDICO_ENCONTRADO(treatmentNamesOut);
+        else throw AvailabilityError.NINGUN_MEDICO_ENCONTRADO(treatmentNamesOut);
       }
 
       if (!idsEspacios.length) {
-        throw AppError.NINGUN_ESPACIO_ENCONTRADO(
+        throw AvailabilityError.NINGUN_ESPACIO_ENCONTRADO(
           datosTratamientos.map((t) => t.tratamiento.nombre_tratamiento),
           idsMedicos.map(String)
         );
       }
 
-      const consultasSQL = generarConsultasSQL({
+      const consultasSQL = AvailabilitySQLBuilder({
         fechas: fechasSeleccionadas,
         id_medicos: idsMedicos,
         id_espacios: idsEspacios,
@@ -296,25 +292,25 @@ export class AvailabilityService {
         );
       } catch (error) {
         Logger.error("Error executing SQL queries:", error);
-        throw AppError.ERROR_CONSULTA_SQL(
+        throw AvailabilityError.ERROR_CONSULTA_SQL(
           error instanceof Error ? error : new Error(String(error))
         );
       }
 
       if (!progMedicos?.length) {
-        throw AppError.NO_PROG_MEDICOS(
+        throw AvailabilityError.NO_PROG_MEDICOS(
           idsMedicos.map(String),
           fechasSeleccionadas.map((f) => f.fecha)
         );
       }
       if (!progEspacios?.length) {
-        throw AppError.NO_PROG_ESPACIOS(
+        throw AvailabilityError.NO_PROG_ESPACIOS(
           idsEspacios.map(String),
           fechasSeleccionadas.map((f) => f.fecha)
         );
       }
 
-      let availability = calcularDisponibilidad({
+      let availability = AvailabilityCalculator({
         tratamientos: tratamientosFiltrados,
         citas_programadas: citas,
         prog_medicos: progMedicos,
@@ -322,19 +318,19 @@ export class AvailabilityService {
         prog_medico_espacio: progMedicoEspacio,
       });
 
-      const adjustedAvailability = ajustarDisponibilidad(
+      const adjustedAvailability = AvailabilityAdjuster(
         availability,
         tiempo_actual
       );
       if (!adjustedAvailability.length) {
-        throw AppError.SIN_HORARIOS_DISPONIBLES(
+        throw AvailabilityError.SIN_HORARIOS_DISPONIBLES(
           tratamientosConsultados,
           fechasSeleccionadas
         );
       }
 
       Logger.info(
-        "[AvailabilityService] Final adjusted availability:",
+        "[AvailabilityDomainService] Final adjusted availability:",
         adjustedAvailability
       );
       return {
@@ -344,7 +340,7 @@ export class AvailabilityService {
       };
     } catch (e) {
       Logger.error("Error in getAppointmentAvailability:", e);
-      if (e instanceof AppError) {
+      if (e instanceof AvailabilityError) {
         if (e.isLogOnly) {
           return {
             success: true,
@@ -359,7 +355,7 @@ export class AvailabilityService {
         };
       }
       Logger.error("Unhandled error:", e);
-      const ed = AppError.ERROR_DESCONOCIDO(e);
+      const ed = AvailabilityError.ERROR_DESCONOCIDO(e);
       return {
         success: false,
         message: ed.message,
@@ -397,7 +393,7 @@ export class AvailabilityService {
     );
     const nombresMedicos = medicos.map((m) => m.nombre_completo);
 
-    const filters = await this.getEstructuredAvailabilityRequestUseCase.extract(mensajeBotParlante, {
+    const filters = await this.availabilityResponsePresenterService.extract(mensajeBotParlante, {
       id_clinica,
       id_super_clinica,
       tiempo_actual,
@@ -441,8 +437,8 @@ export class AvailabilityService {
         ...s,
       }));
 
-      const result = await GetFinalAvailabilityResponseUseCase(
-        this.getEstructuredAvailabilityRequestUseCase["openAIService"],
+      const result = await AvailabilityResponsePresenterService(
+        this.availabilityResponsePresenterService["openAIService"],
         presenterSlots,
         contextoDisponibilidades
       );
