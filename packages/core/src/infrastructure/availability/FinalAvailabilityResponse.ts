@@ -1,4 +1,4 @@
-// packages/core/src/infrastructure/availability/presentAndFilterAvailability.ts
+// packages/core/src/infrastructure/availability/finalAvailabilityResponse.ts
 
 import { PresentacionYDisponibilidades, PresentacionYDisponibilidadesSchema } from "@clinickeys-agents/core/domain/availability";
 import { SlotDisponibilidad } from "@clinickeys-agents/core/domain/availability";
@@ -26,7 +26,7 @@ async function loadSystemPrompt(): Promise<string> {
     return cachedSystemPrompt;
   } catch (err) {
     Logger.error(
-      "[presentAndFilterAvailability] No se pudo leer el .md del prompt; usando fallback inline",
+      "[finalAvailabilityResponse] No se pudo leer el .md del prompt; usando fallback inline",
       err
     );
     cachedSystemPrompt =
@@ -39,7 +39,7 @@ async function loadSystemPrompt(): Promise<string> {
 // Main function
 // =============================
 
-export async function presentAndFilterAvailability(
+export async function finalAvailabilityResponse(
   openAIService: IOpenAIService,
   raw_disponibilidades: SlotDisponibilidad[],
   contexto: string
@@ -75,7 +75,7 @@ export async function presentAndFilterAvailability(
 
     if (!presentacion) {
       Logger.warn(
-        "[presentAndFilterAvailability] No se pudo parsear respuesta de OpenAI, devolviendo fallback"
+        "[finalAvailabilityResponse] No se pudo parsear respuesta de OpenAI, devolviendo fallback"
       );
       return {
         presentacion:
@@ -98,7 +98,7 @@ export async function presentAndFilterAvailability(
     };
   } catch (error) {
     Logger.error(
-      "[presentAndFilterAvailability] Error al procesar disponibilidades:",
+      "[finalAvailabilityResponse] Error al procesar disponibilidades:",
       error
     );
     return {

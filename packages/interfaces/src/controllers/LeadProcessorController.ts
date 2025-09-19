@@ -43,7 +43,7 @@ import { EspacioRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/e
 import { PatientRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/patient";
 import { AppointmentRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/appointment";
 import { PresupuestoRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/presupuesto";
-import { AvailabilityFilterExtractor } from "@clinickeys-agents/core/infrastructure/availability";
+import { EstructuredAvailabilityRequest } from "@clinickeys-agents/core/infrastructure/availability";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { THREAD_ID, REMINDER_MESSAGE } from "@clinickeys-agents/core/utils";
 
@@ -109,13 +109,13 @@ export class LeadProcessorController {
       packBonoRepo,
     });
 
-    const availabilityFilterExtractor = new AvailabilityFilterExtractor(openAIService);
+    const estructuredAvailabilityRequest = new EstructuredAvailabilityRequest(openAIService);
 
     const availabilityService = new AvailabilityService(
       tratamientoRepo,
       medicoRepo,
       espacioRepo,
-      availabilityFilterExtractor
+      estructuredAvailabilityRequest
     );
     const appointmentService = new AppointmentService(appointmentRepo);
     const packBonoService = new PackBonoService(packBonoRepo);

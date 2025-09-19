@@ -1,5 +1,5 @@
 import {
-  presentAndFilterAvailability,
+  finalAvailabilityResponse,
   generarConsultasSQL,
   calcularDisponibilidad,
   ajustarDisponibilidad,
@@ -17,7 +17,7 @@ import {
   SlotDisponibilidad,
 } from "@clinickeys-agents/core/domain/availability";
 import { EspacioBasicDTO } from "@clinickeys-agents/core/domain/espacio";
-import { AvailabilityFilterExtractor } from "@clinickeys-agents/core/infrastructure/availability";
+import { EstructuredAvailabilityRequest } from "@clinickeys-agents/core/infrastructure/availability";
 import { TratamientoSearchResultDTO } from "@clinickeys-agents/core/domain/tratamiento";
 
 interface GetAvailabilityInfoInput {
@@ -55,18 +55,18 @@ export class AvailabilityService {
   private treatmentRepo: ITratamientoRepository;
   private doctorRepo: IMedicoRepository;
   private spaceRepo: IEspacioRepository;
-  private readonly filterExtractor: AvailabilityFilterExtractor;
+  private readonly estructuredAvailabilityRequest: EstructuredAvailabilityRequest;
 
   constructor(
     treatmentRepo: ITratamientoRepository,
     doctorRepo: IMedicoRepository,
     spaceRepo: IEspacioRepository,
-    filterExtractor: AvailabilityFilterExtractor
+    estructuredAvailabilityRequest: EstructuredAvailabilityRequest
   ) {
     this.treatmentRepo = treatmentRepo;
     this.doctorRepo = doctorRepo;
     this.spaceRepo = spaceRepo;
-    this.filterExtractor = filterExtractor;
+    this.estructuredAvailabilityRequest = estructuredAvailabilityRequest;
   }
 
   async fetchTreatmentsWithDoctorsAndSpaces({
@@ -396,7 +396,7 @@ export class AvailabilityService {
     );
     const nombresMedicos = medicos.map((m) => m.nombre_completo);
 
-    const filters = await this.filterExtractor.extract(mensajeBotParlante, {
+    const filters = await this.estructuredAvailabilityRequest.extract(mensajeBotParlante, {
       id_clinica,
       id_super_clinica,
       tiempo_actual,
@@ -440,8 +440,8 @@ export class AvailabilityService {
         ...s,
       }));
 
-      const result = await presentAndFilterAvailability(
-        this.filterExtractor["openAIService"],
+      const result = await finalAvailabilityResponse(
+        this.estructuredAvailabilityRequest["openAIService"],
         presenterSlots,
         contextoDisponibilidades
       );

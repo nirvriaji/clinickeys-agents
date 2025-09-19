@@ -1,4 +1,4 @@
-// packages/core/src/infrastructure/availability/AvailabilityFilterExtractor.ts
+// packages/core/src/infrastructure/availability/EstructuredAvailabilityRequest.ts
 
 import { ConsultaCitaSchema } from "@clinickeys-agents/core/domain/availability";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
@@ -21,7 +21,7 @@ export interface AvailabilityFilterResult {
 // Clase Extractor
 // =============================
 
-export class AvailabilityFilterExtractor {
+export class EstructuredAvailabilityRequest {
   private readonly openAIService: IOpenAIService;
   private static cachedSystemPrompt: string | null = null;
 
@@ -30,8 +30,8 @@ export class AvailabilityFilterExtractor {
   }
 
   private async loadSystemPrompt(): Promise<string> {
-    if (AvailabilityFilterExtractor.cachedSystemPrompt) {
-      return AvailabilityFilterExtractor.cachedSystemPrompt;
+    if (EstructuredAvailabilityRequest.cachedSystemPrompt) {
+      return EstructuredAvailabilityRequest.cachedSystemPrompt;
     }
 
     const promptsPath = path.resolve(
@@ -41,16 +41,16 @@ export class AvailabilityFilterExtractor {
 
     try {
       const content = await readFile(promptsPath, "utf8");
-      AvailabilityFilterExtractor.cachedSystemPrompt = content;
+      EstructuredAvailabilityRequest.cachedSystemPrompt = content;
       return content;
     } catch (err) {
       Logger.error(
-        "[AvailabilityFilterExtractor] No se pudo leer el prompt; usando fallback inline",
+        "[EstructuredAvailabilityRequest] No se pudo leer el prompt; usando fallback inline",
         err
       );
       const fallback =
         "Eres un extractor de filtros para disponibilidad de citas. Devuelves un objeto JSON con tratamientos, médicos, espacios y fechas.";
-      AvailabilityFilterExtractor.cachedSystemPrompt = fallback;
+      EstructuredAvailabilityRequest.cachedSystemPrompt = fallback;
       return fallback;
     }
   }
@@ -93,14 +93,14 @@ Contexto:
       );
 
       Logger.info(
-        "[AvailabilityFilterExtractor] Filtros obtenidos:",
+        "[EstructuredAvailabilityRequest] Filtros obtenidos:",
         JSON.stringify(filters)
       );
 
       return filters as AvailabilityFilterResult[];
     } catch (error) {
       Logger.error(
-        "[AvailabilityFilterExtractor] Error al extraer filtros:",
+        "[EstructuredAvailabilityRequest] Error al extraer filtros:",
         error
       );
       return [];

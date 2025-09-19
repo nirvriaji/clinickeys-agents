@@ -1,5 +1,5 @@
-export * from "./presentAndFilterAvailability";
-export * from './AvailabilityFilterExtractor';
+export * from "./FinalAvailabilityResponse";
+export * from './EstructuredAvailabilityRequest';
 export * from "./calcularDisponibilidad";
 export * from "./ajustarDisponibilidad";
 export * from './availabilityHelpers';
