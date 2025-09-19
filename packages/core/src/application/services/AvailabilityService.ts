@@ -1,5 +1,3 @@
-// packages/core/src/application/services/AvailabilityService.ts
-
 import {
   presentAndFilterAvailability,
   generarConsultasSQL,

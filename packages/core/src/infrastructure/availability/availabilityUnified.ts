@@ -1,3 +1,5 @@
+// packages/core/src/infrastructure/availability/availabilityUnified.ts
+
 import { Logger } from "@clinickeys-agents/core/infrastructure/external/Logger";
 import {
   SlotDisponibilidad,

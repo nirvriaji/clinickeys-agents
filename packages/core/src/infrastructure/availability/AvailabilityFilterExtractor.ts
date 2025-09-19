@@ -1,3 +1,5 @@
+// packages/core/src/infrastructure/availability/AvailabilityFilterExtractor.ts
+
 import { ConsultaCitaSchema } from "@clinickeys-agents/core/domain/availability";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";

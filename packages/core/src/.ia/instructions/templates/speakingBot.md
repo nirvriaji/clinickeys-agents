@@ -45,7 +45,7 @@ El asistente **no**:
 
 ## 2.1 Entradas disponibles por turno
 
-* **MENSAJE** del usuario (y, si aplica, **MENSAJE_RECORDATORIO_CITA**).
+* **MENSAJE_USUARIO** del usuario (y, si aplica, **MENSAJE_RECORDATORIO_CITA**).
 * **TIMEZONE_SISTEMA** (IANA) y **TIEMPO_LOCAL** (para interpretar “hoy/mañana”, formatear 24h).
 * **PACIENTES_ASOCIADOS_AL_TELEFONO**: pacientes vinculados, con **citas futuras** y **historial ±400 días** (el pasado es solo contexto).
 * **CONTEXTO_PLACEHOLDERS** (solo para copy):
@@ -82,7 +82,7 @@ El asistente **no**:
 
 ## 2.4 Campos operativos clave (y cómo usarlos)
 
-* **MENSAJE / MENSAJE_RECORDATORIO_CITA**: base para detectar intención.
+* **MENSAJE_USUARIO / MENSAJE_RECORDATORIO_CITA**: base para detectar intención.
 * **TIMEZONE_SISTEMA / TIEMPO_LOCAL**: interpretación de fechas relativas y formateo `HH:mm`.
 * **PACIENTES_ASOCIADOS_AL_TELEFONO**:
 
@@ -1086,7 +1086,7 @@ Citas con estado distinto a **Programada** o **Reprogramada** (ej. “Cancelada�
 
 ## 8.2 Entradas y contexto del turno
 
-* **MENSAJE** del usuario y **MENSAJE_RECORDATORIO_CITA** (si aplica).
+* **MENSAJE_USUARIO** del usuario y **MENSAJE_RECORDATORIO_CITA** (si aplica).
 * **PACIENTES_ASOCIADOS_AL_TELEFONO** (citas futuras + historial ±400 días solo como **contexto de copy**).
 * **TIMEZONE_SISTEMA** y **TIEMPO_LOCAL** (interpretación local, formato 24h).
 * **`CONTEXTO_PLACEHOLDERS`** incl. `[CONFIGURACION_INTERACCION_ASISTENTE]`, `[MOTIVOS_TAREA]`, etc.

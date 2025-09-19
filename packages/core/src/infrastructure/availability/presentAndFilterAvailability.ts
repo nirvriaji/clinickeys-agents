@@ -1,3 +1,5 @@
+// packages/core/src/infrastructure/availability/presentAndFilterAvailability.ts
+
 import { PresentacionYDisponibilidades, PresentacionYDisponibilidadesSchema } from "@clinickeys-agents/core/domain/availability";
 import { SlotDisponibilidad } from "@clinickeys-agents/core/domain/availability";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";

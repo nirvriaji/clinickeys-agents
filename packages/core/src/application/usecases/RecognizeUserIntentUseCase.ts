@@ -54,7 +54,7 @@ export interface RecognizeUserIntentOutput {
 type PatientInfo = Awaited<ReturnType<FetchPatientInfoUseCase['execute']>>;
 
 type IntentContext = {
-  MENSAJE: string;
+  MENSAJE_USUARIO: string;
   TIMEZONE_SISTEMA: string;
   TIEMPO_LOCAL: string;
   PACIENTES_ASOCIADOS_AL_TELEFONO: PatientInfo['patients'];
@@ -98,16 +98,16 @@ export class RecognizeUserIntentUseCase {
     });
     Logger.debug('[RecognizeUserIntent] Información de pacientes obtenida', { patientsCount: patientInfo.patients?.length });
 
-    let MENSAJE = '';
+    let MENSAJE_USUARIO = '';
     const allAppointments = patientInfo.patients.flatMap(p => p.appointments || []);
     if (reminderMessage && Array.isArray(allAppointments) && allAppointments.length) {
-      MENSAJE = `MENSAJE_RECORDATORIO_CITA: ${reminderMessage}. RESPUESTA_AL_MENSAJE_RECORDATORIO_CITA del paciente: ${userMessage}`;
+      MENSAJE_USUARIO = `MENSAJE_RECORDATORIO_CITA: ${reminderMessage}. MENSAJE_USUARIO (Respuesta al recordatorio): ${userMessage}`;
     } else {
-      MENSAJE = (userMessage || "").trim();
+      MENSAJE_USUARIO = (userMessage || "").trim();
     }
 
     const contextForAI: IntentContext = {
-      MENSAJE,
+      MENSAJE_USUARIO,
       TIMEZONE_SISTEMA: timezone,
       TIEMPO_LOCAL: getClinicLocalTimestamp(tiempoActualDT, timezone),
       PACIENTES_ASOCIADOS_AL_TELEFONO: patientInfo.patients ?? [],
@@ -116,7 +116,7 @@ export class RecognizeUserIntentUseCase {
 
     Logger.debug('[RecognizeUserIntent] Contexto para AI generado', {
       contextSample: {
-        MENSAJE,
+        MENSAJE_USUARIO,
         TIMEZONE_SISTEMA: timezone,
         TIEMPO_LOCAL: getClinicLocalTimestamp(tiempoActualDT, timezone),
         PACIENTES_ASOCIADOS_AL_TELEFONO: patientInfo.patients ?? [],

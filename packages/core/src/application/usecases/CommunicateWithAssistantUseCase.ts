@@ -1,9 +1,5 @@
 // packages/core/src/application/usecases/CommunicateWithAssistantUseCase.ts
 
-import { KommoService, OpenAIService } from '@clinickeys-agents/core/application/services';
-import { Logger } from '@clinickeys-agents/core/infrastructure/external';
-import { localTime, CHAT_BOT_CUSTOM_FIELDS } from '@clinickeys-agents/core/utils';
-import { z } from 'zod';
 import {
   CheckReprogramAvailabilityUseCase,
   RescheduleAppointmentUseCase,
@@ -17,6 +13,7 @@ import {
   MarkPatientOnTheWayUseCase,
   HandleUrgencyUseCase,
 } from '@clinickeys-agents/core/application/usecases';
+
 import {
   PATIENT_MESSAGE_PROCESSED_CHUNK,
   PLEASE_WAIT_MESSAGE,
@@ -37,7 +34,12 @@ import {
   THREAD_ID,
 } from '@clinickeys-agents/core/utils';
 
-import { mergePlaceholdersIntoContext } from '@clinickeys-agents/core/utils';
+import { localTime, CHAT_BOT_CUSTOM_FIELDS, mergePlaceholdersIntoContext } from '@clinickeys-agents/core/utils';
+import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
+import { KommoService, OpenAIService } from '@clinickeys-agents/core/application/services';
+import { Logger } from '@clinickeys-agents/core/infrastructure/external';
+import { z } from 'zod';
+
 import type { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 
 const CheckAvailabilitySchema = z.object({
@@ -110,8 +112,6 @@ const HandleUrgencySchema = z.object({
 const RegularConversationSchema = z.object({
   assistantMessage: z.string(),
 });
-
-import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 
 export interface CommunicateInput {
   botConfig: BotConfigDTO;

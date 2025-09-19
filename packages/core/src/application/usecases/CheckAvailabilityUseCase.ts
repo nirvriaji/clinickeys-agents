@@ -1,10 +1,10 @@
 // packages/core/src/application/usecases/CheckAvailabilityUseCase.ts
 
-import { getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { AvailabilityService, KommoService } from '@clinickeys-agents/core/application/services';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
+import { getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
 import type { DateTime } from 'luxon';
 
 interface CheckAvailabilityInput {
@@ -67,6 +67,7 @@ export class CheckAvailabilityUseCase {
 
     for (const step of STEPS) {
       Logger.debug('[CheckAvailability] Buscando disponibilidad', { step: step.tipo, filtros: step.filtros });
+
       const fechasStep = step.filtros.rango_dias_extra
         ? `${Array.isArray(fechas) ? JSON.stringify(fechas) : fechas}, los próximos 45 días`
         : fechas;
