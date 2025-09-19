@@ -6,6 +6,6 @@ export * from './ErrorMapper';
 export * from './openaiTools';
 export * from './errorCodes';
 export * from './constants';
-export * from '../infrastructure/availability/AppError';
+export * from '../application/services/AvailabilityService/AppError';
 export * from './helpers';
 export * from './http';

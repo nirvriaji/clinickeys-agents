@@ -1,4 +1,4 @@
-// packages/core/src/infrastructure/availability/EstructuredAvailabilityRequest.ts
+// packages/core/src/infrastructure/availability/GetEstructuredAvailabilityRequestUseCase.ts
 
 import { ConsultaCitaSchema } from "@clinickeys-agents/core/domain/availability";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
@@ -21,7 +21,7 @@ export interface AvailabilityFilterResult {
 // Clase Extractor
 // =============================
 
-export class EstructuredAvailabilityRequest {
+export class GetEstructuredAvailabilityRequestUseCase {
   private readonly openAIService: IOpenAIService;
   private static cachedSystemPrompt: string | null = null;
 
@@ -30,8 +30,8 @@ export class EstructuredAvailabilityRequest {
   }
 
   private async loadSystemPrompt(): Promise<string> {
-    if (EstructuredAvailabilityRequest.cachedSystemPrompt) {
-      return EstructuredAvailabilityRequest.cachedSystemPrompt;
+    if (GetEstructuredAvailabilityRequestUseCase.cachedSystemPrompt) {
+      return GetEstructuredAvailabilityRequestUseCase.cachedSystemPrompt;
     }
 
     const promptsPath = path.resolve(
@@ -41,16 +41,16 @@ export class EstructuredAvailabilityRequest {
 
     try {
       const content = await readFile(promptsPath, "utf8");
-      EstructuredAvailabilityRequest.cachedSystemPrompt = content;
+      GetEstructuredAvailabilityRequestUseCase.cachedSystemPrompt = content;
       return content;
     } catch (err) {
       Logger.error(
-        "[EstructuredAvailabilityRequest] No se pudo leer el prompt; usando fallback inline",
+        "[GetEstructuredAvailabilityRequestUseCase] No se pudo leer el prompt; usando fallback inline",
         err
       );
       const fallback =
         "Eres un extractor de filtros para disponibilidad de citas. Devuelves un objeto JSON con tratamientos, médicos, espacios y fechas.";
-      EstructuredAvailabilityRequest.cachedSystemPrompt = fallback;
+      GetEstructuredAvailabilityRequestUseCase.cachedSystemPrompt = fallback;
       return fallback;
     }
   }
@@ -93,14 +93,14 @@ Contexto:
       );
 
       Logger.info(
-        "[EstructuredAvailabilityRequest] Filtros obtenidos:",
+        "[GetEstructuredAvailabilityRequestUseCase] Filtros obtenidos:",
         JSON.stringify(filters)
       );
 
       return filters as AvailabilityFilterResult[];
     } catch (error) {
       Logger.error(
-        "[EstructuredAvailabilityRequest] Error al extraer filtros:",
+        "[GetEstructuredAvailabilityRequestUseCase] Error al extraer filtros:",
         error
       );
       return [];

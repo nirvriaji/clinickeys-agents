@@ -1,11 +1,14 @@
 // packages/core/src/application/usecases/CheckReprogramAvailabilityUseCase.ts
 
-import { AvailabilityService, KommoService, OpenAIService } from '@clinickeys-agents/core/application/services';
-import { getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
+import { AvailabilityService, KommoService } from '@clinickeys-agents/core/application/services';
+import { ITratamientoRepository } from '@clinickeys-agents/core/domain/tratamiento';
+import { IMedicoRepository } from '@clinickeys-agents/core/domain/medico';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
+import { getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
 import { DateTime } from 'luxon';
+import { GetEstructuredAvailabilityRequestUseCase, AvailabilityFilterResult } from '@clinickeys-agents/core/application/usecases';
 
 interface CheckReprogramAvailabilityInput {
   botConfig: BotConfigDTO;
@@ -23,7 +26,7 @@ interface CheckReprogramAvailabilityInput {
     id_medico?: number | null;
     espacio?: string | null;
     id_espacio?: number | null;
-    fechas: string;
+    fechas: string | string[];
     horas: string;
     rango_dias_extra?: number;
     summary: string;
@@ -38,11 +41,19 @@ interface CheckReprogramAvailabilityOutput {
   toolOutput: string;
 }
 
+interface ReprogramStepDefinition {
+  tipo: string;
+  filtros: { con_medico: boolean; rango_dias_extra: number; rango_dias_antes?: number };
+  params: AvailabilityFilterResult & { rango_dias_extra?: number; rango_dias_antes?: number };
+}
+
 export class CheckReprogramAvailabilityUseCase {
   constructor(
     private readonly kommoService: KommoService,
     private readonly availabilityService: AvailabilityService,
-    private readonly openAIService: OpenAIService,
+    private readonly getEstructuredAvailabilityRequestUseCase: GetEstructuredAvailabilityRequestUseCase,
+    private readonly tratamientoRepositoryMySQL: ITratamientoRepository,
+    private readonly medicoRepositoryMySQL: IMedicoRepository,
   ) { }
 
   public async execute(input: CheckReprogramAvailabilityInput): Promise<CheckReprogramAvailabilityOutput> {
@@ -96,64 +107,119 @@ export class CheckReprogramAvailabilityUseCase {
       message: 'Muy bien, voy a revisar los horarios para reprogramar tu cita. Un momento por favor.',
     });
 
-    // 2. Estrategia escalonada de disponibilidad
-    const STEPS = [
-      { tipo: 'original', filtros: { con_medico: true, rango_dias_extra: 0 }, params: { ...params } },
-      { tipo: 'ampliada_mismo_medico', filtros: { con_medico: true, rango_dias_extra: 45 }, params: { ...params, rango_dias_extra: 45 } },
-      { tipo: 'ampliada_sin_medico_rango_dias_original', filtros: { con_medico: false, rango_dias_extra: 0 }, params: { ...params, medico: null, id_medico: null } },
-      { tipo: 'ampliada_sin_medico_rango_dias_extendido', filtros: { con_medico: false, rango_dias_extra: 45 }, params: { ...params, medico: null, id_medico: null, rango_dias_extra: 45 } },
-    ];
+    const tratamientos = await this.tratamientoRepositoryMySQL.getActiveTreatmentsForClinic(
+      botConfig.clinicId,
+      botConfig.superClinicId
+    );
+    const nombresTratamientos = tratamientos.map((t) => t.nombre_tratamiento);
+    const medicos = await this.medicoRepositoryMySQL.getMedicos(
+      botConfig.clinicId,
+      botConfig.superClinicId
+    );
+    const nombresMedicos = medicos.map((m) => m.nombre_completo);
 
-    let finalPayload: any = null;
-    let fechas_buscadas: any = null;
+    // 2. Obtener filtros estructurados desde el extractor
+    Logger.debug('[CheckReprogramAvailability] Extrayendo filtros estructurados');
+    const structuredFilters = await this.getEstructuredAvailabilityRequestUseCase.extract(JSON.stringify(params), {
+      id_clinica: botConfig.clinicId,
+      id_super_clinica: botConfig.superClinicId,
+      tiempo_actual: tiempoActualDT.toISO() as string,
+      localTimeForPrompts,
+      tratamientosDisponibles: nombresTratamientos,
+      medicosDisponibles: nombresMedicos
+    });
 
-    for (const step of STEPS) {
-      Logger.debug('[CheckReprogramAvailability] Buscando disponibilidad', { step: step.tipo, filtros: step.filtros });
+    let finalPayload: Record<string, unknown> | null = null;
+    let fechas_buscadas: string | null = null;
 
-      const fechasStep = step.filtros.rango_dias_extra
-        ? `${Array.isArray(fechas) ? JSON.stringify(fechas) : fechas}, los próximos 45 días`
-        : fechas;
+    for (const filter of structuredFilters) {
+      const firstFecha = filter.fechas?.[0]?.fecha;
 
-      let availability = await this.availabilityService.getAvailabilityInfo({
-        localTimeForPrompts,
-        id_clinica: botConfig.clinicId,
-        id_super_clinica: botConfig.superClinicId,
-        tiempo_actual: tiempoActualDT.toISO() as string,
-        mensajeBotParlante: JSON.stringify({
-          summary,
-          id_tratamiento: step.params.id_tratamiento,
-          tratamiento: step.params.tratamiento,
-          fechas: fechasStep,
-          horas: step.params.horas,
-          medico: step.params.medico,
-          id_medico: step.params.id_medico,
-          espacio: step.params.espacio,
-          id_espacio: step.params.id_espacio,
-        }),
-        subdomain,
-        leadId,
-        contextoDisponibilidades: botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES || "",
+      const steps: ReprogramStepDefinition[] = [];
+
+      steps.push({
+        tipo: 'original',
+        filtros: { con_medico: !!filter.medicos.length, rango_dias_extra: 0 },
+        params: { ...filter },
       });
 
-      fechas_buscadas = availability.fechas_buscadas;
-
-      Logger.info(`[CheckReprogramAvailability] Paso '${step.tipo}' respuesta recibida`, {
-        success: availability.success,
-        presentacion_disponibilidades: availability.presentacion_disponibilidades,
-      });
-
-      if (availability.success && availability.presentacion_disponibilidades) {
-        finalPayload = {
-          tipo_busqueda: step.tipo,
-          filtros_aplicados: step.filtros,
-          paciente: { id_paciente, nombre, apellido, telefono },
-          cita: { id_cita },
-          tratamiento: { id: step.params.id_tratamiento ?? null, nombre: step.params.tratamiento },
-          horarios_texto: availability.presentacion_disponibilidades,
-        };
-        Logger.debug('[CheckReprogramAvailability] Disponibilidad encontrada', { finalPayload });
-        break;
+      if (firstFecha) {
+        const diffDias = Math.max(0, Math.floor((new Date(firstFecha).getTime() - tiempoActualDT.toJSDate().getTime()) / (1000 * 60 * 60 * 24)));
+        steps.push({
+          tipo: 'intermedio_hasta_fecha',
+          filtros: { con_medico: !!filter.medicos.length, rango_dias_extra: 0, rango_dias_antes: diffDias },
+          params: { ...filter, rango_dias_antes: diffDias },
+        });
       }
+
+      steps.push({
+        tipo: 'ampliada_mismo_medico',
+        filtros: { con_medico: !!filter.medicos.length, rango_dias_extra: 45 },
+        params: { ...filter, rango_dias_extra: 45 },
+      });
+
+      steps.push({
+        tipo: 'ampliada_sin_medico_rango_dias_original',
+        filtros: { con_medico: false, rango_dias_extra: 0 },
+        params: { ...filter, medicos: [] },
+      });
+
+      steps.push({
+        tipo: 'ampliada_sin_medico_rango_dias_extendido',
+        filtros: { con_medico: false, rango_dias_extra: 45 },
+        params: { ...filter, medicos: [], rango_dias_extra: 45 },
+      });
+
+      for (const step of steps) {
+        Logger.debug('[CheckReprogramAvailability] Buscando disponibilidad', { step: step.tipo, filtros: step.filtros });
+
+        const fechasStep = step.filtros.rango_dias_extra === 45
+          ? `${JSON.stringify(filter.fechas)}, los próximos 45 días`
+          : JSON.stringify(filter.fechas);
+
+        const availability = await this.availabilityService.getAvailabilityInfo({
+          localTimeForPrompts,
+          id_clinica: botConfig.clinicId,
+          id_super_clinica: botConfig.superClinicId,
+          tiempo_actual: tiempoActualDT.toISO() as string,
+          mensajeBotParlante: JSON.stringify({
+            summary,
+            id_tratamiento: id_tratamiento,
+            tratamiento: filter.tratamientos?.[0] || tratamiento,
+            fechas: fechasStep,
+            horas,
+            medico: filter.medicos?.[0] || null,
+            id_medico: id_medico ?? null,
+            espacio: filter.espacios?.[0] || null,
+            id_espacio: params.id_espacio ?? null,
+          }),
+          subdomain,
+          leadId,
+          contextoDisponibilidades: botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES || "",
+        });
+
+        fechas_buscadas = availability.fechas_buscadas;
+
+        Logger.info(`[CheckReprogramAvailability] Paso '${step.tipo}' respuesta recibida`, {
+          success: availability.success,
+          presentacion_disponibilidades: availability.presentacion_disponibilidades,
+        });
+
+        if (availability.success && availability.presentacion_disponibilidades) {
+          finalPayload = {
+            tipo_busqueda: step.tipo,
+            filtros_aplicados: step.filtros,
+            paciente: { id_paciente, nombre, apellido, telefono },
+            cita: { id_cita },
+            tratamiento: { id: id_tratamiento ?? null, nombre: tratamiento },
+            horarios_texto: availability.presentacion_disponibilidades,
+          };
+          Logger.debug('[CheckReprogramAvailability] Disponibilidad encontrada', { finalPayload });
+          break;
+        }
+      }
+
+      if (finalPayload) break;
     }
 
     if (!finalPayload) {
@@ -169,14 +235,7 @@ export class CheckReprogramAvailabilityUseCase {
     }
 
     // 3. Construir toolOutput para resolver run
-    const toolOutput = `#consultaReprogramar
-    TIEMPO_LOCAL: ${localTimeForPrompts}
-    PACIENTE: ${JSON.stringify({id_paciente, nombre, apellido, telefono,})}
-    CITA: ${JSON.stringify({ id_cita })}
-    DISCLAIMER_FECHAS_BUSCADAS: Se buscaron solo las siguientes fechas ${JSON.stringify(fechas_buscadas)}
-    HORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}
-    MENSAJE_USUARIO: ${JSON.stringify(params)}
-    `;
+    const toolOutput = `#consultaReprogramar\n    TIEMPO_LOCAL: ${localTimeForPrompts}\n    PACIENTE: ${JSON.stringify({ id_paciente, nombre, apellido, telefono })}\n    CITA: ${JSON.stringify({ id_cita })}\n    DISCLAIMER_FECHAS_BUSCADAS: Se buscaron solo las siguientes fechas ${JSON.stringify(fechas_buscadas)}\n    HORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}\n    MENSAJE_USUARIO: ${JSON.stringify(params)}\n    `;
 
     Logger.info('[CheckReprogramAvailability] Ejecución completada', { success: true });
     return { success: true, toolOutput };

@@ -1,7 +1,7 @@
 // packages/core/src/utils/ErrorReporter.ts
 
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
-import { AppError } from "../infrastructure/availability/AppError";
+import { AppError } from "../application/services/AvailabilityService/AppError";
 
 /**
  * Servicio centralizado para registrar y reportar errores críticos del sistema.

@@ -1,7 +1,10 @@
 // packages/core/src/application/usecases/CheckAvailabilityUseCase.ts
 
+import { GetEstructuredAvailabilityRequestUseCase, AvailabilityFilterResult } from '@clinickeys-agents/core/application/usecases';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { AvailabilityService, KommoService } from '@clinickeys-agents/core/application/services';
+import { ITratamientoRepository } from '@clinickeys-agents/core/domain/tratamiento';
+import { IMedicoRepository } from '@clinickeys-agents/core/domain/medico';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
@@ -31,11 +34,20 @@ interface CheckAvailabilityOutput {
   customFields?: Record<string, string>;
 }
 
+interface StepDefinition {
+  tipo: string;
+  filtros: { con_medico: boolean; rango_dias_extra: number; rango_dias_antes?: number };
+  params: AvailabilityFilterResult & { rango_dias_extra?: number; rango_dias_antes?: number };
+}
+
 export class CheckAvailabilityUseCase {
   constructor(
     private readonly kommoService: KommoService,
     private readonly availabilityService: AvailabilityService,
-  ) {}
+    private readonly getEstructuredAvailabilityRequestUseCase: GetEstructuredAvailabilityRequestUseCase,
+    private readonly tratamientoRepositoryMySQL: ITratamientoRepository,
+    private readonly medicoRepositoryMySQL: IMedicoRepository,
+  ) { }
 
   public async execute(input: CheckAvailabilityInput): Promise<CheckAvailabilityOutput> {
     const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, subdomain } = input;
@@ -54,55 +66,116 @@ export class CheckAvailabilityUseCase {
       message: 'Muy bien, voy a mirar la agenda para ver las citas que tenemos disponibles. Un momento por favor.',
     });
 
-    // 2. Estrategia escalonada
-    const STEPS = [
-      { tipo: 'original', filtros: { con_medico: !!medico, rango_dias_extra: 0 }, params: { ...params } },
-      { tipo: 'ampliada_mismo_medico', filtros: { con_medico: !!medico, rango_dias_extra: 45 }, params: { ...params, rango_dias_extra: 45 } },
-      { tipo: 'ampliada_sin_medico_rango_dias_original', filtros: { con_medico: false, rango_dias_extra: 0 }, params: { ...params, medico: null } },
-      { tipo: 'ampliada_sin_medico_rango_dias_extendido', filtros: { con_medico: false, rango_dias_extra: 45 }, params: { ...params, medico: null, rango_dias_extra: 45 } },
-    ];
+    // 2. Obtener filtros estructurados antes de los STEPS
+    const tratamientos = await this.tratamientoRepositoryMySQL.getActiveTreatmentsForClinic(
+      botConfig.clinicId,
+      botConfig.superClinicId
+    );
+    const nombresTratamientos = tratamientos.map((t) => t.nombre_tratamiento);
+    const medicos = await this.medicoRepositoryMySQL.getMedicos(
+      botConfig.clinicId,
+      botConfig.superClinicId
+    );
+    const nombresMedicos = medicos.map((m) => m.nombre_completo);
+
+    Logger.debug('[CheckAvailability] Extrayendo filtros estructurados');
+    const structuredFilters = await this.getEstructuredAvailabilityRequestUseCase.extract(JSON.stringify(params), {
+      id_clinica: botConfig.clinicId,
+      id_super_clinica: botConfig.superClinicId,
+      tiempo_actual: tiempoActualDT.toISO() as string,
+      localTimeForPrompts,
+      tratamientosDisponibles: nombresTratamientos,
+      medicosDisponibles: nombresMedicos,
+    });
 
     let finalPayload: any = null;
     let fechas_buscadas: any = null;
 
-    for (const step of STEPS) {
-      Logger.debug('[CheckAvailability] Buscando disponibilidad', { step: step.tipo, filtros: step.filtros });
+    for (const filter of structuredFilters) {
+      const firstFecha = filter.fechas?.[0]?.fecha;
 
-      const fechasStep = step.filtros.rango_dias_extra
-        ? `${Array.isArray(fechas) ? JSON.stringify(fechas) : fechas}, los próximos 45 días`
-        : fechas;
+      const steps: StepDefinition[] = [];
 
-      let availability = await this.availabilityService.getAvailabilityInfo({
-        localTimeForPrompts,
-        id_clinica: botConfig.clinicId,
-        id_super_clinica: botConfig.superClinicId,
-        tiempo_actual: tiempoActualDT.toISO() as string,
-        mensajeBotParlante: JSON.stringify({
-          tratamiento,
-          fechas: fechasStep,
-          horas,
-          medico: step.params.medico,
-          espacio: step.params.espacio,
-          summary,
-        }),
-        subdomain,
-        leadId,
-        contextoDisponibilidades: botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES || "",
+      // Paso original
+      steps.push({
+        tipo: 'original',
+        filtros: { con_medico: !!filter.medicos.length, rango_dias_extra: 0 },
+        params: { ...filter },
       });
-      Logger.info(`[CheckAvailability] Paso '${step.tipo}' respuesta recibida`, { success: availability.success, presentacion_disponibilidades: availability.presentacion_disponibilidades });
 
-      fechas_buscadas = availability.fechas_buscadas;
-
-      if (availability.success && availability.presentacion_disponibilidades) {
-        finalPayload = {
-          tipo_busqueda: step.tipo,
-          filtros_aplicados: step.filtros,
-          tratamiento: { id: null, nombre: tratamiento },
-          horarios_texto: availability.presentacion_disponibilidades,
-        };
-        Logger.debug('[CheckAvailability] Disponibilidad encontrada', { finalPayload });
-        break;
+      // Paso intermedio: desde hoy hasta la primera fecha solicitada
+      if (firstFecha) {
+        const diffDias = Math.max(0, Math.floor((new Date(firstFecha).getTime() - tiempoActualDT.toJSDate().getTime()) / (1000 * 60 * 60 * 24)));
+        steps.push({
+          tipo: 'intermedio_hasta_fecha',
+          filtros: { con_medico: !!filter.medicos.length, rango_dias_extra: 0, rango_dias_antes: diffDias },
+          params: { ...filter, rango_dias_antes: diffDias },
+        });
       }
+
+      // Paso ampliado con mismo médico
+      steps.push({
+        tipo: 'ampliada_mismo_medico',
+        filtros: { con_medico: !!filter.medicos.length, rango_dias_extra: 45 },
+        params: { ...filter, rango_dias_extra: 45 },
+      });
+
+      // Paso sin médico con rango original
+      steps.push({
+        tipo: 'ampliada_sin_medico_rango_dias_original',
+        filtros: { con_medico: false, rango_dias_extra: 0 },
+        params: { ...filter, medicos: [] },
+      });
+
+      // Paso sin médico con rango extendido
+      steps.push({
+        tipo: 'ampliada_sin_medico_rango_dias_extendido',
+        filtros: { con_medico: false, rango_dias_extra: 45 },
+        params: { ...filter, medicos: [], rango_dias_extra: 45 },
+      });
+
+      for (const step of steps) {
+        Logger.debug('[CheckAvailability] Buscando disponibilidad', { step: step.tipo, filtros: step.filtros });
+
+        const fechasStep = step.filtros.rango_dias_extra === 45
+          ? `${JSON.stringify(filter.fechas)}, los próximos 45 días`
+          : JSON.stringify(filter.fechas);
+
+        const availability = await this.availabilityService.getAvailabilityInfo({
+          localTimeForPrompts,
+          id_clinica: botConfig.clinicId,
+          id_super_clinica: botConfig.superClinicId,
+          tiempo_actual: tiempoActualDT.toISO() as string,
+          mensajeBotParlante: JSON.stringify({
+            tratamiento,
+            fechas: fechasStep,
+            horas,
+            medico: step.params.medicos?.[0] || null,
+            espacio: step.params.espacios?.[0] || null,
+            summary,
+          }),
+          subdomain,
+          leadId,
+          contextoDisponibilidades: botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES || "",
+        });
+
+        Logger.info(`[CheckAvailability] Paso '${step.tipo}' respuesta recibida`, { success: availability.success, presentacion_disponibilidades: availability.presentacion_disponibilidades });
+
+        fechas_buscadas = availability.fechas_buscadas;
+
+        if (availability.success && availability.presentacion_disponibilidades) {
+          finalPayload = {
+            tipo_busqueda: step.tipo,
+            filtros_aplicados: step.filtros,
+            tratamiento: { id: null, nombre: tratamiento },
+            horarios_texto: availability.presentacion_disponibilidades,
+          };
+          Logger.debug('[CheckAvailability] Disponibilidad encontrada', { finalPayload });
+          break;
+        }
+      }
+
+      if (finalPayload) break;
     }
 
     if (!finalPayload) {
@@ -116,12 +189,7 @@ export class CheckAvailabilityUseCase {
     }
 
     // 3. Construir toolOutput
-    const toolOutput = `#consultaAgendar
-    TIEMPO_LOCAL: ${localTimeForPrompts}
-    DISCLAIMER_FECHAS_BUSCADAS: Se buscaron solo las siguientes fechas ${JSON.stringify(fechas_buscadas)}
-    HORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}
-    MENSAJE_USUARIO: ${JSON.stringify(params)}
-    `;
+    const toolOutput = `#consultaAgendar\n    TIEMPO_LOCAL: ${localTimeForPrompts}\n    DISCLAIMER_FECHAS_BUSCADAS: Se buscaron solo las siguientes fechas ${JSON.stringify(fechas_buscadas)}\n    HORARIOS_DISPONIBLES: ${JSON.stringify(finalPayload)}\n    MENSAJE_USUARIO: ${JSON.stringify(params)}\n    `;
     Logger.info('[CheckAvailability] Ejecución completada', { success: true });
 
     return { success: true, toolOutput };

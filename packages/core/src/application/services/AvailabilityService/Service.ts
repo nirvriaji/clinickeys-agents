@@ -1,10 +1,11 @@
+// packages/core/src/application/services/AvailabilityService.ts
+
 import {
-  finalAvailabilityResponse,
   generarConsultasSQL,
   calcularDisponibilidad,
   ajustarDisponibilidad,
   AppError,
-} from "@clinickeys-agents/core/infrastructure/availability";
+} from "@clinickeys-agents/core/application/services";
 import { ejecutarConReintento } from "@clinickeys-agents/core/infrastructure/helpers";
 import { ITratamientoRepository } from "@clinickeys-agents/core/domain/tratamiento";
 import { IEspacioRepository } from "@clinickeys-agents/core/domain/espacio";
@@ -17,7 +18,7 @@ import {
   SlotDisponibilidad,
 } from "@clinickeys-agents/core/domain/availability";
 import { EspacioBasicDTO } from "@clinickeys-agents/core/domain/espacio";
-import { EstructuredAvailabilityRequest } from "@clinickeys-agents/core/infrastructure/availability";
+import { GetEstructuredAvailabilityRequestUseCase, GetFinalAvailabilityResponseUseCase } from "@clinickeys-agents/core/application/usecases";
 import { TratamientoSearchResultDTO } from "@clinickeys-agents/core/domain/tratamiento";
 
 interface GetAvailabilityInfoInput {
@@ -55,18 +56,18 @@ export class AvailabilityService {
   private treatmentRepo: ITratamientoRepository;
   private doctorRepo: IMedicoRepository;
   private spaceRepo: IEspacioRepository;
-  private readonly estructuredAvailabilityRequest: EstructuredAvailabilityRequest;
+  private readonly getEstructuredAvailabilityRequestUseCase: GetEstructuredAvailabilityRequestUseCase;
 
   constructor(
     treatmentRepo: ITratamientoRepository,
     doctorRepo: IMedicoRepository,
     spaceRepo: IEspacioRepository,
-    estructuredAvailabilityRequest: EstructuredAvailabilityRequest
+    getEstructuredAvailabilityRequestUseCase: GetEstructuredAvailabilityRequestUseCase
   ) {
     this.treatmentRepo = treatmentRepo;
     this.doctorRepo = doctorRepo;
     this.spaceRepo = spaceRepo;
-    this.estructuredAvailabilityRequest = estructuredAvailabilityRequest;
+    this.getEstructuredAvailabilityRequestUseCase = getEstructuredAvailabilityRequestUseCase;
   }
 
   async fetchTreatmentsWithDoctorsAndSpaces({
@@ -396,7 +397,7 @@ export class AvailabilityService {
     );
     const nombresMedicos = medicos.map((m) => m.nombre_completo);
 
-    const filters = await this.estructuredAvailabilityRequest.extract(mensajeBotParlante, {
+    const filters = await this.getEstructuredAvailabilityRequestUseCase.extract(mensajeBotParlante, {
       id_clinica,
       id_super_clinica,
       tiempo_actual,
@@ -440,8 +441,8 @@ export class AvailabilityService {
         ...s,
       }));
 
-      const result = await finalAvailabilityResponse(
-        this.estructuredAvailabilityRequest["openAIService"],
+      const result = await GetFinalAvailabilityResponseUseCase(
+        this.getEstructuredAvailabilityRequestUseCase["openAIService"],
         presenterSlots,
         contextoDisponibilidades
       );

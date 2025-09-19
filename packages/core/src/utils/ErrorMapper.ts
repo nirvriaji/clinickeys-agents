@@ -1,6 +1,6 @@
 // packages/core/src/utils/errorMapper.ts
 
-import { AppError } from "../infrastructure/availability/AppError";
+import { AppError } from "../application/services/AvailabilityService/AppError";
 
 /**
  * Mapea cualquier error recibido (AppError, Error nativo, error de infra, etc)

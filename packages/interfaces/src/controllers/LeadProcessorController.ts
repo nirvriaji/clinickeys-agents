@@ -43,7 +43,7 @@ import { EspacioRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/e
 import { PatientRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/patient";
 import { AppointmentRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/appointment";
 import { PresupuestoRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/presupuesto";
-import { EstructuredAvailabilityRequest } from "@clinickeys-agents/core/infrastructure/availability";
+import { GetEstructuredAvailabilityRequestUseCase } from '@clinickeys-agents/core/application/usecases';
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { THREAD_ID, REMINDER_MESSAGE } from "@clinickeys-agents/core/utils";
 
@@ -109,13 +109,13 @@ export class LeadProcessorController {
       packBonoRepo,
     });
 
-    const estructuredAvailabilityRequest = new EstructuredAvailabilityRequest(openAIService);
+    const getEstructuredAvailabilityRequestUC = new GetEstructuredAvailabilityRequestUseCase(openAIService);
 
     const availabilityService = new AvailabilityService(
       tratamientoRepo,
       medicoRepo,
       espacioRepo,
-      estructuredAvailabilityRequest
+      getEstructuredAvailabilityRequestUC
     );
     const appointmentService = new AppointmentService(appointmentRepo);
     const packBonoService = new PackBonoService(packBonoRepo);
@@ -132,14 +132,32 @@ export class LeadProcessorController {
       patientService,
       openAIService,
       packBonoService,
+      getEstructuredAvailabilityRequestUC,
+      tratamientoRepo,
+      medicoRepo,
     );
-    const checkAvailabilityUC = new CheckAvailabilityUseCase(kommoService, availabilityService);
-    const checkReprogramAvailabilityUC = new CheckReprogramAvailabilityUseCase(kommoService, availabilityService, openAIService);
+    const checkAvailabilityUC = new CheckAvailabilityUseCase(
+      kommoService,
+      availabilityService,
+      getEstructuredAvailabilityRequestUC,
+      tratamientoRepo,
+      medicoRepo,
+    );
+    const checkReprogramAvailabilityUC = new CheckReprogramAvailabilityUseCase(
+      kommoService,
+      availabilityService,
+      getEstructuredAvailabilityRequestUC,
+      tratamientoRepo,
+      medicoRepo,
+    );
     const rescheduleAppointmentUC = new RescheduleAppointmentUseCase(
       kommoService,
       appointmentService,
       availabilityService,
       openAIService,
+      getEstructuredAvailabilityRequestUC,
+      tratamientoRepo,
+      medicoRepo,
     );
     const cancelAppointmentUC = new CancelAppointmentUseCase(
       kommoService,
