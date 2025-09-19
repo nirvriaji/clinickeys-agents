@@ -6,7 +6,6 @@ import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { z } from 'zod';
 
 const ClarifyPatientSchema = z.object({
-  telefono: z.string(),
   id_clinica: z.number(),
 });
 
@@ -27,7 +26,7 @@ export interface ClarifyPatientOutput {
 export class ClarifyPatientUseCase {
   public async execute(input: ClarifyPatientInput): Promise<ClarifyPatientOutput> {
     const { params } = input;
-    const { telefono, id_clinica, candidatos } = ClarifyPatientSchema.extend({
+    const { id_clinica, candidatos } = ClarifyPatientSchema.extend({
       candidatos: z.array(
         z.object({
           id_paciente: z.number(),
@@ -38,21 +37,40 @@ export class ClarifyPatientUseCase {
       ),
     }).parse(params);
 
-    Logger.info('[ClarifyPatientUseCase] Inicio', { telefono, id_clinica, totalCandidatos: candidatos.length });
+    Logger.info('[ClarifyPatientUseCase] Inicio', { id_clinica, totalCandidatos: candidatos.length });
 
     if (!candidatos.length) {
-      Logger.warn('[ClarifyPatientUseCase] No se recibieron candidatos para clarificar', { telefono, id_clinica });
+      Logger.warn('[ClarifyPatientUseCase] No se recibieron candidatos para clarificar', { id_clinica });
       return {
         success: true,
-        toolOutput: `#clarificarPaciente\nNo se encontraron pacientes registrados con el número ${telefono}. ¿Quieres crear un nuevo paciente con tus datos?`,
+        toolOutput:
+          '#clarificarPaciente\nNo se encontraron pacientes registrados. ¿Quieres crear un nuevo paciente con tus datos?',
       };
     }
 
+    // Detectar duplicados por nombre+apellido
+    const nombreApellidoMap = new Map<string, number>();
+    const duplicados = new Set<string>();
+    for (const c of candidatos) {
+      const key = `${c.nombre.toLowerCase()}-${c.apellido.toLowerCase()}`;
+      if (nombreApellidoMap.has(key)) {
+        duplicados.add(key);
+      } else {
+        nombreApellidoMap.set(key, 1);
+      }
+    }
+
     const opciones = candidatos
-      .map(p => `- ${p.nombre} ${p.apellido} (Tel: ${p.telefono}, ID: ${p.id_paciente})`)
+      .map((p) => {
+        const key = `${p.nombre.toLowerCase()}-${p.apellido.toLowerCase()}`;
+        if (duplicados.has(key) && p.telefono) {
+          return `- ${p.nombre} ${p.apellido} (Tel: ${p.telefono}, ID: ${p.id_paciente})`;
+        }
+        return `- ${p.nombre} ${p.apellido} (ID: ${p.id_paciente})`;
+      })
       .join('\n');
 
-    const mensaje = `#clarificarPaciente\nSe encontraron múltiples pacientes asociados al número ${telefono}. Por favor indica cuál es el correcto:\n${opciones}`;
+    const mensaje = `#clarificarPaciente\nSe encontraron múltiples pacientes asociados. Por favor indica cuál es el correcto:\n${opciones}`;
 
     Logger.info('[ClarifyPatientUseCase] Mensaje generado para clarificación', { mensaje });
 
