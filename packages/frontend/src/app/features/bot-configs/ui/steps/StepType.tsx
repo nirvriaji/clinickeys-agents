@@ -1,14 +1,12 @@
-// packages/frontend/src/app/features/bot-configs/ui/BotConfigFormStepType.tsx
+import { Button } from "@/app/shared/ui/Button";
+import type { BotConfigType } from "@/app/entities/bot-config/types";
 
-import { Button } from '@/app/shared/ui/Button';
-import type { BotConfigType } from '@/app/entities/bot-config/types';
-
-interface BotConfigFormStepTypeProps {
+interface StepTypeProps {
   value?: BotConfigType;
   onChange: (type: BotConfigType) => void;
 }
 
-export function BotConfigFormStepType({ value, onChange }: BotConfigFormStepTypeProps) {
+export function StepType({ value, onChange }: StepTypeProps) {
   const handleSelect = (type: BotConfigType) => {
     onChange(type);
   };
@@ -19,19 +17,19 @@ export function BotConfigFormStepType({ value, onChange }: BotConfigFormStepType
       <div className="flex flex-col sm:flex-row gap-6 w-full max-w-md">
         <Button
           type="button"
-          variant={value === 'notificationBot' ? 'primary' : 'secondary'}
+          variant={value === "notificationBot" ? "primary" : "secondary"}
           className="w-full"
-          onClick={() => handleSelect('notificationBot')}
-          aria-pressed={value === 'notificationBot'}
+          onClick={() => handleSelect("notificationBot")}
+          aria-pressed={value === "notificationBot"}
         >
           Notification Bot
         </Button>
         <Button
           type="button"
-          variant={value === 'chatBot' ? 'primary' : 'secondary'}
+          variant={value === "chatBot" ? "primary" : "secondary"}
           className="w-full"
-          onClick={() => handleSelect('chatBot')}
-          aria-pressed={value === 'chatBot'}
+          onClick={() => handleSelect("chatBot")}
+          aria-pressed={value === "chatBot"}
         >
           Chat Bot
         </Button>

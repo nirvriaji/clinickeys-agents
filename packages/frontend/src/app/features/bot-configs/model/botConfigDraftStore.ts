@@ -1,3 +1,5 @@
+// packages/frontend/src/app/features/bot-configs/model/botConfigDraftStore.ts
+
 import { create } from 'zustand';
 import type { CreateBotConfigPayload } from '@/app/features/bot-configs/model/types';
 

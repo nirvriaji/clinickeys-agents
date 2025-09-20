@@ -47,7 +47,7 @@ export class PackBonoRepositoryMySQL implements IPackBonoRepository {
    */
   async getPackBonosSesionesByPacienteId(id_paciente: number): Promise<PackBonoSesionDTO[]> {
     const query = `
-      SELECT id_pack_bono_sesion, id_pack_bono, id_paciente
+      SELECT id_pack_bono_sesiones, id_pack_bono, id_paciente
       FROM pack_bonos_sesiones
       WHERE id_paciente = ?
     `;

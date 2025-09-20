@@ -42,6 +42,7 @@ export interface UpdateBotConfigPayload {
   clinicId: string | number;
   superClinicId: string | number;
   assistants?: any;
+  placeholders?: Record<string, string>; // Solo para chatBot
   // No permite editar placeholders ni assistantIds
 }
 

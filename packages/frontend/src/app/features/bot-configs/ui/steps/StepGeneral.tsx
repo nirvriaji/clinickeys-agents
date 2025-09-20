@@ -1,31 +1,23 @@
-// packages/frontend/src/app/features/bot-configs/ui/BotConfigFormStepGeneral.tsx
+import React from "react";
+import { Controller, type UseFormReturn, type FieldError } from "react-hook-form";
+import { TextInput } from "@/app/shared/ui/TextInput";
+import { TextArea } from "@/app/shared/ui/TextArea";
+import { ClinicSelector } from "@/app/features/bot-configs/ui/ClinicSelector";
+import { CountrySelect } from "@/app/shared/ui/CountrySelect";
+import { Select } from "@/app/shared/ui/Select";
+import { timezoneOptions } from "@/app/shared/lib/timezoneOptions";
+import { KommoUserSelector } from "@/app/features/bot-configs/ui/KommoUserSelector";
+import { AssistantsList } from "@/app/shared/ui/AssistantsList";
+import type { BotConfigType } from "@/app/entities/bot-config/types";
+import type { Field } from "@/app/features/bot-configs/model/fieldPolicy";
 
-'use client';
-
-import React from 'react';
-import { Controller, type UseFormReturn, type FieldError } from 'react-hook-form';
-import { TextInput } from '@/app/shared/ui/TextInput';
-import { TextArea } from '@/app/shared/ui/TextArea';
-import { ClinicSelector } from '@/app/features/bot-configs/ui/ClinicSelector';
-import { CountrySelect } from '@/app/shared/ui/CountrySelect';
-import { Select } from '@/app/shared/ui/Select';
-import type { BotConfigType } from '@/app/entities/bot-config/types';
-import { timezoneOptions } from '@/app/shared/lib/timezoneOptions';
-import { KommoUserSelector } from '@/app/features/bot-configs/ui/KommoUserSelector';
-import { AssistantsList } from '@/app/shared/ui/AssistantsList';
-
-interface BotConfigFormStepGeneralProps {
+interface StepGeneralProps {
   methods: UseFormReturn<any>;
   botType?: BotConfigType;
-  isEditMode: boolean;
-  setPlaceholders: (val: Record<string, string>) => void;
+  isEditable: (field: Field) => boolean;
 }
 
-export function BotConfigFormStepGeneral({
-  methods,
-  botType,
-  isEditMode,
-}: BotConfigFormStepGeneralProps) {
+export function StepGeneral({ methods, botType, isEditable }: StepGeneralProps) {
   const {
     control,
     formState: { errors },
@@ -33,16 +25,16 @@ export function BotConfigFormStepGeneral({
     watch,
   } = methods;
 
-  const assistants = watch('assistants') as Record<string, string>;
-  const isChatBot = botType === 'chatBot';
-  const kommoSubdomain = watch('kommoSubdomain');
-  const kommoLongLivedToken = watch('kommoLongLivedToken');
+  const assistants = watch("assistants") as Record<string, string>;
+  const isChatBot = botType === "chatBot";
+  const kommoSubdomain = watch("kommoSubdomain");
+  const kommoLongLivedToken = watch("kommoLongLivedToken");
   const isKommoReady = Boolean(kommoSubdomain) && Boolean(kommoLongLivedToken);
 
   const getErrorMessage = React.useCallback((err: unknown): string | undefined => {
     if (!err) return undefined;
-    if (typeof err === 'string') return err;
-    if (typeof err === 'object' && err !== null && 'message' in err) {
+    if (typeof err === "string") return err;
+    if (typeof err === "object" && err !== null && "message" in err) {
       return (err as FieldError).message;
     }
     return undefined;
@@ -59,10 +51,10 @@ export function BotConfigFormStepGeneral({
             value={field.value}
             onChange={(val, clinic) => {
               field.onChange(val);
-              setValue('superClinicId', clinic?.superClinicId, { shouldValidate: true });
+              setValue("superClinicId", clinic?.superClinicId, { shouldValidate: true });
             }}
             label="Clinickeys / Selecciona la clínica que administrará el bot"
-            disabled={isEditMode}
+            disabled={!isEditable("clinicId")}
             error={getErrorMessage(errors.clinicId)}
           />
         )}
@@ -107,23 +99,11 @@ export function BotConfigFormStepGeneral({
           render={({ field }) => (
             <TextInput
               name={field.name}
-              label={
-                <>
-                  OpenAI / Ingresar api key: {' '}
-                  (<a
-                    className="text-blue-600 underline"
-                    href="https://help.openai.com/en/articles/9186755-managing-projects-in-the-api-platform#h_79e86017fd"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    ¿Cómo obtenerla?
-                  </a>)
-                </>
-              }
+              label="OpenAI / Ingresar api key"
               value={field.value}
               onChange={field.onChange}
               error={getErrorMessage(errors.openaiApikey)}
-              disabled={isEditMode}
+              disabled={!isEditable("openaiApikey")}
             />
           )}
         />
@@ -135,22 +115,11 @@ export function BotConfigFormStepGeneral({
         render={({ field }) => (
           <TextInput
             name={field.name}
-            label={
-              <>
-                Kommo / Ingresar salesbot ID de {isChatBot ? <strong>[ BOT100_ChatBot :: Enviar_Respuesta ]</strong> : <strong>[ BOT100_NotificationBot :: Enviar_Recordatorio ]</strong>}{' '}
-                (<a
-                  className="text-blue-600 underline"
-                  href="https://es-developers.kommo.com/reference/lanzar-un-salesbot"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  ¿Cómo obtenerlo?
-                </a>)
-              </>
-            }
+            label="Kommo / Ingresar salesbot ID"
             value={field.value}
             onChange={field.onChange}
             error={getErrorMessage(errors.kommoSalesbotId)}
+            disabled={!isEditable("kommoSalesbotId")}
           />
         )}
       />
@@ -161,22 +130,11 @@ export function BotConfigFormStepGeneral({
         render={({ field }) => (
           <TextInput
             name={field.name}
-            label={
-              <>
-                Kommo / Ingresar token de larga duración{' '}
-                (<a
-                  className="text-blue-600 underline"
-                  href="https://es-developers.kommo.com/docs/token-de-larga-duraci%C3%B3n"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  ¿Cómo obtenerlo?
-                </a>)
-              </>
-            }
+            label="Kommo / Ingresar token de larga duración"
             value={field.value}
             onChange={field.onChange}
             error={getErrorMessage(errors.kommoLongLivedToken)}
+            disabled={!isEditable("kommoLongLivedToken")}
           />
         )}
       />
@@ -191,6 +149,7 @@ export function BotConfigFormStepGeneral({
             value={field.value}
             onChange={field.onChange}
             error={getErrorMessage(errors.kommoSubdomain)}
+            disabled={!isEditable("kommoSubdomain")}
           />
         )}
       />
@@ -205,59 +164,18 @@ export function BotConfigFormStepGeneral({
             value={field.value}
             onChange={(val) => field.onChange(val)}
             label="Kommo / Seleccionar responsable de las tareas"
-            disabled={!isKommoReady}
+            disabled={!isKommoReady || !isEditable("kommoResponsibleUserId")}
             error={
               !isKommoReady
-                ? 'Primero ingresa el subdominio y token de Kommo para seleccionar un usuario.'
+                ? "Primero ingresa el subdominio y token de Kommo para seleccionar un usuario."
                 : getErrorMessage(errors.kommoResponsibleUserId)
             }
           />
         )}
       />
 
-      {/* <Controller
-        name="superClinicId"
-        control={control}
-        render={({ field }) => (
-          <TextInput
-            name={field.name}
-            label="Super Clínica ID"
-            value={field.value}
-            onChange={field.onChange}
-            disabled
-          />
-        )}
-      /> */}
-
-      {/* <Controller
-        name="isEnabled"
-        control={control}
-        render={({ field }) => (
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={!!field.value}
-              onChange={field.onChange}
-              aria-label="¿Habilitado?"
-            />
-            <span className="text-sm">Habilitado</span>
-          </div>
-        )}
-      />
-      <TextInput
-        name="fieldsProfile"
-        label="fieldsProfile"
-        value="default_kommo_profile"
-        disabled
-      />
-      <TextInput
-        name="clinicSource"
-        label="clinicSource"
-        value="legacy"
-        disabled
-      /> */}
-
       <Controller
-        name="description del bot"
+        name="description"
         control={control}
         render={({ field }) => (
           <TextArea
@@ -267,11 +185,12 @@ export function BotConfigFormStepGeneral({
             onChange={field.onChange}
             error={getErrorMessage(errors.description)}
             rows={4}
+            disabled={!isEditable("description")}
           />
         )}
       />
 
-      {isEditMode && botType === 'chatBot' && assistants && (
+      {botType === "chatBot" && assistants && Object.keys(assistants).length > 0 && (
         <AssistantsList assistants={assistants} />
       )}
     </div>

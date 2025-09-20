@@ -18,7 +18,7 @@ export interface PackBonoTratamientoDTO {
 }
 
 export interface PackBonoSesionDTO {
-  id_pack_bono_sesion: number;
+  id_pack_bono_sesiones: number;
   id_pack_bono: number;
   id_paciente: number;
   // Se pueden agregar más campos si son necesarios en el futuro.

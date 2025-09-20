@@ -1,19 +1,18 @@
-// packages/frontend/src/app/features/bot-configs/ui/BotConfigsTable.tsx
-
 "use client";
 
-import { useEffect, useState } from 'react';
-import { useBotConfigs } from '@/app/features/bot-configs/model/useBotConfigs';
-import { Button } from '@/app/shared/ui/Button';
-import { LoadingSpinner } from '@/app/shared/ui/LoadingSpinner';
-import { Toast } from '@/app/shared/ui/Toast';
-import { BotConfigFormModal } from './BotConfigFormModal';
-import { WebhookCopyTooltip } from './WebhookCopyTooltip';
-import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
-import * as Tooltip from '@radix-ui/react-tooltip';
-import { Info, Edit, Trash2, Plus } from 'lucide-react';
-import { IconButton } from '@/app/shared/ui/IconButton';
-import type { BotConfig } from '@/app/entities/bot-config/types';
+import { useEffect, useState } from "react";
+import { useBotConfigs } from "@/app/features/bot-configs/model/useBotConfigs";
+import { Button } from "@/app/shared/ui/Button";
+import { LoadingSpinner } from "@/app/shared/ui/LoadingSpinner";
+import { Toast } from "@/app/shared/ui/Toast";
+import { CreateBotConfigWizard } from "./CreateBotConfigWizard";
+import { EditBotConfigWizard } from "./EditBotConfigWizard";
+import { WebhookCopyTooltip } from "./WebhookCopyTooltip";
+import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
+import * as Tooltip from "@radix-ui/react-tooltip";
+import { Info, Edit, Trash2, Plus } from "lucide-react";
+import { IconButton } from "@/app/shared/ui/IconButton";
+import type { BotConfig } from "@/app/entities/bot-config/types";
 
 export function BotConfigsTable() {
   const {
@@ -36,7 +35,7 @@ export function BotConfigsTable() {
 
   useEffect(() => {
     if (deleteError && !isDeleting) {
-      Toast({ message: 'Error al eliminar bot.', type: 'error' });
+      Toast({ message: "Error al eliminar bot.", type: "error" });
     }
   }, [deleteError, isDeleting]);
 
@@ -96,7 +95,7 @@ export function BotConfigsTable() {
                   className="border-b last:border-none hover:bg-gray-50 transition"
                 >
                   <td className="px-4 py-3">
-                    {config.botConfigType === 'notificationBot' ? 'Notification' : 'Chat'}
+                    {config.botConfigType === "notificationBot" ? "Notification" : "Chat"}
                   </td>
                   <td className="px-4 py-3">{`${config.kommoSubdomain}.kommo.com`}</td>
                   <td className="px-4 py-3">{config.defaultCountry}</td>
@@ -134,30 +133,28 @@ export function BotConfigsTable() {
                                   <div
                                     key={field.field_name + idx}
                                     className={`flex flex-col mb-2 rounded px-2 py-1 ${
-                                      field.exists && field.field_type === 'textarea'
-                                        ? 'bg-green-50 text-green-800'
-                                        : 'bg-red-50 text-red-800'
+                                      field.exists && field.field_type === "textarea"
+                                        ? "bg-green-50 text-green-800"
+                                        : "bg-red-50 text-red-800"
                                     }`}
                                   >
                                     <span className="font-semibold">{field.field_name}</span>
                                     <span>
-                                      {field.exists && field.field_type === 'textarea' && (
+                                      {field.exists && field.field_type === "textarea" && (
                                         <>✔️ Campo creado y de tipo texto largo</>
                                       )}
                                       {!field.exists && (
                                         <>❌ Debe crearse el custom field tipo <strong>texto largo</strong></>
                                       )}
-                                      {field.exists && field.field_type !== 'textarea' && (
-                                        <>❌ El tipo debe ser texto largo (actual: {field.field_type || '—'})</>
+                                      {field.exists && field.field_type !== "textarea" && (
+                                        <>❌ El tipo debe ser texto largo (actual: {field.field_type || "—"})</>
                                       )}
                                     </span>
                                   </div>
                                 ))}
                               </div>
                             ) : (
-                              <div className="text-gray-400">
-                                No hay campos requeridos para este perfil.
-                              </div>
+                              <div className="text-gray-400">No hay campos requeridos para este perfil.</div>
                             )}
                             <Tooltip.Arrow className="fill-white" />
                           </Tooltip.Content>
@@ -165,7 +162,8 @@ export function BotConfigsTable() {
                       </Tooltip.Root>
                     </div>
                   </td>
-                  <td className="px-4 py-3">{config.botConfigType === 'chatBot' ? (
+                  <td className="px-4 py-3">
+                    {config.botConfigType === "chatBot" ? (
                       <WebhookCopyTooltip config={config} />
                     ) : (
                       <span className="text-gray-300">—</span>
@@ -198,8 +196,11 @@ export function BotConfigsTable() {
           </tbody>
         </table>
       </div>
-      {modalOpen && (
-        <BotConfigFormModal
+      {modalOpen && editData === null && (
+        <CreateBotConfigWizard open={modalOpen} onClose={() => setModalOpen(false)} />
+      )}
+      {modalOpen && editData !== null && (
+        <EditBotConfigWizard
           open={modalOpen}
           onClose={() => setModalOpen(false)}
           initialData={editData}
@@ -208,7 +209,7 @@ export function BotConfigsTable() {
       {deleteConfig && (
         <ConfirmDeleteDialog
           open={!!deleteConfig}
-          botName={deleteConfig.botConfigType + ' de ' + deleteConfig.kommoSubdomain}
+          botName={deleteConfig.botConfigType + " de " + deleteConfig.kommoSubdomain}
           isLoading={isDeleting}
           error={!!deleteError}
           onCancel={() => {
