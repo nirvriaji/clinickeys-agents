@@ -1,7 +1,8 @@
-import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
+// packages/core/src/application/usecases/MarkPatientOnTheWayUseCase.ts
+
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 
-import { KommoService, AppointmentService } from '@clinickeys-agents/core/application/services';
+import { AppointmentService } from '@clinickeys-agents/core/application/services';
 
 interface MarkOnTheWayInput {
   leadId: number;
