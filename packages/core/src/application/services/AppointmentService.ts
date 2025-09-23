@@ -1,5 +1,3 @@
-// packages/core/src/application/services/AppointmentService.ts
-
 import { AvailabilityError } from '@clinickeys-agents/core/domain/errors';
 
 import {
@@ -62,9 +60,11 @@ export class AppointmentService {
       });
     }
 
+    const UNCONFIRMED_STATUS_IN = null;
+
     await this.updateAppointment({
       id_cita: appointmentId,
-      id_estados_cita_in: null, // se limpia la confirmación
+      id_estados_cita_in: UNCONFIRMED_STATUS_IN,
       comentario_ia: summary
     });
 
@@ -86,6 +86,27 @@ export class AppointmentService {
       id_estado_cita: CANCELED_STATUS,
       comentario_ia: summary,
     });
+    return await this.getAppointmentById(appointmentId);
+  }
+
+  async markOnTheWay(appointmentId: number, summary: string): Promise<any | undefined> {
+    const appointment = await this.getAppointmentById(appointmentId);
+    if (!appointment) {
+      throw new AvailabilityError({
+        code: 'ERR_APPOINTMENT_NOT_FOUND',
+        humanMessage: `No se encontró la cita con id ${appointmentId}`,
+        context: { appointmentId }
+      });
+    }
+
+    const ON_THE_WAY_STATUS_IN = 10;
+
+    await this.updateAppointment({
+      id_cita: appointmentId,
+      id_estados_cita_in: ON_THE_WAY_STATUS_IN,
+      comentario_ia: summary
+    });
+
     return await this.getAppointmentById(appointmentId);
   }
 

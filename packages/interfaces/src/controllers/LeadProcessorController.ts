@@ -1,5 +1,3 @@
-// packages/interfaces/src/controllers/LeadProcessorController.ts
-
 import { SQSEvent, SQSRecord } from "aws-lambda";
 
 import {
@@ -8,19 +6,14 @@ import {
   RecognizeUserIntentUseCase,
   ScheduleAppointmentUseCase,
   CheckAvailabilityUseCase,
-  CheckReprogramAvailabilityUseCase,
-  RescheduleAppointmentUseCase,
-  CancelAppointmentUseCase,
-  UnconfirmAppointmentUseCase,
-  ConfirmAppointmentUseCase,
-  MarkPatientOnTheWayUseCase,
-  HandleUrgencyUseCase,
   RegularConversationUseCase,
   FetchPatientInfoUseCase,
   FetchKommoDataUseCase,
   GetBotConfigUseCase,
   UpdatePatientMessageUseCase,
   IdentifyPatientUseCase,
+  ManageAppointmentStateUseCase,
+  CreateTaskUseCase,
 } from "@clinickeys-agents/core/application/usecases";
 
 import {
@@ -137,6 +130,7 @@ export class LeadProcessorController {
       tratamientoRepo,
       medicoRepo,
     );
+
     const checkAvailabilityUC = new CheckAvailabilityUseCase(
       kommoService,
       availabilityService,
@@ -144,31 +138,9 @@ export class LeadProcessorController {
       tratamientoRepo,
       medicoRepo,
     );
-    const checkReprogramAvailabilityUC = new CheckReprogramAvailabilityUseCase(
-      kommoService,
-      availabilityService,
-      getEstructuredAvailabilityRequestUC,
-      tratamientoRepo,
-      medicoRepo,
-    );
-    const rescheduleAppointmentUC = new RescheduleAppointmentUseCase(
-      kommoService,
-      appointmentService,
-      availabilityService,
-      openAIService,
-      getEstructuredAvailabilityRequestUC,
-      tratamientoRepo,
-      medicoRepo,
-    );
-    const cancelAppointmentUC = new CancelAppointmentUseCase(
-      kommoService,
-      appointmentService,
-      packBonoService,
-    );
-    const confirmAppointmentUC = new ConfirmAppointmentUseCase(appointmentService);
-    const unconfirmAppointmentUC = new UnconfirmAppointmentUseCase(appointmentService);
-    const markPatientOnTheWayUC = new MarkPatientOnTheWayUseCase(appointmentService);
-    const handleUrgencyUC = new HandleUrgencyUseCase(kommoService);
+
+    const manageAppointmentStateUC = new ManageAppointmentStateUseCase(appointmentService);
+    const createTaskUC = new CreateTaskUseCase(kommoService);
     const regularConversationUC = new RegularConversationUseCase();
     const identifyPatientUC = new IdentifyPatientUseCase(
       kommoService,
@@ -176,20 +148,15 @@ export class LeadProcessorController {
     );
 
     const communicateUC = new CommunicateWithAssistantUseCase({
-      checkReprogramAvailabilityUC,
-      rescheduleAppointmentUC,
-      unconfirmAppointmentUC,
+      manageAppointmentStateUC,
       scheduleAppointmentUC,
       regularConversationUC,
-      markPatientOnTheWayUC,
-      confirmAppointmentUC,
-      cancelAppointmentUC,
       checkAvailabilityUC,
-      recognizeIntentUC,
       identifyPatientUC,
-      handleUrgencyUC,
+      recognizeIntentUC,
       openAIService,
       kommoService,
+      createTaskUC,
     });
 
     this.logger.debug("Fetching Kommo data for lead");

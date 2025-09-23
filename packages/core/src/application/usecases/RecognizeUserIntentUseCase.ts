@@ -11,15 +11,11 @@ import type { DateTime } from 'luxon';
 type KnownIntent =
   | "conversación_regular"
   | "identificar_paciente"
-  | "consulta_reprogramar"
   | "clarificar_paciente"
-  | "paciente_en_camino"
-  | "reprogramar_cita"
   | "consulta_agendar"
-  | "confirmar_cita"
-  | "cancelar_cita"
   | "agendar_cita"
-  | "tarea";
+  | "crear_tarea"
+  | "gestionar_estado_cita";
 
 export interface RecognizeUserIntentInput {
   botConfigType: BotConfigType;

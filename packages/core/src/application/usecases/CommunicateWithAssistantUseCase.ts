@@ -1,17 +1,13 @@
 // packages/core/src/application/usecases/CommunicateWithAssistantUseCase.ts
 
 import {
-  CheckReprogramAvailabilityUseCase,
-  RescheduleAppointmentUseCase,
-  RegularConversationUseCase,
+  CheckAvailabilityUseCase,
   ScheduleAppointmentUseCase,
   RecognizeUserIntentUseCase,
-  CheckAvailabilityUseCase,
-  CancelAppointmentUseCase,
-  ConfirmAppointmentUseCase,
-  UnconfirmAppointmentUseCase,
-  MarkPatientOnTheWayUseCase,
-  HandleUrgencyUseCase,
+  RegularConversationUseCase,
+  IdentifyPatientUseCase,
+  CreateTaskUseCase,
+  ManageAppointmentStateUseCase,
 } from '@clinickeys-agents/core/application/usecases';
 
 import {
@@ -39,7 +35,6 @@ import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructur
 import { KommoService, OpenAIService } from '@clinickeys-agents/core/application/services';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { z } from 'zod';
-import { IdentifyPatientUseCase } from './IdentifyPatientUseCase';
 
 import type { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 
@@ -64,49 +59,17 @@ const ScheduleAppointmentSchema = CheckAvailabilitySchema.extend({
   isThirdParty: z.boolean(),
 });
 
-const CheckReprogramAvailabilitySchema = z.object({
-  nombre: z.string(),
-  apellido: z.string(),
-  telefono: z.string(),
-  id_paciente: z.number(),
+const ManageAppointmentStateSchema = z.object({
   id_cita: z.number(),
-  id_tratamiento: z.number(),
-  tratamiento: z.string(),
-  medico: z.string().nullable().optional(),
-  id_medico: z.number().nullable().optional(),
-  espacio: z.string().nullable().optional(),
-  id_espacio: z.number().nullable().optional(),
-  fechas: z.string(),
-  horas: z.string(),
-  rango_dias_extra: z.number().optional(),
+  estado: z.enum(["CANCELADA", "CONFIRMADA", "EN_CAMINO"]),
   summary: z.string(),
 });
 
-const RescheduleAppointmentSchema = CheckReprogramAvailabilitySchema;
-
-const CancelAppointmentSchema = z.object({
-  nombre: z.string(),
-  apellido: z.string(),
-  telefono: z.string(),
-  id_cita: z.number(),
-  summary: z.string(),
-});
-
-const ConfirmAppointmentSchema = z.object({
-  id_cita: z.number(),
-  summary: z.string(),
-});
-
-const MarkOnTheWaySchema = z.object({
-  id_cita: z.number(),
-  summary: z.string(),
-});
-
-const HandleUrgencySchema = z.object({
-  nombre: z.string(),
-  apellido: z.string(),
-  telefono: z.string(),
-  motivo: z.string(),
+const CreateTaskSchema = z.object({
+  nombre: z.string().optional(),
+  apellido: z.string().optional(),
+  telefono: z.string().optional(),
+  motivo: z.string().optional(),
   canal_preferido: z.string().nullable().optional(),
 });
 
@@ -135,7 +98,6 @@ interface UseCaseResponse {
   customFields?: Record<string, string>;
   createdAppointmentId?: number;
   needsConfirmation?: boolean;
-  updatedAppointmentId?: number;
 }
 
 interface CommunicateOutput {
@@ -149,13 +111,8 @@ export interface CommunicateWithAssistantUseCaseDeps {
   recognizeIntentUC: RecognizeUserIntentUseCase;
   scheduleAppointmentUC: ScheduleAppointmentUseCase;
   checkAvailabilityUC: CheckAvailabilityUseCase;
-  checkReprogramAvailabilityUC: CheckReprogramAvailabilityUseCase;
-  rescheduleAppointmentUC: RescheduleAppointmentUseCase;
-  cancelAppointmentUC: CancelAppointmentUseCase;
-  confirmAppointmentUC: ConfirmAppointmentUseCase;
-  unconfirmAppointmentUC: UnconfirmAppointmentUseCase;
-  markPatientOnTheWayUC: MarkPatientOnTheWayUseCase;
-  handleUrgencyUC: HandleUrgencyUseCase;
+  manageAppointmentStateUC: ManageAppointmentStateUseCase;
+  createTaskUC: CreateTaskUseCase;
   regularConversationUC: RegularConversationUseCase;
   identifyPatientUC: IdentifyPatientUseCase;
 }
@@ -164,7 +121,7 @@ export class CommunicateWithAssistantUseCase {
   constructor(private deps: CommunicateWithAssistantUseCaseDeps) {}
 
   public async execute(input: CommunicateInput): Promise<CommunicateOutput> {
-    const { botConfig, leadId, normalizedLeadCF, userMessage, reminderMessage, threadId, } = input;
+    const { botConfig, leadId, normalizedLeadCF, userMessage, reminderMessage, threadId } = input;
 
     try {
       const intentResult = await this.deps.recognizeIntentUC.execute({
@@ -218,102 +175,41 @@ export class CommunicateWithAssistantUseCase {
           if (ucResponse.success && ucResponse.createdAppointmentId) {
             if (ucResponse.needsConfirmation) {
               Logger.info('[CommunicateWithAssistant] Cita es hoy/mañana, confirmando automáticamente', { id_cita: ucResponse.createdAppointmentId });
-              await this.deps.confirmAppointmentUC.execute({
+              await this.deps.manageAppointmentStateUC.execute({
                 leadId,
                 params: {
                   id_cita: ucResponse.createdAppointmentId,
+                  estado: "CONFIRMADA",
                   summary: scheduleParams.summary,
                 },
               });
             } else {
               Logger.info('[CommunicateWithAssistant] Cita no es hoy/mañana, desconfirmando automáticamente', { id_cita: ucResponse.createdAppointmentId });
-              await this.deps.unconfirmAppointmentUC.execute({
+              await this.deps.manageAppointmentStateUC.execute({
                 leadId,
                 params: {
                   id_cita: ucResponse.createdAppointmentId,
+                  estado: "CANCELADA", // se desconfirma usando estado CANCELADA
                   summary: scheduleParams.summary,
                 },
               });
             }
           }
           break;
-        case 'consulta_reprogramar':
-          Logger.debug('[CommunicateWithAssistant] Ejecutando consulta_reprogramar', { params });
-          ucResponse = await this.deps.checkReprogramAvailabilityUC.execute({
+        case 'gestionar_estado_cita':
+          Logger.debug('[CommunicateWithAssistant] Ejecutando gestionar_estado_cita', { params });
+          ucResponse = await this.deps.manageAppointmentStateUC.execute({
+            leadId,
+            params: ManageAppointmentStateSchema.parse(params),
+          });
+          break;
+        case 'crear_tarea':
+          Logger.debug('[CommunicateWithAssistant] Ejecutando crear_tarea', { params });
+          ucResponse = await this.deps.createTaskUC.execute({
             botConfig,
             leadId,
             normalizedLeadCF,
-            params: CheckReprogramAvailabilitySchema.parse(params),
-            timezone: botConfig.timezone,
-            tiempoActualDT: localTime(botConfig.timezone),
-            subdomain: botConfig.kommo.subdomain,
-          });
-          break;
-        case 'reprogramar_cita':
-          Logger.debug('[CommunicateWithAssistant] Ejecutando reprogramar_cita', { params });
-          const rescheduleParams = RescheduleAppointmentSchema.parse(params);
-          ucResponse = await this.deps.rescheduleAppointmentUC.execute({
-            botConfig,
-            leadId,
-            normalizedLeadCF,
-            params: rescheduleParams,
-            timezone: botConfig.timezone,
-            tiempoActualDT: localTime(botConfig.timezone),
-            subdomain: botConfig.kommo.subdomain,
-          });
-
-          if (ucResponse.success && ucResponse.updatedAppointmentId) {
-            if (ucResponse.needsConfirmation) {
-              Logger.info('[CommunicateWithAssistant] Cita reprogramada para hoy/mañana, confirmando automáticamente', { id_cita: ucResponse.updatedAppointmentId });
-              await this.deps.confirmAppointmentUC.execute({
-                leadId,
-                params: {
-                  id_cita: ucResponse.updatedAppointmentId,
-                  summary: rescheduleParams.summary,
-                },
-              });
-            } else {
-              Logger.info('[CommunicateWithAssistant] Cita reprogramada no es hoy/mañana, desconfirmando automáticamente', { id_cita: ucResponse.updatedAppointmentId });
-              await this.deps.unconfirmAppointmentUC.execute({
-                leadId,
-                params: {
-                  id_cita: ucResponse.updatedAppointmentId,
-                  summary: rescheduleParams.summary,
-                },
-              });
-            }
-          }
-          break;
-        case 'cancelar_cita':
-          Logger.debug('[CommunicateWithAssistant] Ejecutando cancelar_cita', { params });
-          ucResponse = await this.deps.cancelAppointmentUC.execute({
-            botConfig,
-            leadId,
-            normalizedLeadCF,
-            params: CancelAppointmentSchema.parse(params),
-          });
-          break;
-        case 'tarea':
-          Logger.debug('[CommunicateWithAssistant] Ejecutando caso de tarea/urgencia/escalamiento', { params });
-          ucResponse = await this.deps.handleUrgencyUC.execute({
-            botConfig,
-            leadId,
-            normalizedLeadCF,
-            params: HandleUrgencySchema.parse(params),
-          });
-          break;
-        case 'confirmar_cita':
-          Logger.debug('[CommunicateWithAssistant] Ejecutando confirmar_cita', { params });
-          ucResponse = await this.deps.confirmAppointmentUC.execute({
-            leadId,
-            params: ConfirmAppointmentSchema.parse(params),
-          });
-          break;
-        case 'paciente_en_camino':
-          Logger.debug('[CommunicateWithAssistant] Ejecutando paciente_en_camino', { params });
-          ucResponse = await this.deps.markPatientOnTheWayUC.execute({
-            leadId,
-            params: MarkOnTheWaySchema.parse(params),
+            params: CreateTaskSchema.parse(params),
           });
           break;
         case 'identificar_paciente':
@@ -389,7 +285,7 @@ export class CommunicateWithAssistantUseCase {
         customFields,
         normalizedLeadCF,
       });
-      Logger.info('[CommunicateWithAssistant] Ejecución completada con éxito', { leadId });      
+      Logger.info('[CommunicateWithAssistant] Ejecución completada con éxito', { leadId });
 
       return { success: true, message: finalMsg || '' };
     } catch (error) {

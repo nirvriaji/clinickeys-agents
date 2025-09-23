@@ -1,3 +1,5 @@
+// packages/core/src/application/usecases/CreateTaskUseCase.ts
+
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { KommoService } from '@clinickeys-agents/core/application/services';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
@@ -9,7 +11,7 @@ import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
  */
 const TASK_DEADLINE_MINUTES = 48 * 60;
 
-export interface HandleUrgencyInput {
+export interface CreateTaskInput {
   botConfig: BotConfigDTO;
   leadId: number;
   normalizedLeadCF: (KommoCustomFieldValueBase & { value: any })[];
@@ -22,22 +24,22 @@ export interface HandleUrgencyInput {
   };
 }
 
-export interface HandleUrgencyOutput {
+export interface CreateTaskOutput {
   success: boolean;
   toolOutput: string;
 }
 
-export class HandleUrgencyUseCase {
+export class CreateTaskUseCase {
   constructor(private readonly kommoService: KommoService) {}
 
-  public async execute(input: HandleUrgencyInput): Promise<HandleUrgencyOutput> {
+  public async execute(input: CreateTaskInput): Promise<CreateTaskOutput> {
     const { botConfig, leadId, normalizedLeadCF, params } = input;
     const { nombre, apellido, telefono, motivo, canal_preferido } = params;
 
-    Logger.info('[HandleUrgency] Inicio', { leadId });
+    Logger.info('[CreateTask] Inicio', { leadId });
 
     // 1) Mensaje "please‑wait" al paciente
-    Logger.debug('[HandleUrgency] Enviando mensaje inicial al bot');
+    Logger.debug('[CreateTask] Enviando mensaje inicial al bot');
     await this.kommoService.sendBotInitialMessage({
       leadId,
       normalizedLeadCF,
@@ -56,21 +58,21 @@ export class HandleUrgencyUseCase {
 
     // 3) Crear la tarea en Kommo (ignorar errores, la UX al paciente no cambia)
     try {
-      Logger.debug('[HandleUrgency] Creando tarea en Kommo', { leadId });
+      Logger.debug('[CreateTask] Creando tarea en Kommo', { leadId });
       await this.kommoService.createTask({
         responsibleUserId: botConfig.kommo.responsibleUserId,
         leadId,
         minutesSinceNow: TASK_DEADLINE_MINUTES,
         message: taskMessageLines.join('\n'),
       });
-      Logger.info('[HandleUrgency] Tarea creada con éxito', { leadId });
+      Logger.info('[CreateTask] Tarea creada con éxito', { leadId });
     } catch (error) {
-      Logger.error('[HandleUrgency] Error al crear la tarea en Kommo', { error, leadId });
+      Logger.error('[CreateTask] Error al crear la tarea en Kommo', { error, leadId });
     }
 
     // 4) toolOutput para el Bot Parlante
-    const toolOutput = `#tarea\n\nTarea creada con éxito`;
-    Logger.info('[HandleUrgency] Ejecución completada', { leadId });
+    const toolOutput = `#crearTarea\n\nTarea creada con éxito`;
+    Logger.info('[CreateTask] Ejecución completada', { leadId });
 
     return { success: true, toolOutput };
   }
