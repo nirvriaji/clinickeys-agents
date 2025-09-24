@@ -31,7 +31,6 @@ interface CheckAvailabilityInput {
 interface CheckAvailabilityOutput {
   success: boolean;
   toolOutput: string;
-  customFields?: Record<string, string>;
 }
 
 interface StepDefinition {

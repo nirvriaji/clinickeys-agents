@@ -1,5 +1,5 @@
 // infra/lambda.ts
-import { chatbotQueue } from "./queue";
+import { chatbotQueue, chatbotQueueDLQ } from "./queue";
 import { botConfigDynamo } from "./database";
 import { SUFFIX, ENVIRONMENT } from "./config";
 
@@ -21,7 +21,7 @@ chatbotWebhookFn.addEnvironment({ URL: chatbotWebhookFn.url });
 // Handler que procesa los mensajes de la cola
 chatbotQueue.subscribe({
   handler: "packages/interfaces/src/handlers/leadProcessorHandler.handler",
-  timeout: "420 seconds",
+  timeout: "900 seconds",
   logging: {
     retention: "5 days"
   },
@@ -46,4 +46,12 @@ chatbotQueue.subscribe({
       from: "packages/core/src/.ia/instructions/prompts/bot_presentador_disponibilidades.md",
     }
   ]
+});
+
+chatbotQueueDLQ.subscribe({
+  handler: "packages/core/src/interface/handlers/dlqLogger.handler",
+  timeout: "30 seconds",
+  logging: {
+    retention: "1 week"
+  }
 });

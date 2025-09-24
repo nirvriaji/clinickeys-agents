@@ -43,9 +43,9 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
     function: {
       name: "identificar_paciente",
       description:
-        "Registra los datos básicos de identidad de un paciente cuando no existe ninguno asociado al interlocutor. " +
-        "Se utiliza al inicio del flujo o cuando no hay forma de vincular al usuario con un paciente existente. " +
-        "Siempre requiere nombre, apellido y teléfono antes de proceder con cualquier otra gestión.",
+        "Registra los datos básicos de identidad (nombre, apellido y teléfono) de un paciente cuando no existe ninguno asociado al interlocutor o cuando se gestiona en nombre de un tercero. " +
+        "Además de registrar identidad, esta función devuelve todas las citas asociadas al paciente identificado, cubriendo un rango temporal de 400 días hacia atrás y sin límite hacia adelante. " +
+        "Es el mecanismo oficial para acceder a la agenda y al historial de un paciente no vinculado directamente al canal, y siempre debe completarse antes de cualquier otra gestión.",
       parameters: {
         type: "object",
         properties: {
@@ -110,9 +110,9 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
           isThirdParty: { type: "boolean", description: "Indica si el interlocutor actúa en nombre de otra persona." },
         },
         required: [
-          "nombre","apellido","telefono","tratamiento","medico","espacio",
-          "fechas","horas","summary","id_pack_bono","id_presupuesto",
-          "id_paciente","shouldCreatePatient","isThirdParty",
+          "nombre", "apellido", "telefono", "tratamiento", "medico", "espacio",
+          "fechas", "horas", "summary", "id_pack_bono", "id_presupuesto",
+          "id_paciente", "shouldCreatePatient", "isThirdParty",
         ],
         additionalProperties: false,
       },
@@ -131,10 +131,10 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
         type: "object",
         properties: {
           id_cita: { type: "integer", description: "ID de la cita a actualizar" },
-          estado: { type: "string", enum: ["cancelar","confirmar","en_camino"], description: "Nuevo estado de la cita" },
+          estado: { type: "string", enum: ["CANCELADA", "CONFIRMADA", "EN_CAMINO"], description: "Nuevo estado de la cita" },
           summary: { type: "string", description: "Resumen breve de la interacción (150–400 caracteres)." },
         },
-        required: ["id_cita","estado","summary"],
+        required: ["id_cita", "estado", "summary"],
         additionalProperties: false,
       },
       strict: true,
@@ -155,9 +155,9 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
           apellido: { type: "string", description: "Apellido del paciente (NO PUEDE ESTAR VACÍO)" },
           telefono: { type: "string", description: "Teléfono del paciente (NO PUEDE ESTAR VACÍO)" },
           motivo: { type: "string", description: "Motivo de la tarea (NO PUEDE ESTAR VACÍO)" },
-          canal_preferido: { type: ["string","null"], enum: ["llamada","WhatsApp"], description: "Canal preferido; null si no aplica" },
+          canal_preferido: { type: ["string", "null"], enum: ["llamada", "WhatsApp"], description: "Canal preferido; null si no aplica" },
         },
-        required: ["nombre","apellido","telefono","motivo","canal_preferido"],
+        required: ["nombre", "apellido", "telefono", "motivo", "canal_preferido"],
         additionalProperties: false,
       },
       strict: true,
@@ -168,8 +168,9 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
     function: {
       name: "clarificar_paciente",
       description:
-        "Resuelve una ambigüedad cuando hay varios pacientes posibles asociados al mismo interlocutor. " +
-        "Presenta la lista de candidatos y solicita al usuario que seleccione cuál es el paciente objetivo de la gestión.",
+        "Resuelve una ambigüedad cuando existen varios pacientes candidatos con los mismos datos o tras un proceso de identificación. " +
+        "Se utiliza tanto si hay múltiples pacientes asociados al interlocutor como si la función identificar_paciente devuelve más de un posible resultado. " +
+        "Presenta las opciones mínimas necesarias y solicita al interlocutor que seleccione cuál es el paciente objetivo antes de continuar con cualquier otra gestión.",
       parameters: {
         type: "object",
         properties: {

@@ -1,3 +1,5 @@
+// packages/interfaces/src/controllers/LeadProcessorController.ts
+
 import { SQSEvent, SQSRecord } from "aws-lambda";
 
 import {
@@ -142,10 +144,7 @@ export class LeadProcessorController {
     const manageAppointmentStateUC = new ManageAppointmentStateUseCase(appointmentService);
     const createTaskUC = new CreateTaskUseCase(kommoService);
     const regularConversationUC = new RegularConversationUseCase();
-    const identifyPatientUC = new IdentifyPatientUseCase(
-      kommoService,
-      patientService,
-    );
+    const identifyPatientUC = new IdentifyPatientUseCase(patientService);
 
     const communicateUC = new CommunicateWithAssistantUseCase({
       manageAppointmentStateUC,

@@ -1,4 +1,6 @@
-import { KommoService, PatientService } from "@clinickeys-agents/core/application/services";
+// packages/core/src/application/usecases/IdentifyPatientUseCase.ts
+
+import { PatientService } from "@clinickeys-agents/core/application/services";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { PATIENT_FIRST_NAME, PATIENT_LAST_NAME, PATIENT_PHONE } from "@clinickeys-agents/core/utils";
 import { z } from "zod";
@@ -21,12 +23,12 @@ export interface IdentifyPatientInput {
 export interface IdentifyPatientOutput {
   success: boolean;
   toolOutput: string;
+  customFields?: Record<string, string>;
   patientInfo?: any;
 }
 
 export class IdentifyPatientUseCase {
   constructor(
-    private readonly kommoService: KommoService,
     private readonly patientService: PatientService
   ) { }
 
@@ -55,17 +57,6 @@ export class IdentifyPatientUseCase {
       const paciente = pacientes[0];
       Logger.info("[IdentifyPatientUseCase] Paciente identificado o creado", { id_paciente: paciente.id_paciente });
 
-      // Guardar los datos básicos en Kommo
-      await this.kommoService.updateLeadCustomFields({
-        botConfig,
-        leadId,
-        customFields: {
-          [PATIENT_FIRST_NAME]: nombre,
-          [PATIENT_LAST_NAME]: apellido,
-          [PATIENT_PHONE]: telefono,
-        },
-      });
-
       Logger.info("[IdentifyPatientUseCase] CF actualizados en Kommo", { leadId, nombre, apellido, telefono });
 
       // Obtener toda la información asociada al nuevo número
@@ -83,7 +74,17 @@ export class IdentifyPatientUseCase {
       Buscando por el teléfono proporcionado devolvió esta información: ${JSON.stringify(patientInfo)}
       `;
 
-      return { success: true, toolOutput };
+      const customFields = {
+        [PATIENT_FIRST_NAME]: nombre,
+        [PATIENT_LAST_NAME]: apellido,
+        [PATIENT_PHONE]: telefono,
+      };
+
+      return {
+        success: true,
+        toolOutput,
+        customFields
+      };
     } catch (error) {
       Logger.error("[IdentifyPatientUseCase] Error durante la ejecución", { error });
       return { success: false, toolOutput: "Ocurrió un error al registrar tu información. Inténtalo nuevamente." };

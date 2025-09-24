@@ -95,7 +95,7 @@ export class KommoService {
     patientLastName: string;
     patientPhone: string;
     notificationId?: number;
-  }): Promise<string> {
+  }): Promise<number> {
     const { botConfig, patientId, patientFirstName, patientLastName, patientPhone, notificationId } = input;
     const defaultCountry = botConfig.defaultCountry as CountryCode;
     const normalizedPhone = parsePhoneNumberFromString(patientPhone, defaultCountry)?.number || patientPhone;
@@ -119,7 +119,7 @@ export class KommoService {
       const leadExists = await this.kommoRepository.getLeadById({ leadId: Number(existingLeadId) });
       if (leadExists) {
         Logger.info('[KommoService.ensureLead] Lead existente reutilizado', { existingLeadId });
-        return existingLeadId;
+        return Number(existingLeadId);
       }
       Logger.warn('[KommoService.ensureLead] LeadId guardado no existe en Kommo, se creará uno nuevo', { existingLeadId });
     }
@@ -183,7 +183,7 @@ export class KommoService {
       }
     }
 
-    return leadId!;
+    return Number(leadId)!;
   }
 
   public async updateLeadCustomFields(input: {
