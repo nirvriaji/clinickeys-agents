@@ -213,41 +213,54 @@ BEGIN
       'visit_week_day_name', v_dia_semana,
       'medic_full_name', v_nombre_medico,
       'treatmentName', v_nombre_tratamiento,
-      'visit_date', DATE_FORMAT(v_fecha_cita, '%Y-%m-%d'),
-      'visit_init_time', TIME_FORMAT(v_hora_inicio, '%H:%i:%s'),
-      'visit_end_time', TIME_FORMAT(v_hora_fin, '%H:%i:%s'),
+      'visit_date', DATE_FORMAT(v_fecha_cita, '%d/%m'),
+      'visit_init_time', TIME_FORMAT(v_hora_inicio, '%H:%i'),
+      'visit_end_time', TIME_FORMAT(v_hora_fin, '%H:%i'),
       'visit_space_name', v_nombre_espacio
     );
 
-    INSERT INTO notificaciones (
-      tipo_notificacion,
-      id_entidad_destino,
-      entidad_destino,
-      mensaje,
-      payload,
-      fecha_envio_programada,
-      hora_envio_programada,
-      entidad_desencadenadora,
-      id_entidad_desencadenadora,
-      id_clinica,
-      id_super_clinica,
-      estado,
-      creado_el
-    ) VALUES (
-      'recordatorio_cita',
-      v_id_paciente,
-      'paciente',
-      v_mensaje,
-      v_payload,
-      v_fecha_envio,
-      v_hora_envio,
-      'cita',
-      p_id_cita,
-      v_id_clinica,
-      v_id_super_clinica,
-      v_estado,
-      v_creado_el
-    );
+    -- Validar si ya existe notificación para el mismo paciente y fecha
+    IF NOT EXISTS (
+      SELECT 1
+        FROM notificaciones
+       WHERE id_entidad_destino = v_id_paciente
+         AND estado IN ('pendiente')
+         AND entidad_destino = 'paciente'
+         AND tipo_notificacion = 'recordatorio_cita'
+         AND fecha_envio_programada = v_fecha_envio
+    ) THEN
+
+      INSERT INTO notificaciones (
+        tipo_notificacion,
+        id_entidad_destino,
+        entidad_destino,
+        mensaje,
+        payload,
+        fecha_envio_programada,
+        hora_envio_programada,
+        entidad_desencadenadora,
+        id_entidad_desencadenadora,
+        id_clinica,
+        id_super_clinica,
+        estado,
+        creado_el
+      ) VALUES (
+        'recordatorio_cita',
+        v_id_paciente,
+        'paciente',
+        v_mensaje,
+        v_payload,
+        v_fecha_envio,
+        v_hora_envio,
+        'cita',
+        p_id_cita,
+        v_id_clinica,
+        v_id_super_clinica,
+        v_estado,
+        v_creado_el
+      );
+
+    END IF;
 
   ELSE
     SIGNAL SQLSTATE '45000'

@@ -172,7 +172,9 @@ El historial puede enriquecer summaries o copy contextual, pero nunca habilita o
 * Si existen varios pacientes asociados al interlocutor, se solicita una **aclaración mínima** para elegir el correcto.
 * Si no hay pacientes asociados, o si el interlocutor solicita gestionar citas de un tercero, se inicia el flujo de **identificar_paciente**, solicitando nombre, apellido y teléfono.
 * La función **identificar_paciente** no solo captura datos de identidad: también devuelve todas las citas asociadas al paciente identificado, cubriendo un rango temporal de **400 días hacia atrás y sin límite hacia el futuro**. Esto habilita al asistente a operar tanto sobre citas históricas como sobre citas futuras del paciente una vez identificado.
-* Cuando la función de identificación arroje más de un paciente candidato, el asistente debe pasar inmediatamente al flujo de **clarificar_paciente**, presentando opciones mínimas para que el interlocutor seleccione al correcto.
+* Cuando la función de identificación arroje más de un paciente candidato, el asistente pasa al flujo de **clarificar_paciente**, pero **únicamente si la ambigüedad persiste de manera objetiva** (varios pacientes con mismos datos básicos o coincidencias parciales).
+* Si el interlocutor ya proporcionó **nombre y apellido completos junto con un teléfono válido**, y uno de los pacientes coincide exactamente con esos datos, el asistente procede con ese paciente sin solicitar confirmaciones redundantes.
+* El flujo de clarificación se activa solo cuando no es posible determinar al paciente correcto con la información ya aportada.
 * Ninguna gestión operativa (agendar, cancelar, confirmar, consultar) se ejecuta hasta que la identidad esté resuelta y consistente.
 * Cuando se agenda, cancela o gestiona en nombre de un tercero, el asistente debe **registrar explícitamente** que la gestión se realiza en representación de otra persona.
 

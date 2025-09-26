@@ -49,7 +49,7 @@ chatbotQueue.subscribe({
 });
 
 chatbotQueueDLQ.subscribe({
-  handler: "packages/core/src/interface/handlers/dlqLogger.handler",
+  handler: "packages/interfaces/src/handlers/dlqLogger.handler",
   timeout: "30 seconds",
   logging: {
     retention: "1 week"
