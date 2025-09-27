@@ -49,7 +49,7 @@ export class AvailabilityRequestExtractorService {
         err
       );
       const fallback =
-        "Eres un extractor de filtros para disponibilidad de citas. Devuelves un objeto JSON con tratamientos, médicos, espacios y fechas.";
+        "Eres un extractor de filtros para disponibilidad de citas. Devuelves un objeto JSON con tratamientos, médicos, espacios y fechas. Debes usar únicamente los nombres provistos en las listas de tratamientosDisponibles, medicosDisponibles y espaciosDisponibles. Si no hay coincidencia exacta, devuelve un array vacío.";
       AvailabilityRequestExtractorService.cachedSystemPrompt = fallback;
       return fallback;
     }
@@ -67,6 +67,7 @@ export class AvailabilityRequestExtractorService {
       localTimeForPrompts: string;
       tratamientosDisponibles: string[];
       medicosDisponibles: string[];
+      espaciosDisponibles: string[];
     }
   ): Promise<AvailabilityFilterResult[]> {
     const systemPrompt = await this.loadSystemPrompt();
@@ -78,10 +79,9 @@ Contexto:
 - id_clinica: ${contexto.id_clinica}
 - id_super_clinica: ${contexto.id_super_clinica}
 - tiempo_actual: ${contexto.localTimeForPrompts}
-- tratamientos disponibles: ${JSON.stringify(
-      contexto.tratamientosDisponibles
-    )}
+- tratamientos disponibles: ${JSON.stringify(contexto.tratamientosDisponibles)}
 - médicos disponibles: ${JSON.stringify(contexto.medicosDisponibles)}
+- espacios disponibles: ${JSON.stringify(contexto.espaciosDisponibles)}
 `;
 
     try {

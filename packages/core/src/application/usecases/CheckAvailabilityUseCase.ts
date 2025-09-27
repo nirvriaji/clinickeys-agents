@@ -5,6 +5,7 @@ import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructur
 import { AvailabilityDomainService, KommoService } from '@clinickeys-agents/core/application/services';
 import { ITratamientoRepository } from '@clinickeys-agents/core/domain/tratamiento';
 import { IMedicoRepository } from '@clinickeys-agents/core/domain/medico';
+import { IEspacioRepository } from '@clinickeys-agents/core/domain/espacio';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
@@ -43,18 +44,19 @@ export class CheckAvailabilityUseCase {
   constructor(
     private readonly kommoService: KommoService,
     private readonly availabilityService: AvailabilityDomainService,
-    private readonly availabilityResponsePresenterService: AvailabilityRequestExtractorService,
+    private readonly availabilityRequestExtractorService: AvailabilityRequestExtractorService,
     private readonly tratamientoRepositoryMySQL: ITratamientoRepository,
     private readonly medicoRepositoryMySQL: IMedicoRepository,
+    private readonly espacioRepositoryMySQL: IEspacioRepository,
   ) { }
 
   public async execute(input: CheckAvailabilityInput): Promise<CheckAvailabilityOutput> {
     const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, subdomain } = input;
-    const { tratamiento, medico, fechas, horas, summary } = params;
+    const { tratamiento, medico, espacio, fechas, horas, summary } = params;
 
     const localTimeForPrompts = getClinicLocalTimestamp(tiempoActualDT, timezone);
 
-    Logger.info('[CheckAvailability] Inicio', { leadId, tratamiento, medico, fechas, horas });
+    Logger.info('[CheckAvailability] Inicio', { leadId, tratamiento, medico, espacio, fechas, horas });
 
     // 1. Mensaje inicial "please-wait"
     Logger.debug('[CheckAvailability] Enviando mensaje inicial al bot');
@@ -76,15 +78,18 @@ export class CheckAvailabilityUseCase {
       botConfig.superClinicId
     );
     const nombresMedicos = medicos.map((m) => m.nombre_completo);
+    const espacios = await this.espacioRepositoryMySQL.findByClinica(botConfig.clinicId);
+    const nombresEspacios = espacios.map((e) => e.nombre);
 
     Logger.debug('[CheckAvailability] Extrayendo filtros estructurados');
-    const structuredFilters = await this.availabilityResponsePresenterService.extract(JSON.stringify(params), {
+    const structuredFilters = await this.availabilityRequestExtractorService.extract(JSON.stringify(params), {
       id_clinica: botConfig.clinicId,
       id_super_clinica: botConfig.superClinicId,
       tiempo_actual: tiempoActualDT.toISO() as string,
       localTimeForPrompts,
       tratamientosDisponibles: nombresTratamientos,
       medicosDisponibles: nombresMedicos,
+      espaciosDisponibles: nombresEspacios,
     });
 
     let finalPayload: any = null;
@@ -162,7 +167,7 @@ export class CheckAvailabilityUseCase {
 
         fechas_buscadas = availability.fechas_buscadas;
 
-        if (availability.success && availability.presentacion_disponibilidades) {
+        if (availability.success && availability.disponibilidades.length) {
           finalPayload = {
             tipo_busqueda: step.tipo,
             filtros_aplicados: step.filtros,

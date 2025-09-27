@@ -131,6 +131,7 @@ export class LeadProcessorController {
       getEstructuredAvailabilityRequestUC,
       tratamientoRepo,
       medicoRepo,
+      espacioRepo,
     );
 
     const checkAvailabilityUC = new CheckAvailabilityUseCase(
@@ -139,6 +140,7 @@ export class LeadProcessorController {
       getEstructuredAvailabilityRequestUC,
       tratamientoRepo,
       medicoRepo,
+      espacioRepo,
     );
 
     const manageAppointmentStateUC = new ManageAppointmentStateUseCase(appointmentService);

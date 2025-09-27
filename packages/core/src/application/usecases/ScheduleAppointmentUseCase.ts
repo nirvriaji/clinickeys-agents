@@ -4,6 +4,7 @@ import { isAppointmentSoon, getClinicLocalTimestamp, formatFechaCita, PATIENT_FI
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { ITratamientoRepository } from '@clinickeys-agents/core/domain/tratamiento';
 import { IMedicoRepository } from '@clinickeys-agents/core/domain/medico';
+import { IEspacioRepository } from '@clinickeys-agents/core/domain/espacio';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { readFile } from 'fs/promises';
@@ -69,6 +70,7 @@ export class ScheduleAppointmentUseCase {
     private readonly availabilityResponsePresenterService: AvailabilityRequestExtractorService,
     private readonly tratamientoRepositoryMySQL: ITratamientoRepository,
     private readonly medicoRepositoryMySQL: IMedicoRepository,
+    private readonly espacioRepositoryMySQL: IEspacioRepository,
   ) { }
 
   public async execute(input: ScheduleAppointmentInput): Promise<ScheduleAppointmentOutput> {
@@ -121,6 +123,9 @@ export class ScheduleAppointmentUseCase {
     );
     const nombresMedicos = medicos.map((m) => m.nombre_completo);
 
+    const espacios = await this.espacioRepositoryMySQL.findByClinica(botConfig.clinicId);
+    const nombresEspacios = espacios.map((e) => e.nombre);
+
     // Obtener filtros estructurados
     Logger.debug('[ScheduleAppointment] Extrayendo filtros estructurados');
     const structuredFilters = await this.availabilityResponsePresenterService.extract(JSON.stringify(params), {
@@ -130,6 +135,7 @@ export class ScheduleAppointmentUseCase {
       localTimeForPrompts,
       tratamientosDisponibles: nombresTratamientos,
       medicosDisponibles: nombresMedicos,
+      espaciosDisponibles: nombresEspacios,
     });
 
     let finalPayload: Record<string, unknown> | null = null;

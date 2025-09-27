@@ -1,13 +1,12 @@
-// packages/core/src/application/services/AvailabilityDomainService/Service.ts
+// packages/core/src/application/services/AvailabilityService/AvailabilityDomainService.ts
 
 import { AvailabilityRequestExtractorService, AvailabilityResponsePresenterService } from "@clinickeys-agents/core/application/services";
 import { ITratamientoRepository, TratamientoSearchResultDTO } from "@clinickeys-agents/core/domain/tratamiento";
 import { AvailabilityCalculator, AvailabilityAdjuster } from "@clinickeys-agents/core/domain/availability";
 import { ejecutarConReintento } from "@clinickeys-agents/core/infrastructure/helpers";
 import { AvailabilitySQLBuilder } from "@clinickeys-agents/core/application/services";
-import { IEspacioRepository } from "@clinickeys-agents/core/domain/espacio";
+import { IEspacioRepository, EspacioBasicDTO } from "@clinickeys-agents/core/domain/espacio";
 import { IMedicoRepository } from "@clinickeys-agents/core/domain/medico";
-import { EspacioBasicDTO } from "@clinickeys-agents/core/domain/espacio";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { AvailabilityError } from "@clinickeys-agents/core/domain/errors";
 import {
@@ -392,6 +391,8 @@ export class AvailabilityDomainService {
       id_super_clinica
     );
     const nombresMedicos = medicos.map((m) => m.nombre_completo);
+    const espacios = await this.spaceRepo.findByClinica(id_clinica);
+    const nombresEspacios = espacios.map((e) => e.nombre);
 
     const filters = await this.availabilityResponsePresenterService.extract(mensajeBotParlante, {
       id_clinica,
@@ -400,6 +401,7 @@ export class AvailabilityDomainService {
       localTimeForPrompts,
       tratamientosDisponibles: nombresTratamientos,
       medicosDisponibles: nombresMedicos,
+      espaciosDisponibles: nombresEspacios,
     });
 
     const availabilityRequest: AppointmentAvailabilityInput = {
