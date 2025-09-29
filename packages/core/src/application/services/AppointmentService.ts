@@ -1,3 +1,5 @@
+// packages/core/src/application/services/AppointmentService.ts
+
 import { AvailabilityError } from '@clinickeys-agents/core/domain/errors';
 
 import {

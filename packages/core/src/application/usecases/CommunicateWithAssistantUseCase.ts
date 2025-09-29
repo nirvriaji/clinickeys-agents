@@ -124,6 +124,8 @@ export class CommunicateWithAssistantUseCase {
     const { botConfig, leadId, normalizedLeadCF, userMessage, reminderMessage, threadId } = input;
 
     try {
+      Logger.info('[CommunicateWithAssistant] Inicio de ejecución', { leadId, userMessage, reminderMessage });
+
       const intentResult = await this.deps.recognizeIntentUC.execute({
         botConfigType: botConfig.botConfigType,
         botConfigId: botConfig.botConfigId,
@@ -148,7 +150,7 @@ export class CommunicateWithAssistantUseCase {
       let ucResponse: UseCaseResponse;
       switch (intentName) {
         case 'consulta_agendar':
-          Logger.debug('[CommunicateWithAssistant] Ejecutando consulta_agendar', { params });
+          Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: consulta_agendar');
           ucResponse = await this.deps.checkAvailabilityUC.execute({
             botConfig,
             leadId,
@@ -160,7 +162,7 @@ export class CommunicateWithAssistantUseCase {
           });
           break;
         case 'agendar_cita':
-          Logger.debug('[CommunicateWithAssistant] Ejecutando agendar_cita', { params });
+          Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: agendar_cita');
           const scheduleParams = ScheduleAppointmentSchema.parse(params);
           ucResponse = await this.deps.scheduleAppointmentUC.execute({
             botConfig,
@@ -197,14 +199,14 @@ export class CommunicateWithAssistantUseCase {
           }
           break;
         case 'gestionar_estado_cita':
-          Logger.debug('[CommunicateWithAssistant] Ejecutando gestionar_estado_cita', { params });
+          Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: gestionar_estado_cita');
           ucResponse = await this.deps.manageAppointmentStateUC.execute({
             leadId,
             params: ManageAppointmentStateSchema.parse(params),
           });
           break;
         case 'crear_tarea':
-          Logger.debug('[CommunicateWithAssistant] Ejecutando crear_tarea', { params });
+          Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: crear_tarea');
           ucResponse = await this.deps.createTaskUC.execute({
             botConfig,
             leadId,
@@ -213,7 +215,7 @@ export class CommunicateWithAssistantUseCase {
           });
           break;
         case 'identificar_paciente':
-          Logger.debug('[CommunicateWithAssistant] Ejecutando identificar_paciente', { params });
+          Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: identificar_paciente');
           ucResponse = await this.deps.identifyPatientUC.execute({
             leadId,
             botConfig,
@@ -222,14 +224,14 @@ export class CommunicateWithAssistantUseCase {
           });
           break;
         default:
-          Logger.debug('[CommunicateWithAssistant] Ejecutando conversación regular', { assistantPlainMessage });
+          Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: conversación regular');
           ucResponse = await this.deps.regularConversationUC.execute({
             params: RegularConversationSchema.parse({ assistantMessage: assistantPlainMessage || '' }),
           });
       }
 
       if (!ucResponse.success) {
-        Logger.error('[CommunicateWithAssistant] UC devolvió error', { intentName, ucResponse });
+        Logger.error('[CommunicateWithAssistant] El caso de uso devolvió error', { intentName, ucResponse });
         throw new Error('El caso de uso devolvió error.');
       }
 
@@ -237,7 +239,7 @@ export class CommunicateWithAssistantUseCase {
 
       if (runId && Array.isArray(functionCalls) && functionCalls.length > 0) {
         Logger.info('[CommunicateWithAssistant] Resolviendo functionCalls', { count: functionCalls.length });
-        Logger.info('[CommunicateWithAssistant] UcResponse toolOutput', ucResponse.toolOutput);
+        Logger.info('[CommunicateWithAssistant] ToolOutput recibido del UC', { toolOutput: ucResponse.toolOutput });
         const toolOutputWithPlaceholders = `${ucResponse.toolOutput}\n${mergePlaceholdersIntoContext(botConfig.placeholders)}`;
         const resolved = await this.deps.openAIService.getResponseFromWaitingAssistant({
           threadId: thId!,
@@ -245,7 +247,7 @@ export class CommunicateWithAssistantUseCase {
           functionCalls,
           rawOutput: toolOutputWithPlaceholders,
         });
-        Logger.debug('[CommunicateWithAssistant] Respuesta tras functionCalls', { resolvedMessage: resolved.message });
+        Logger.info('[CommunicateWithAssistant] Respuesta final tras functionCalls', { resolvedMessage: resolved.message });
         finalMsg = resolved.message || '';
       }
 
@@ -267,15 +269,13 @@ export class CommunicateWithAssistantUseCase {
       };
 
       const customFields = { ...baseFields, ...(ucResponse.customFields ?? {}) };
-      Logger.info('[CommunicateWithAssistant] Campos a enviar a Kommo', {
+      Logger.info('[CommunicateWithAssistant] Campos construidos para Kommo', {
         baseFields,
         ucCustomFields: ucResponse.customFields,
-        mergedCustomFieldsCount: normalizedLeadCF.length,
-        mergedCustomFieldsSample: normalizedLeadCF?.filter(cf => CHAT_BOT_CUSTOM_FIELDS.includes(cf.field_name)).map(cf => ({ name: cf.field_name, value: cf.value, id: cf.field_id })) || [],
+        mergedCustomFields: customFields,
       });
 
-      Logger.debug('[CommunicateWithAssistant] Llamando a replyToLead', { customFields });
-      Logger.debug("[CommunicateWithAssistantUseCase.execute] UC customFields", ucResponse.customFields);
+      Logger.info('[CommunicateWithAssistant] Llamando a replyToLead', { leadId, salesbotId: botConfig.kommo.salesbotId });
       await this.deps.kommoService.replyToLead({
         salesbotId: botConfig.kommo.salesbotId,
         leadId,
@@ -286,7 +286,7 @@ export class CommunicateWithAssistantUseCase {
 
       return { success: true, message: finalMsg || '' };
     } catch (error) {
-      Logger.error('[CommunicateWithAssistant] Error general', { error });
+      Logger.error('[CommunicateWithAssistant] Error general en ejecución', { error });
       return {
         success: false,
         message: 'No fue posible procesar el mensaje en este momento.'

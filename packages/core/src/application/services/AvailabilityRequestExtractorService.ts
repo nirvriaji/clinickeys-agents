@@ -42,6 +42,7 @@ export class AvailabilityRequestExtractorService {
     try {
       const content = await readFile(promptsPath, "utf8");
       AvailabilityRequestExtractorService.cachedSystemPrompt = content;
+      Logger.info("[AvailabilityRequestExtractorService] Prompt cargado desde archivo .md");
       return content;
     } catch (err) {
       Logger.error(
@@ -84,6 +85,12 @@ Contexto:
 - espacios disponibles: ${JSON.stringify(contexto.espaciosDisponibles)}
 `;
 
+    Logger.info("[AvailabilityRequestExtractorService] Iniciando extracción de filtros", {
+      mensajeBotParlante,
+      contexto,
+      prompt: userPrompt,
+    });
+
     try {
       const { filters } = await this.openAIService.getSchemaStructuredResponse(
         systemPrompt,
@@ -93,14 +100,14 @@ Contexto:
       );
 
       Logger.info(
-        "[AvailabilityRequestExtractorService] Filtros obtenidos:",
-        JSON.stringify(filters)
+        "[AvailabilityRequestExtractorService] Filtros obtenidos",
+        { cantidad: (filters || []).length, filtros: filters }
       );
 
       return filters as AvailabilityFilterResult[];
     } catch (error) {
       Logger.error(
-        "[AvailabilityRequestExtractorService] Error al extraer filtros:",
+        "[AvailabilityRequestExtractorService] Error al extraer filtros",
         error
       );
       return [];

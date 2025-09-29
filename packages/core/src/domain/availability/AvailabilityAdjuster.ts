@@ -1,4 +1,4 @@
-// packages/core/src/application/services/AvailabilityDomainService/AvailabilityAdjuster.ts
+// packages/core/src/domain/availability/AvailabilityAdjuster.ts
 
 import { Disponibilidad } from "@clinickeys-agents/core/domain/availability";
 import { formatFechaLegible } from "@clinickeys-agents/core/utils";
@@ -52,7 +52,7 @@ export function AvailabilityAdjuster(
       startDT = minDT;
     }
 
-    if (startDT >= latestStartDT) continue;
+    if (startDT > latestStartDT) continue;
 
     const adjusted: Disponibilidad = {
       ...item,

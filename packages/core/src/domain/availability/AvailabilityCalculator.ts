@@ -1,4 +1,4 @@
-// packages/core/src/application/services/AvailabilityDomainService/AvailabilityCalculator.ts
+// packages/core/src/domain/availability/AvailabilityCalculator.ts
 
 import { AvailabilityWindowBuilder } from "@clinickeys-agents/core/domain/availability";
 

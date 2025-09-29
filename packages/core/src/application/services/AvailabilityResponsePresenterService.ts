@@ -23,6 +23,7 @@ async function loadSystemPrompt(): Promise<string> {
 
   try {
     cachedSystemPrompt = await readFile(promptsPath, "utf8");
+    Logger.info("[AvailabilityResponsePresenterService] Prompt cargado desde archivo .md");
     return cachedSystemPrompt;
   } catch (err) {
     Logger.error(
@@ -30,8 +31,23 @@ async function loadSystemPrompt(): Promise<string> {
       err
     );
     cachedSystemPrompt =
-      "Eres un presentador de disponibilidades médicas.\nRecibirás un array de disponibilidades y un conjunto de restricciones.\nDebes filtrar, ordenar y luego generar un texto para el paciente con las reglas definidas.\nResponde siempre en JSON cumpliendo el schema indicado.";
+      "Eres un presentador de disponibilidades médicas.\n" +
+      "Recibirás un array de disponibilidades y un conjunto de restricciones.\n" +
+      "Debes filtrar, ordenar y luego generar un texto para el paciente con las reglas definidas.\n" +
+      "Responde siempre en JSON cumpliendo el schema indicado.";
     return cachedSystemPrompt;
+  }
+}
+
+// =============================
+// Helpers
+// =============================
+function normalizeContext(contexto: unknown): string {
+  if (typeof contexto === "string") return contexto;
+  try {
+    return JSON.stringify(contexto ?? {}, null, 2);
+  } catch {
+    return String(contexto ?? "");
   }
 }
 
@@ -46,15 +62,18 @@ export async function AvailabilityResponsePresenterService(
 ): Promise<PresentacionYDisponibilidades> {
   const systemPrompt = await loadSystemPrompt();
 
-  const userPrompt = `CONFIGURACION_DE_DISPONIBILIDADES:\n\nCONTEXTO:\n${JSON.stringify(
-    contexto || {},
-    null,
-    2
-  )}\n\nDISPONIBILIDADES_ORIGINALES:\n${JSON.stringify(
+  const contextoBlock = normalizeContext(contexto);
+
+  const userPrompt = `CONFIGURACION_DE_DISPONIBILIDADES:\n\nCONTEXTO:\n${contextoBlock}\n\nDISPONIBILIDADES_ORIGINALES:\n${JSON.stringify(
     raw_disponibilidades,
     null,
     2
   )}`;
+
+  Logger.info("[AvailabilityResponsePresenterService] Iniciando con datos", {
+    totalDisponibilidades: Array.isArray(raw_disponibilidades) ? raw_disponibilidades.length : 0,
+    // contexto: contextoBlock, // dejar comentado para evitar logs excesivos
+  });
 
   try {
     const result = await openAIService.getSchemaStructuredResponse(
@@ -71,44 +90,50 @@ export async function AvailabilityResponsePresenterService(
       dias_mostrados,
       criterio_orden,
       metadata,
-    } = result;
+    } = result as PresentacionYDisponibilidades;
 
-    if (!presentacion) {
+    Logger.info("[AvailabilityResponsePresenterService] Respuesta del presentador recibida", {
+      presentacion_ok: typeof presentacion === "string" && presentacion.length > 0,
+      disponibilidadesCount: Array.isArray(disponibilidades) ? disponibilidades.length : 0,
+      dias_mostrados: Array.isArray(dias_mostrados) ? dias_mostrados : [],
+      criterio_orden,
+    });
+
+    // Validaciones mínimas de seguridad
+    if (typeof presentacion !== "string" || !presentacion.trim()) {
       Logger.warn(
-        "[AvailabilityResponsePresenterService] No se pudo parsear respuesta de OpenAI, devolviendo fallback"
+        "[AvailabilityResponsePresenterService] Respuesta sin 'presentacion' válida; devolviendo fallback"
       );
       return {
-        presentacion:
-          "Lo siento, no encontré horarios que cumplan tus preferencias.",
+        presentacion: "Lo siento, no encontré horarios que cumplan tus preferencias.",
         disponibilidades: [],
-        disclaimer_fechas,
-        dias_mostrados,
-        criterio_orden,
+        disclaimer_fechas: disclaimer_fechas ?? null,
+        dias_mostrados: Array.isArray(dias_mostrados) ? dias_mostrados : [],
+        criterio_orden: criterio_orden ?? null,
         metadata: { extras: { fallback: true } },
-      };
+      } as PresentacionYDisponibilidades;
     }
 
     return {
       presentacion,
-      disponibilidades,
-      disclaimer_fechas,
-      dias_mostrados,
-      criterio_orden,
-      metadata,
-    };
+      disponibilidades: Array.isArray(disponibilidades) ? disponibilidades : [],
+      disclaimer_fechas: disclaimer_fechas ?? null,
+      dias_mostrados: Array.isArray(dias_mostrados) ? dias_mostrados : [],
+      criterio_orden: criterio_orden ?? null,
+      metadata: metadata ?? undefined,
+    } as PresentacionYDisponibilidades;
   } catch (error) {
     Logger.error(
       "[AvailabilityResponsePresenterService] Error al procesar disponibilidades:",
       error
     );
     return {
-      presentacion:
-        "Lo siento, ocurrió un error al procesar las disponibilidades.",
+      presentacion: "Lo siento, ocurrió un error al procesar las disponibilidades.",
       disponibilidades: [],
       disclaimer_fechas: null,
-      dias_mostrados: null,
+      dias_mostrados: [],
       criterio_orden: null,
       metadata: { extras: { error: true } },
-    };
+    } as PresentacionYDisponibilidades;
   }
 }

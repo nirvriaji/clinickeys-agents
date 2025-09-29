@@ -83,9 +83,9 @@ export class RecognizeUserIntentUseCase {
       botConfig
     } = input;
 
-    Logger.info('[RecognizeUserIntent] Inicio', { leadId, userMessage, speakingBotId, threadId });
+    Logger.info('[RecognizeUserIntent] Inicio', { leadId, clinicId, clinicSource, botConfigType, botConfigId, speakingBotId, threadId, timezone });
 
-    Logger.debug('[RecognizeUserIntent] Obteniendo información de pacientes');
+    Logger.info('[RecognizeUserIntent] Obteniendo información de pacientes (fetchPatientInfoUseCase)');
     const patientInfo = await this.fetchPatientInfoUseCase.execute({
       botConfigType,
       botConfigId,
@@ -94,14 +94,19 @@ export class RecognizeUserIntentUseCase {
       leadId,
       tiempoActualDT
     });
-    Logger.debug('[RecognizeUserIntent] Información de pacientes obtenida', { patientsCount: patientInfo.patients?.length });
+    Logger.info('[RecognizeUserIntent] Información de pacientes obtenida', {
+      patientsCount: patientInfo.patients?.length || 0,
+      hasAppointments: (patientInfo.patients || []).some(p => (p.appointments || []).length > 0)
+    });
 
     let MENSAJE_USUARIO = '';
     const allAppointments = patientInfo.patients.flatMap(p => p.appointments || []);
     if (reminderMessage && Array.isArray(allAppointments) && allAppointments.length) {
       MENSAJE_USUARIO = `MENSAJE_RECORDATORIO_CITA: ${reminderMessage}. MENSAJE_USUARIO (Respuesta al recordatorio): ${userMessage}`;
+      Logger.info('[RecognizeUserIntent] Mensaje del usuario clasificado como respuesta a recordatorio', { hasReminderMessage: !!reminderMessage, totalAppointments: allAppointments.length });
     } else {
       MENSAJE_USUARIO = (userMessage || "").trim();
+      Logger.info('[RecognizeUserIntent] Mensaje del usuario recibido', { length: MENSAJE_USUARIO.length, preview: MENSAJE_USUARIO });
     }
 
     const contextForAI: IntentContext = {
@@ -109,21 +114,20 @@ export class RecognizeUserIntentUseCase {
       TIMEZONE_SISTEMA: timezone,
       TIEMPO_LOCAL: getClinicLocalTimestamp(tiempoActualDT, timezone),
       PACIENTES_ASOCIADOS_AL_INTERLOCUTOR: patientInfo.patients ?? [],
-      CONTEXTO_PLACEHOLDERS: botConfig?.placeholders ? JSON.stringify(botConfig.placeholders) : ""
+      CONTEXTO_PLACEHOLDERS: botConfig?.placeholders ? JSON.stringify({ ...botConfig.placeholders, CONFIGURACION_DE_DISPONIBILIDADES: undefined }) : ""
     };
 
-    Logger.debug('[RecognizeUserIntent] Contexto para AI generado', {
-      contextSample: {
-        MENSAJE_USUARIO,
-        TIMEZONE_SISTEMA: timezone,
-        TIEMPO_LOCAL: getClinicLocalTimestamp(tiempoActualDT, timezone),
-        PACIENTES_ASOCIADOS_AL_INTERLOCUTOR: patientInfo.patients ?? [],
-      }
+    Logger.info('[RecognizeUserIntent] Contexto para AI generado', {
+      TIMEZONE_SISTEMA: contextForAI.TIMEZONE_SISTEMA,
+      TIEMPO_LOCAL: contextForAI.TIEMPO_LOCAL,
+      pacientesAsociados: (contextForAI.PACIENTES_ASOCIADOS_AL_INTERLOCUTOR || []).length,
+      placeholdersIncluidos: !!contextForAI.CONTEXTO_PLACEHOLDERS,
+      contextJSON: JSON.stringify(contextForAI)
     });
 
     let assistantResult: RecognizeUserIntentOutput['assistantResult'];
     try {
-      Logger.debug('[RecognizeUserIntent] Solicitando respuesta al asistente', { speakingBotId });
+      Logger.info('[RecognizeUserIntent] Solicitando respuesta al asistente (getResponseFromAssistant)', { speakingBotId, threadId });
       const resp = await openAIService.getResponseFromAssistant(
         speakingBotId,
         JSON.stringify(contextForAI),
@@ -136,14 +140,15 @@ export class RecognizeUserIntentUseCase {
         message: resp.message,
         functionCalls: resp.functionCalls
       };
-      Logger.debug('[RecognizeUserIntent] Respuesta recibida del asistente', { assistantResult });
-    } catch (error) {
-      Logger.error("RecognizeUserIntentUseCase: error llamando a getResponseFromAssistant", {
-        error,
-        speakingBotId,
-        clinicId,
-        leadId
+      Logger.info('[RecognizeUserIntent] Respuesta recibida del asistente', {
+        threadId: assistantResult.threadId,
+        runId: assistantResult.runId,
+        messageLength: (assistantResult.message || '').length,
+        functionCallsCount: assistantResult.functionCalls?.length || 0,
+        functionCalls: assistantResult.functionCalls
       });
+    } catch (error) {
+      Logger.error('[RecognizeUserIntent] Error llamando a getResponseFromAssistant', { error, speakingBotId, clinicId, leadId });
       throw new AvailabilityError({
         code: 'ERR_OPENAI_INTENT',
         humanMessage: 'Ocurrió un problema al analizar la intención. Inténtalo nuevamente.',
@@ -155,15 +160,17 @@ export class RecognizeUserIntentUseCase {
     let intent = firstCall?.name?.trim() as KnownIntent | undefined;
 
     if (!intent) {
-      Logger.warn("RecognizeUserIntentUseCase: intención no detectada", {
-        assistantResult,
-        userMessage
-      });
-      intent = "conversación_regular";
+      Logger.warn('[RecognizeUserIntent] Intención no detectada, se usará conversación_regular', { assistantMessage: assistantResult.message });
+      intent = 'conversación_regular';
     }
 
     const params: Record<string, unknown> = firstCall?.arguments ?? {};
-    Logger.info('[RecognizeUserIntent] Intención final detectada', { intent, params });
+
+    Logger.info('[RecognizeUserIntent] Intención final detectada', {
+      intent,
+      params,
+      hasParams: !!params && Object.keys(params).length > 0
+    });
 
     return {
       intent,

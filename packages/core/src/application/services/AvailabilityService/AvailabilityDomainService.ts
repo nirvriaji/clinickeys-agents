@@ -69,15 +69,25 @@ export class AvailabilityDomainService {
     clinicId,
     tratamientosConsultados,
   }: GetTreatmentsDataInput): Promise<TratamientoEntrada[]> {
-    Logger.info("[AvailabilityDomainService] Starting tratamiento search...");
+    Logger.info("[AvailabilityDomainService] Inicio búsqueda de tratamientos", {
+      clinicId,
+      tratamientosConsultados,
+    });
+
     const treatmentsFound: TratamientoSearchResultDTO[] =
       await this.treatmentRepo.findTreatmentsByNamesWithRelevance(
         tratamientosConsultados,
         clinicId
       );
 
+    Logger.info("[AvailabilityDomainService] Tratamientos encontrados (con relevancia)", {
+      total: treatmentsFound.length,
+      exactos: treatmentsFound.filter((t) => t.is_exact === 1).length,
+      consultados: tratamientosConsultados,
+    });
+
     if (!treatmentsFound.length) {
-      Logger.warn("No treatments found in the database.");
+      Logger.warn("[AvailabilityDomainService] No se encontraron tratamientos en la base para los nombres consultados");
       throw AvailabilityError.TRATAMIENTOS_NO_ENCONTRADOS(tratamientosConsultados);
     }
 
@@ -85,7 +95,7 @@ export class AvailabilityDomainService {
       (t) => t.is_exact === 1
     );
     if (!tratamientosExactos.length) {
-      Logger.warn("None of the treatments is an exact match.");
+      Logger.warn("[AvailabilityDomainService] Ningún tratamiento es coincidencia exacta");
       throw AvailabilityError.TRATAMIENTOS_NO_EXACTOS(tratamientosConsultados);
     }
 
@@ -97,6 +107,11 @@ export class AvailabilityDomainService {
             tratamiento.id_tratamiento,
             clinicId
           );
+          Logger.info("[AvailabilityDomainService] Médicos por tratamiento", {
+            tratamiento: tratamiento.nombre_tratamiento,
+            medicos: medicosRaw.length,
+          });
+
           medicos = await Promise.all(
             medicosRaw.map(async (medico) => {
               let espacios: EspacioBasicDTO[] = [];
@@ -108,7 +123,7 @@ export class AvailabilityDomainService {
                 );
               } catch (error) {
                 Logger.error(
-                  `Error getting espacios for medico ${medico.nombre_completo}:`,
+                  `Error obteniendo espacios para el médico ${medico.nombre_completo} (tratamiento: ${tratamiento.nombre_tratamiento})`,
                   error
                 );
                 throw AvailabilityError.ERROR_CONSULTA_SQL(
@@ -130,7 +145,7 @@ export class AvailabilityDomainService {
           );
         } catch (error) {
           Logger.error(
-            `Error getting medicos for ${tratamiento.nombre_tratamiento}:`,
+            `Error obteniendo médicos para el tratamiento ${tratamiento.nombre_tratamiento}`,
             error
           );
           throw AvailabilityError.ERROR_CONSULTA_SQL(
@@ -149,6 +164,11 @@ export class AvailabilityDomainService {
       })
     );
 
+    Logger.info("[AvailabilityDomainService] Resultado armado de tratamientos + médicos + espacios", {
+      tratamientos: result.length,
+      totalMedicos: result.reduce((acc, t) => acc + t.medicos.length, 0),
+    });
+
     return result;
   }
 
@@ -165,18 +185,29 @@ export class AvailabilityDomainService {
         tiempo_actual,
       } = input;
 
+      Logger.info("[AvailabilityDomainService] Inicio de cálculo de disponibilidad", {
+        clinicId,
+        tratamientosConsultados,
+        medicosConsultados,
+        espaciosConsultados,
+        fechasSeleccionadas: fechasSeleccionadas.map((f) => f.fecha),
+        tiempo_actual,
+      });
+
       if (!clinicId) throw AvailabilityError.FALTA_ID_CLINICA();
       if (!Array.isArray(tratamientosConsultados) || !tratamientosConsultados.length)
         throw AvailabilityError.NINGUN_TRATAMIENTO_SELECCIONADO();
       if (!Array.isArray(fechasSeleccionadas) || !fechasSeleccionadas.length)
         throw AvailabilityError.NINGUNA_FECHA_SELECCIONADA();
-      Logger.info("[AvailabilityDomainService] Input data processed correctly.");
+      Logger.info("[AvailabilityDomainService] Validaciones iniciales OK");
 
       let datosTratamientos = await this.fetchTreatmentsWithDoctorsAndSpaces({
         clinicId,
         tratamientosConsultados,
       });
-      Logger.debug("Treatments obtained:", JSON.stringify(datosTratamientos));
+      Logger.info("[AvailabilityDomainService] Tratamientos enriquecidos con médicos y espacios", {
+        tratamientos: datosTratamientos.length,
+      });
 
       let idsMedicosSolicitados: number[] = [];
       let tratamientosFiltrados = datosTratamientos;
@@ -187,6 +218,10 @@ export class AvailabilityDomainService {
           clinicId
         );
         idsMedicosSolicitados = rows.map((f) => f.id_medico);
+        Logger.info("[AvailabilityDomainService] IDs de médicos solicitados resueltos", {
+          medicosConsultados,
+          idsMedicosSolicitados,
+        });
         if (!idsMedicosSolicitados.length)
           throw AvailabilityError.MEDICOS_SOLICITADOS_NO_ENCONTRADOS(medicosConsultados);
 
@@ -225,17 +260,20 @@ export class AvailabilityDomainService {
               .filter((m) => m.espacios && m.espacios.length > 0),
           }))
           .filter((t) => t.medicos && t.medicos.length > 0);
+        Logger.info("[AvailabilityDomainService] Filtro por espacios aplicado", {
+          espaciosConsultados,
+        });
       }
 
       const idsMedicos = idsMedicosSolicitados.length
         ? idsMedicosSolicitados
         : [
-          ...new Set(
-            tratamientosFiltrados.flatMap((t) =>
-              t.medicos.map((m) => m.id_medico)
-            )
-          ),
-        ];
+            ...new Set(
+              tratamientosFiltrados.flatMap((t) =>
+                t.medicos.map((m) => m.id_medico)
+              )
+            ),
+          ];
 
       const idsEspacios = [
         ...new Set(
@@ -244,6 +282,11 @@ export class AvailabilityDomainService {
           )
         ),
       ];
+
+      Logger.info("[AvailabilityDomainService] IDs resueltos para cálculo", {
+        idsMedicosCount: idsMedicos.length,
+        idsEspaciosCount: idsEspacios.length,
+      });
 
       if (!idsMedicos.length) {
         const treatmentNamesOut = datosTratamientos.map(
@@ -271,6 +314,12 @@ export class AvailabilityDomainService {
         id_clinica: clinicId,
       });
 
+      Logger.info("[AvailabilityDomainService] Consultas SQL construidas", {
+        fechas: fechasSeleccionadas.map((f) => f.fecha),
+        idsMedicos,
+        idsEspacios,
+      });
+
       let citas, progMedicos, progEspacios, progMedicoEspacio;
       try {
         citas = await ejecutarConReintento(
@@ -290,11 +339,18 @@ export class AvailabilityDomainService {
           consultasSQL.sql_prog_medico_espacio.params
         );
       } catch (error) {
-        Logger.error("Error executing SQL queries:", error);
+        Logger.error("[AvailabilityDomainService] Error ejecutando consultas SQL (con reintento)", error);
         throw AvailabilityError.ERROR_CONSULTA_SQL(
           error instanceof Error ? error : new Error(String(error))
         );
       }
+
+      Logger.info("[AvailabilityDomainService] Resultados de base recibidos", {
+        citas: (citas || []).length,
+        progMedicos: (progMedicos || []).length,
+        progEspacios: (progEspacios || []).length,
+        progMedicoEspacio: (progMedicoEspacio || []).length,
+      });
 
       if (!progMedicos?.length) {
         throw AvailabilityError.NO_PROG_MEDICOS(
@@ -317,10 +373,19 @@ export class AvailabilityDomainService {
         prog_medico_espacio: progMedicoEspacio,
       });
 
+      Logger.info("[AvailabilityDomainService] Slots calculados (pre-ajuste)", {
+        cantidad: availability.length,
+      });
+
       const adjustedAvailability = AvailabilityAdjuster(
         availability,
         tiempo_actual
       );
+
+      Logger.info("[AvailabilityDomainService] Slots ajustados (post-ajuste)", {
+        cantidad: adjustedAvailability.length,
+      });
+
       if (!adjustedAvailability.length) {
         throw AvailabilityError.SIN_HORARIOS_DISPONIBLES(
           tratamientosConsultados,
@@ -328,18 +393,19 @@ export class AvailabilityDomainService {
         );
       }
 
-      Logger.info(
-        "[AvailabilityDomainService] Final adjusted availability:",
-        adjustedAvailability
-      );
+      Logger.info("[AvailabilityDomainService] Disponibilidad final lista para retornar", {
+        total: adjustedAvailability.length,
+      });
+
       return {
         success: true,
         message: null,
         analisis_agenda: adjustedAvailability,
       };
     } catch (e) {
-      Logger.error("Error in getAppointmentAvailability:", e);
+      Logger.error("[AvailabilityDomainService] Error en getAppointmentAvailability", e);
       if (e instanceof AvailabilityError) {
+        Logger.warn("[AvailabilityDomainService] Error de negocio controlado", { codigo: e.code, mensaje: e.message });
         if (e.isLogOnly) {
           return {
             success: true,
@@ -353,7 +419,7 @@ export class AvailabilityDomainService {
           analisis_agenda: [],
         };
       }
-      Logger.error("Unhandled error:", e);
+      Logger.error("[AvailabilityDomainService] Error no controlado", e);
       const ed = AvailabilityError.ERROR_DESCONOCIDO(e);
       return {
         success: false,
@@ -381,6 +447,14 @@ export class AvailabilityDomainService {
       contextoDisponibilidades,
     } = input;
 
+    Logger.info("[AvailabilityDomainService] getAvailabilityInfo: inicio", {
+      id_clinica,
+      id_super_clinica,
+      tiempo_actual,
+      localTimeForPrompts,
+      tieneContextoDisponibilidades: !!(contextoDisponibilidades && contextoDisponibilidades.trim() !== ""),
+    });
+
     const tratamientos = await this.treatmentRepo.getActiveTreatmentsForClinic(
       id_clinica,
       id_super_clinica
@@ -394,6 +468,12 @@ export class AvailabilityDomainService {
     const espacios = await this.spaceRepo.findByClinica(id_clinica);
     const nombresEspacios = espacios.map((e) => e.nombre);
 
+    Logger.info("[AvailabilityDomainService] Catálogos para extractor cargados", {
+      tratamientos: nombresTratamientos.length,
+      medicos: nombresMedicos.length,
+      espacios: nombresEspacios.length,
+    });
+
     const filters = await this.availabilityResponsePresenterService.extract(mensajeBotParlante, {
       id_clinica,
       id_super_clinica,
@@ -402,6 +482,11 @@ export class AvailabilityDomainService {
       tratamientosDisponibles: nombresTratamientos,
       medicosDisponibles: nombresMedicos,
       espaciosDisponibles: nombresEspacios,
+    });
+
+    Logger.info("[AvailabilityDomainService] Filtros extraídos por extractor", {
+      totalFilters: (filters || []).length,
+      primerFilter: filters && filters[0],
     });
 
     const availabilityRequest: AppointmentAvailabilityInput = {
@@ -414,6 +499,7 @@ export class AvailabilityDomainService {
     };
 
     if (!availabilityRequest.tratamientos.length) {
+      Logger.warn("[AvailabilityDomainService] Ningún tratamiento disponible en clínica para filtros extraídos");
       return {
         success: false,
         message: "No se encontraron tratamientos disponibles en la clínica.",
@@ -426,6 +512,7 @@ export class AvailabilityDomainService {
     const baseResult = await this.getAppointmentAvailability(availabilityRequest);
 
     if (!baseResult.success || !baseResult.analisis_agenda) {
+      Logger.warn("[AvailabilityDomainService] Sin disponibilidad base o error en cálculo de agenda", baseResult);
       return {
         ...baseResult,
         fechas_buscadas: JSON.stringify(availabilityRequest.fechas),
@@ -439,11 +526,20 @@ export class AvailabilityDomainService {
         ...s,
       }));
 
+      Logger.info("[AvailabilityDomainService] Enviando slots al presentador para generar presentacion", {
+        slots: presenterSlots.length,
+      });
+
       const result = await AvailabilityResponsePresenterService(
         this.availabilityResponsePresenterService["openAIService"],
         presenterSlots,
         contextoDisponibilidades
       );
+
+      Logger.info("[AvailabilityDomainService] Presentación y disponibilidades recibidas del presentador", {
+        presentacionLen: (result.presentacion || "").length,
+        disponibilidades: (result.disponibilidades || []).length,
+      });
 
       return {
         ...baseResult,
@@ -452,6 +548,8 @@ export class AvailabilityDomainService {
         disponibilidades: result.disponibilidades as SlotDisponibilidad[],
       };
     }
+
+    Logger.info("[AvailabilityDomainService] Sin contexto de disponibilidades; retornando base sin presentación");
 
     return {
       ...baseResult,

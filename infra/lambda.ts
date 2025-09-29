@@ -44,6 +44,9 @@ chatbotQueue.subscribe({
     },
     {
       from: "packages/core/src/.ia/instructions/prompts/bot_presentador_disponibilidades.md",
+    },
+    {
+      from: "packages/core/src/.ia/instructions/prompts/bot_redactor_disponibilidades.md",
     }
   ]
 });

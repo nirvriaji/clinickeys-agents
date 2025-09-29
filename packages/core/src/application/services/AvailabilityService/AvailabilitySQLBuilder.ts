@@ -1,4 +1,4 @@
-// packages/core/src/application/services/AvailabilityDomainService/availabilityHelpers.ts
+// packages/core/src/application/services/AvailabilityService/AvailabilitySQLBuilder.ts
 
 import { CITAS_ESTADOS_BLOQUEO } from "@clinickeys-agents/core/utils";
 
