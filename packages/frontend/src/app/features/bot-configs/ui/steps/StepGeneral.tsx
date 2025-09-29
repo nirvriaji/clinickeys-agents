@@ -99,7 +99,19 @@ export function StepGeneral({ methods, botType, isEditable }: StepGeneralProps) 
           render={({ field }) => (
             <TextInput
               name={field.name}
-              label="OpenAI / Ingresar api key"
+              label={
+                <>
+                  OpenAI / Ingresar api key: {' '}
+                  (<a
+                    className="text-blue-600 underline"
+                    href="https://help.openai.com/en/articles/9186755-managing-projects-in-the-api-platform#h_79e86017fd"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    ¿Cómo obtenerla?
+                  </a>)
+                </>
+              }
               value={field.value}
               onChange={field.onChange}
               error={getErrorMessage(errors.openaiApikey)}
@@ -115,7 +127,19 @@ export function StepGeneral({ methods, botType, isEditable }: StepGeneralProps) 
         render={({ field }) => (
           <TextInput
             name={field.name}
-            label="Kommo / Ingresar salesbot ID"
+            label={
+              <>
+                Kommo / Ingresar salesbot ID de {isChatBot ? <strong>[ BOT100_ChatBot :: Enviar_Respuesta ]</strong> : <strong>[ BOT100_NotificationBot :: Enviar_Recordatorio ]</strong>}{' '}
+                (<a
+                  className="text-blue-600 underline"
+                  href="https://es-developers.kommo.com/reference/lanzar-un-salesbot"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  ¿Cómo obtenerlo?
+                </a>)
+              </>
+            }
             value={field.value}
             onChange={field.onChange}
             error={getErrorMessage(errors.kommoSalesbotId)}
@@ -130,7 +154,19 @@ export function StepGeneral({ methods, botType, isEditable }: StepGeneralProps) 
         render={({ field }) => (
           <TextInput
             name={field.name}
-            label="Kommo / Ingresar token de larga duración"
+            label={
+              <>
+                Kommo / Ingresar token de larga duración{' '}
+                (<a
+                  className="text-blue-600 underline"
+                  href="https://es-developers.kommo.com/docs/token-de-larga-duraci%C3%B3n"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  ¿Cómo obtenerlo?
+                </a>)
+              </>
+            }
             value={field.value}
             onChange={field.onChange}
             error={getErrorMessage(errors.kommoLongLivedToken)}
