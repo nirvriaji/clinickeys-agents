@@ -1,6 +1,13 @@
 // packages/core/src/application/usecases/ScheduleAppointmentUseCase.ts
 
-import { isAppointmentSoon, getClinicLocalTimestamp, formatFechaCita, PATIENT_FIRST_NAME, PATIENT_LAST_NAME, PATIENT_PHONE } from '@clinickeys-agents/core/utils';
+import {
+  isAppointmentSoon,
+  getClinicLocalTimestamp,
+  formatFechaCita,
+  PATIENT_FIRST_NAME,
+  PATIENT_LAST_NAME,
+  PATIENT_PHONE,
+} from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { ITratamientoRepository } from '@clinickeys-agents/core/domain/tratamiento';
 import { IMedicoRepository } from '@clinickeys-agents/core/domain/medico';
@@ -19,7 +26,10 @@ import {
   OpenAIService,
   PackBonoService,
 } from '@clinickeys-agents/core/application/services';
-import { AvailabilityRequestExtractorService, AvailabilityFilterResult } from '@clinickeys-agents/core/application/services';
+import {
+  AvailabilityRequestExtractorService,
+  AvailabilityFilterResult,
+} from '@clinickeys-agents/core/application/services';
 
 interface ScheduleAppointmentInput {
   botConfig: BotConfigDTO;
@@ -75,12 +85,33 @@ export class ScheduleAppointmentUseCase {
 
   public async execute(input: ScheduleAppointmentInput): Promise<ScheduleAppointmentOutput> {
     const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, subdomain } = input;
-    const { id_paciente, shouldCreatePatient, nombre, apellido, telefono, tratamiento, medico, fechas, horas, summary } = params;
+    const {
+      id_paciente,
+      shouldCreatePatient,
+      nombre,
+      apellido,
+      telefono,
+      tratamiento,
+      medico,
+      fechas,
+      horas,
+      summary,
+    } = params;
 
     const localTimeForPrompts = getClinicLocalTimestamp(tiempoActualDT, timezone);
 
-    Logger.info('[ScheduleAppointment] Inicio', { leadId, nombre, apellido, telefono, tratamiento, medico, id_paciente, shouldCreatePatient });
+    Logger.info('[ScheduleAppointment] Inicio', {
+      leadId,
+      nombre,
+      apellido,
+      telefono,
+      tratamiento,
+      medico,
+      id_paciente,
+      shouldCreatePatient,
+    });
 
+    // Mensaje inicial al bot
     Logger.debug('[ScheduleAppointment] Enviando mensaje inicial al bot');
     await this.kommoService.sendBotInitialMessage({
       leadId,
@@ -89,6 +120,9 @@ export class ScheduleAppointmentUseCase {
       message: 'Muy bien, voy a agendar tu cita. Un momento por favor.',
     });
 
+    // =============================
+    // 1) Paciente
+    // =============================
     let finalPatientId = id_paciente;
 
     if (!finalPatientId && shouldCreatePatient) {
@@ -101,7 +135,7 @@ export class ScheduleAppointmentUseCase {
         id_super_clinica: botConfig.superClinicId,
         kommo_lead_id: leadId,
       });
-      Logger.info(`[ScheduleAppointment] Paciente creado con ID: ${finalPatientId}`);
+      Logger.info('[ScheduleAppointment] Paciente creado', { finalPatientId });
     }
 
     if (!finalPatientId) {
@@ -112,58 +146,78 @@ export class ScheduleAppointmentUseCase {
       };
     }
 
+    // =============================
+    // 2) Catálogos para el extractor de filtros
+    // =============================
     const tratamientos = await this.tratamientoRepositoryMySQL.getActiveTreatmentsForClinic(
       botConfig.clinicId,
-      botConfig.superClinicId
+      botConfig.superClinicId,
     );
     const nombresTratamientos = tratamientos.map((t) => t.nombre_tratamiento);
+
     const medicos = await this.medicoRepositoryMySQL.getMedicos(
       botConfig.clinicId,
-      botConfig.superClinicId
+      botConfig.superClinicId,
     );
     const nombresMedicos = medicos.map((m) => m.nombre_completo);
 
     const espacios = await this.espacioRepositoryMySQL.findByClinica(botConfig.clinicId);
     const nombresEspacios = espacios.map((e) => e.nombre);
 
-    // Obtener filtros estructurados
+    // =============================
+    // 3) Filtros estructurados desde el mensaje del usuario
+    // =============================
     Logger.debug('[ScheduleAppointment] Extrayendo filtros estructurados');
-    const structuredFilters = await this.availabilityResponsePresenterService.extract(JSON.stringify(params), {
-      id_clinica: botConfig.clinicId,
-      id_super_clinica: botConfig.superClinicId,
-      tiempo_actual: tiempoActualDT.toISO() as string,
-      localTimeForPrompts,
-      tratamientosDisponibles: nombresTratamientos,
-      medicosDisponibles: nombresMedicos,
-      espaciosDisponibles: nombresEspacios,
-    });
+    const structuredFilters = await this.availabilityResponsePresenterService.extract(
+      JSON.stringify(params),
+      {
+        id_clinica: botConfig.clinicId,
+        id_super_clinica: botConfig.superClinicId,
+        tiempo_actual: tiempoActualDT.toISO() as string,
+        localTimeForPrompts,
+        tratamientosDisponibles: nombresTratamientos,
+        medicosDisponibles: nombresMedicos,
+        espaciosDisponibles: nombresEspacios,
+      },
+    );
 
+    const configuracion_disponibilidades = botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES || '';
+
+    // =============================
+    // 5) Estrategia por STEPs (similar a CheckAvailability, pero orientado a agendar)
+    // =============================
     let finalPayload: Record<string, unknown> | null = null;
     let appointmentCreated: Record<string, any> | null = null;
 
-    for (const filter of structuredFilters) {
+    for (const filter of structuredFilters as AvailabilityFilterResult[]) {
       const firstFecha = filter.fechas?.[0]?.fecha;
 
       const steps: StepDefinition[] = [];
 
       steps.push({
         tipo: 'original',
-        filtros: { con_medico: !!filter.medicos.length, rango_dias_extra: 0 },
+        filtros: { con_medico: !!(filter.medicos && filter.medicos.length), rango_dias_extra: 0 },
         params: { ...filter },
       });
 
       if (firstFecha) {
-        const diffDias = Math.max(0, Math.floor((new Date(firstFecha).getTime() - tiempoActualDT.toJSDate().getTime()) / (1000 * 60 * 60 * 24)));
+        const diffDias = Math.max(
+          0,
+          Math.floor(
+            (new Date(firstFecha).getTime() - tiempoActualDT.toJSDate().getTime()) /
+            (1000 * 60 * 60 * 24),
+          ),
+        );
         steps.push({
           tipo: 'intermedio_hasta_fecha',
-          filtros: { con_medico: !!filter.medicos.length, rango_dias_extra: 0, rango_dias_antes: diffDias },
+          filtros: { con_medico: !!(filter.medicos && filter.medicos.length), rango_dias_extra: 0, rango_dias_antes: diffDias },
           params: { ...filter, rango_dias_antes: diffDias },
         });
       }
 
       steps.push({
         tipo: 'ampliada_mismo_medico',
-        filtros: { con_medico: !!filter.medicos.length, rango_dias_extra: 45 },
+        filtros: { con_medico: !!(filter.medicos && filter.medicos.length), rango_dias_extra: 45 },
         params: { ...filter, rango_dias_extra: 45 },
       });
 
@@ -181,6 +235,7 @@ export class ScheduleAppointmentUseCase {
 
       for (const step of steps) {
         Logger.debug('[ScheduleAppointment] Buscando disponibilidad', { step: step.tipo, filtros: step.filtros });
+
         const fechasStep = step.filtros.rango_dias_extra === 45
           ? `${JSON.stringify(filter.fechas)}, los próximos 45 días`
           : JSON.stringify(filter.fechas);
@@ -199,33 +254,57 @@ export class ScheduleAppointmentUseCase {
           }),
           subdomain,
           leadId,
-          contextoDisponibilidades: botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES || "",
+          // CLAVE: pasar la configuración enriquecida con sedes
+          contextoDisponibilidades: configuracion_disponibilidades,
         });
 
-        Logger.info('[ScheduleAppointment] Disponibilidad recibida', { success: availability.success, presentacion_disponibilidades: availability.presentacion_disponibilidades });
+        Logger.info('[ScheduleAppointment] Disponibilidad recibida', {
+          success: availability.success,
+          presentacion_disponibilidades: (availability.presentacion_disponibilidades || '').slice(0, 120),
+          count: (availability.disponibilidades || []).length,
+        });
 
-        if (availability.success && availability.presentacion_disponibilidades) {
+        // Avanzar si hay slots, aun si la presentación viene vacía
+        if (availability.success && Array.isArray(availability.disponibilidades) && availability.disponibilidades.length > 0) {
           finalPayload = {
             tipo_busqueda: step.tipo,
             filtros_aplicados: step.filtros,
             horarios: availability.disponibilidades,
             tratamiento: { id: null, nombre: filter.tratamientos?.[0] || tratamiento },
-            horarios_texto: availability.presentacion_disponibilidades,
+            horarios_texto: availability.presentacion_disponibilidades || '',
           };
 
-          Logger.debug('[ScheduleAppointment] FinalPayload con horarios disponibles', { finalPayload });
+          Logger.debug('[ScheduleAppointment] FinalPayload con horarios disponibles', {
+            slots: (finalPayload as any).horarios?.length,
+          });
 
-          const extractorPrompt = `#agendarCita\n\nTIEMPO_ACTUAL: ${localTimeForPrompts}\n\nLos HORARIOS_DISPONIBLES para citas son: ${JSON.stringify(finalPayload)}\n\nMENSAJE_USUARIO: ${JSON.stringify(params)}`;
-          Logger.debug('[ScheduleAppointment] Extractor prompt', extractorPrompt);
+          // =============================
+          // 6) Extraer datos concretos de cita con IA (IDs y tiempos exactos)
+          // =============================
+          const extractorPrompt = `#agendarCita\n\nTIEMPO_ACTUAL: ${localTimeForPrompts}\n\nHORARIOS_DISPONIBLES_JSON: ${JSON.stringify(
+            finalPayload,
+          )}\n\nMENSAJE_USUARIO: ${JSON.stringify(params)}\n`;
+
+          Logger.debug('[ScheduleAppointment] Extractor prompt (preview)', extractorPrompt.slice(0, 800));
+
           const systemPrompt = await readFile(
-            path.resolve(__dirname, 'packages/core/src/.ia/instructions/prompts/bot_extractor_de_datos.md'),
+            path.resolve(
+              __dirname,
+              'packages/core/src/.ia/instructions/prompts/bot_extractor_de_datos.md',
+            ),
             'utf8',
           );
-          const extractorData = await this.openAIService.getJsonStructuredResponse(systemPrompt, extractorPrompt);
-          Logger.debug('[ScheduleAppointment] Extractor de datos ejecutando', extractorData);
 
-          if (extractorData.success) {
-            Logger.debug('[ScheduleAppointment] Datos extraídos con éxito', { extractorData });
+          const extractorData = await this.openAIService.getJsonStructuredResponse(
+            systemPrompt,
+            extractorPrompt,
+          );
+
+          Logger.debug('[ScheduleAppointment] Resultado extractor de datos', extractorData);
+
+          if (extractorData && extractorData.success) {
+            Logger.debug('[ScheduleAppointment] Datos extraídos OK. Insertando cita…');
+
             const spResponse = await this.appointmentService.insertarCitaPackBonos({
               p_id_clinica: botConfig.clinicId,
               p_id_super_clinica: botConfig.superClinicId,
@@ -240,40 +319,47 @@ export class ScheduleAppointmentUseCase {
               p_hora_fin: extractorData.hora_fin,
               p_comentario_ia: summary,
             });
+
             const id_cita = spResponse?.[0]?.[0]?.id_cita;
 
             if (id_cita) {
               Logger.info('[ScheduleAppointment] Cita creada', { id_cita });
               await this.packBonoService.procesarPackbonoPresupuestoDeCita('on_crear_cita', id_cita);
+
               appointmentCreated = { ...extractorData, id_cita };
 
+              // Marcar si la cita es pronto para confirmar
               if (appointmentCreated) {
                 const isSoon = isAppointmentSoon(
                   appointmentCreated.fecha_cita,
                   tiempoActualDT.toISO() as string,
-                  botConfig.timezone
+                  botConfig.timezone,
                 );
                 appointmentCreated.isSoon = isSoon;
-
-                (finalPayload as any).needsConfirmation = isSoon;
-                (finalPayload as any).createdAppointmentId = appointmentCreated.id_cita;
               }
+            } else {
+              Logger.error('[ScheduleAppointment] No se obtuvo id_cita del SP');
             }
           } else {
             Logger.error('[ScheduleAppointment] Error al extraer datos con IA', { extractorData });
           }
+
+          // Hayamos creado o no, dejamos de iterar pasos: ya hubo slots
           break;
         }
       }
 
-      if (finalPayload) break;
+      if (finalPayload) break; // dejar de iterar otros filtros si encontramos
     }
 
+    // =============================
+    // 7) Mensaje final / toolOutput
+    // =============================
     if (!finalPayload) {
       Logger.warn('[ScheduleAppointment] No se encontró disponibilidad en ningún paso');
       finalPayload = {
         horarios: [],
-        horarios_texto: [],
+        horarios_texto: '',
         tipo_busqueda: 'sin_disponibilidad',
         filtros_aplicados: { con_medico: !!medico, rango_dias_extra: 0 },
         tratamiento: { id: null, nombre: tratamiento },
@@ -281,14 +367,17 @@ export class ScheduleAppointmentUseCase {
     }
 
     let toolOutput: string;
+
     if (appointmentCreated?.id_cita) {
       const fechaLegible = formatFechaCita(appointmentCreated.fecha_cita);
-      const doctorLine = medico && appointmentCreated.nombre_medico ? `\n- El médico es “${appointmentCreated.nombre_medico} ${appointmentCreated.apellido_medico}”.` : '';
+      const doctorLine = appointmentCreated.nombre_medico
+        ? `\n- El médico es “${appointmentCreated.nombre_medico} ${appointmentCreated.apellido_medico}”.`
+        : '';
       toolOutput = `#agendarCita\n- La cita de “${appointmentCreated.nombre_tratamiento}” ha sido agendada para el ${fechaLegible} a las ${appointmentCreated.hora_inicio}.${doctorLine}`;
     } else if ((finalPayload as any).horarios.length === 0) {
       toolOutput = '#agendarCita\nLo siento, en este momento no hay horarios disponibles para el día solicitado. ¿Te gustaría buscar otro día o franja horaria?';
     } else {
-      toolOutput = `#agendarCita\nLo siento, parece que ocurrió un problema. Por favor, ¿Podrías repetirnos tu horario o escoger otro?`;
+      toolOutput = '#agendarCita\nLo siento, parece que ocurrió un problema al confirmar la cita. ¿Podrías indicarnos otra opción de hora o día, por favor?';
     }
 
     const customFields = {
@@ -297,7 +386,11 @@ export class ScheduleAppointmentUseCase {
       [PATIENT_PHONE]: telefono,
     };
 
-    Logger.info('[ScheduleAppointment] Ejecución completada', { success: true });
+    Logger.info('[ScheduleAppointment] Ejecución completada', {
+      success: true,
+      createdAppointmentId: appointmentCreated?.id_cita || null,
+      needsConfirmation: appointmentCreated?.isSoon || false,
+    });
 
     return {
       success: true,

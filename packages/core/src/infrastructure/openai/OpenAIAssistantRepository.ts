@@ -180,13 +180,13 @@ export class OpenAIAssistantRepository implements IOpenAIAssistantRepository {
     }
   }
 
-  async parseResponse(systemPrompt: string, userMessage: string, format: any): Promise<any> {
+  async parseResponse(systemPrompt: string, userMessage: string, format: any, model?: string): Promise<any> {
     if (!systemPrompt || !userMessage || !format) {
       throw new Error("systemPrompt, userMessage and format are required");
     }
     try {
       Logger.info("Parsing response");
-      return await this.gateway.parseResponse(systemPrompt, userMessage, format);
+      return await this.gateway.parseResponse(systemPrompt, userMessage, format, model);
     } catch (error) {
       Logger.error("Error parsing response", { error });
       throw error;

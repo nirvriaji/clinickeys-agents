@@ -1,6 +1,10 @@
-// packages/core/src/application/usecases/CheckAvailabilityUseCase.ts
-
-import { AvailabilityRequestExtractorService, AvailabilityFilterResult, AvailabilityDomainService, AvailabilityResponsePresenterService, AvailabilityResponseRedactorService } from '@clinickeys-agents/core/application/services';
+import {
+  AvailabilityRequestExtractorService,
+  AvailabilityFilterResult,
+  AvailabilityDomainService,
+  AvailabilityResponsePresenterService,
+  AvailabilityResponseRedactorService,
+} from '@clinickeys-agents/core/application/services';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { ITratamientoRepository } from '@clinickeys-agents/core/domain/tratamiento';
 import { IMedicoRepository } from '@clinickeys-agents/core/domain/medico';
@@ -20,7 +24,8 @@ import {
   type Block,
   type PlannerOptions,
 } from '@clinickeys-agents/core/application/services';
-import { SlotDisponibilidad } from '@clinickeys-agents/core/domain/availability';
+
+import { type HorarioEscogido } from '@clinickeys-agents/core/domain/availability';
 
 interface CheckAvailabilityInput {
   botConfig: BotConfigDTO;
@@ -30,10 +35,10 @@ interface CheckAvailabilityInput {
     tratamiento: string;
     medico?: string | null;
     espacio?: string | null;
-    fechas: string;
-    horas: string;
-    rango_dias_extra?: number;
-    summary: string;
+    fechas: string; // texto libre (rangos, fechas sueltas)
+    horas: string; // texto libre ("mañana", "cualquier hora", etc.)
+    rango_dias_extra?: number; // opcional, puede venir del extractor
+    summary: string; // 80–150 caracteres
   };
   timezone: string;
   tiempoActualDT: DateTime;
@@ -46,10 +51,18 @@ interface CheckAvailabilityOutput {
 }
 
 interface StepDefinition {
-  tipo: string;
+  tipo: StepTipo;
   filtros: { con_medico: boolean; rango_dias_extra: number; rango_dias_antes?: number };
   params: AvailabilityFilterResult & { rango_dias_extra?: number; rango_dias_antes?: number };
 }
+
+// Procedencia por slot (tipos de step)
+type StepTipo =
+  | 'original'
+  | 'intermedio_hasta_fecha'
+  | 'ampliada_mismo_medico'
+  | 'ampliada_sin_medico_rango_dias_original'
+  | 'ampliada_sin_medico_rango_dias_extendido';
 
 export class CheckAvailabilityUseCase {
   constructor(
@@ -59,17 +72,25 @@ export class CheckAvailabilityUseCase {
     private readonly tratamientoRepositoryMySQL: ITratamientoRepository,
     private readonly medicoRepositoryMySQL: IMedicoRepository,
     private readonly espacioRepositoryMySQL: IEspacioRepository,
-  ) { }
+  ) {}
 
   public async execute(input: CheckAvailabilityInput): Promise<CheckAvailabilityOutput> {
     const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT } = input;
-    params.medico = undefined;
-    params.espacio = undefined;
     const { tratamiento, fechas, horas, medico, espacio } = params;
 
     const localTimeForPrompts = getClinicLocalTimestamp(tiempoActualDT, timezone);
 
-    Logger.info('[CheckAvailability] Inicio búsqueda de disponibilidad', { leadId, clinicId: botConfig.clinicId, tratamiento, medico, espacio, fechas, horas, timezone, localTimeForPrompts });
+    Logger.info('[CheckAvailability] Inicio búsqueda de disponibilidad', {
+      leadId,
+      clinicId: botConfig.clinicId,
+      tratamiento,
+      medico,
+      espacio,
+      fechas,
+      horas,
+      timezone,
+      localTimeForPrompts,
+    });
 
     // 1) Mensaje "please-wait"
     Logger.info('[CheckAvailability] Enviando mensaje inicial al bot (please-wait)', { leadId });
@@ -77,90 +98,90 @@ export class CheckAvailabilityUseCase {
       leadId,
       normalizedLeadCF,
       salesbotId: botConfig.kommo.salesbotId,
-      message: 'Muy bien, voy a mirar la agenda para ver las citas que tenemos disponibles. Un momento por favor.',
+      message:
+        'Muy bien, voy a mirar la agenda para ver las citas que tenemos disponibles. Un momento por favor.',
     });
 
-    // 2) Preparación: catálogos
+    // 2) Preparación: catálogos (para el extractor)
     const tratamientos = await this.tratamientoRepositoryMySQL.getActiveTreatmentsForClinic(
       botConfig.clinicId,
-      botConfig.superClinicId
+      botConfig.superClinicId,
     );
     const nombresTratamientos = tratamientos.map((t) => t.nombre_tratamiento);
     const medicos = await this.medicoRepositoryMySQL.getMedicos(
       botConfig.clinicId,
-      botConfig.superClinicId
+      botConfig.superClinicId,
     );
     const nombresMedicos = medicos.map((m) => m.nombre_completo);
     const espacios = await this.espacioRepositoryMySQL.findByClinica(botConfig.clinicId);
     const nombresEspacios = espacios.map((e) => e.nombre);
 
-    Logger.info('[CheckAvailability] Catálogos cargados', { tratamientos: nombresTratamientos.length, medicos: nombresMedicos.length, espacios: nombresEspacios.length });
+    Logger.info('[CheckAvailability] Catálogos cargados', {
+      tratamientos: nombresTratamientos.length,
+      medicos: nombresMedicos.length,
+      espacios: nombresEspacios.length,
+    });
 
     // 3) Extraer filtros estructurados (fechas del extractor = autoritativas)
-    Logger.info('[CheckAvailability] Extrayendo filtros del mensaje del usuario', { leadId, userParams: params });
-    const structuredFilters = await this.availabilityRequestExtractorService.extract(JSON.stringify(params), {
-      id_clinica: botConfig.clinicId,
-      id_super_clinica: botConfig.superClinicId,
-      tiempo_actual: tiempoActualDT.toISO() as string,
-      localTimeForPrompts,
-      tratamientosDisponibles: nombresTratamientos,
-      medicosDisponibles: nombresMedicos,
-      espaciosDisponibles: nombresEspacios,
+    Logger.info('[CheckAvailability] Extrayendo filtros del mensaje del usuario', {
+      leadId,
+      userParams: params,
     });
-    Logger.info('[CheckAvailability] Filtros obtenidos del extractor', { filtersCount: structuredFilters.length });
+    const structuredFilters = await this.availabilityRequestExtractorService.extract(
+      JSON.stringify(params),
+      {
+        id_clinica: botConfig.clinicId,
+        id_super_clinica: botConfig.superClinicId,
+        tiempo_actual: tiempoActualDT.toISO() as string,
+        localTimeForPrompts,
+        tratamientosDisponibles: nombresTratamientos,
+        medicosDisponibles: nombresMedicos,
+        espaciosDisponibles: nombresEspacios,
+      },
+    );
+    Logger.info('[CheckAvailability] Filtros obtenidos del extractor', {
+      filtersCount: structuredFilters.length,
+    });
 
-    // 4) Configuración desde placeholder (con defaults)
-    const cfgRaw = botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES;
-    const cfgObj = (() => { try { return cfgRaw && typeof cfgRaw === 'string' ? JSON.parse(cfgRaw) : (cfgRaw || {}); } catch { return {}; } })() as Record<string, any>;
-    const blockDays = Math.max(1, Number(cfgObj?.BLOQUE_DIAS ?? 5));
-    const forwardMaxDays = Math.max(blockDays, Number(cfgObj?.ADELANTE_MAX_DIAS ?? 45));
-    const maxOpciones = Math.max(1, Number(cfgObj?.MAX_OPCIONES ?? 3));
+    // 4) Configuración fija para el planner (defaults en código)
+    const blockDays = 5;
+    const forwardMaxDays = 45;
+    const maxOpciones = 3;
 
-    Logger.info('[CheckAvailability] Configuración aplicada', { blockDays, forwardMaxDays, maxOpciones });
+    Logger.info('[CheckAvailability] Configuración aplicada', {
+      blockDays,
+      forwardMaxDays,
+      maxOpciones,
+    });
 
     const plannerOpts: PlannerOptions = { blockDays, forwardMaxDays };
 
-    // 1) espacios_son_sedes
-    const espaciosSedesRaw: string | undefined =
-      botConfig?.placeholders?.LOS_ESPACIOS_SON_O_NO_SON_SEDES;
-    const espaciosSonSedes =
-      typeof espaciosSedesRaw === 'string'
-        ? espaciosSedesRaw.trim().toLowerCase() === 'los espacios SÍ son sedes'
-        : false;
+    // 5) Configuración textual a inyectar en presentador/redactor (sin parse)
+    const configuracion_disponibilidades: string =
+      botConfig?.placeholders?.ASISTENTE_AGENDA_CONFIG || '';
 
-    // 2) sedes_canonicas (acepta array directo o string separada por comas)
-    const sedesCanonRaw: unknown = botConfig?.placeholders?.LISTA_DE_SEDES_DE_LA_CLINICA;
-    const sedesCanonicas: string[] = Array.isArray(sedesCanonRaw)
-      ? (sedesCanonRaw as unknown[]).map((x) => String(x).trim()).filter(Boolean)
-      : (typeof sedesCanonRaw === 'string'
-          ? sedesCanonRaw.split(',').map((s) => s.trim()).filter(Boolean)
-          : []);
-
-    // 3) Configuración final a inyectar a ambos asistentes
-    const configuracion_disponibilidades = `
-      ${botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES || ""}
-
-      espacios_son_sedes: ${espaciosSonSedes},
-      sedes_canonicas: ${espaciosSonSedes ? sedesCanonicas : 'No mostrar los nombres de los espacios porque no son sedes canónicas'},
-    `;
-
-    Logger.info('[CheckAvailability] Placeholders de sedes derivados', {
-      espaciosSonSedes,
-      sedesCanonicasCount: sedesCanonicas.length,
-    });
-
-    // 5) Recorrido de STEPS con acumulación GLOBAL (0–maxOpciones)
-    let globalSlots: SlotDisponibilidad[] = [];
+    // 6) Recorrido de STEPS con acumulación GLOBAL (0–maxOpciones)
+    let globalHorarios: HorarioEscogido[] = [];
     let blocksConsultados: Block[] = [];
 
-    const addSlots = (slots: SlotDisponibilidad[]) => {
-      for (const s of slots) {
-        const key = this.slotKey(s);
-        if (!globalSlots.some((x) => this.slotKey(x) === key)) {
-          globalSlots.push(s);
-          Logger.info('[CheckAvailability] Nuevo horario agregado', { horario: key, totalAcumulados: globalSlots.length });
-          if (globalSlots.length >= maxOpciones) {
-            Logger.info('[CheckAvailability] Corte temprano alcanzado (maxOpciones)', { maxOpciones });
+    // Registrar procedencia del primer aporte del horario
+    const horarioSource = new Map<string, { tipo: StepTipo }>();
+
+    const addHorarios = (horarios: HorarioEscogido[], tipo: StepTipo) => {
+      for (const h of horarios) {
+        const key = this.horarioKey(h);
+        if (!globalHorarios.some((x) => this.horarioKey(x) === key)) {
+          globalHorarios.push(h);
+          if (!horarioSource.has(key)) horarioSource.set(key, { tipo });
+          Logger.info('[CheckAvailability] Nuevo horario agregado', {
+            horario: key,
+            totalAcumulados: globalHorarios.length,
+            tipo_origen: tipo,
+          });
+          if (globalHorarios.length >= maxOpciones) {
+            Logger.info('[CheckAvailability] Corte temprano alcanzado (maxOpciones)', {
+              maxOpciones,
+            });
             return; // corte temprano global
           }
         }
@@ -168,138 +189,252 @@ export class CheckAvailabilityUseCase {
     };
 
     for (const filter of structuredFilters) {
-      Logger.info('[CheckAvailability] Procesando filter del extractor', { tratamientos: filter.tratamientos, medicos: filter.medicos, espacios: filter.espacios, fechas: (filter.fechas || []).length });
+      Logger.info('[CheckAvailability] Procesando filter del extractor', {
+        tratamientos: filter.tratamientos,
+        medicos: filter.medicos,
+        espacios: filter.espacios,
+        fechas: (filter.fechas || []).length,
+      });
 
       const steps: StepDefinition[] = [];
       const hasMedico = (filter.medicos || []).length > 0;
 
-      steps.push({ tipo: 'original', filtros: { con_medico: hasMedico, rango_dias_extra: 0 }, params: { ...filter } });
+      steps.push({
+        tipo: 'original',
+        filtros: { con_medico: hasMedico, rango_dias_extra: 0 },
+        params: { ...filter },
+      });
 
       const firstFecha = filter.fechas?.[0]?.fecha;
       if (firstFecha) {
-        const diffDias = Math.max(0, Math.floor((new Date(firstFecha).getTime() - tiempoActualDT.toJSDate().getTime()) / (1000 * 60 * 60 * 24)));
-        steps.push({ tipo: 'intermedio_hasta_fecha', filtros: { con_medico: hasMedico, rango_dias_extra: 0, rango_dias_antes: diffDias }, params: { ...filter, rango_dias_antes: diffDias } });
+        const diffDias = Math.max(
+          0,
+          Math.floor(
+            (new Date(firstFecha).getTime() - tiempoActualDT.toJSDate().getTime()) /
+              (1000 * 60 * 60 * 24),
+          ),
+        );
+        steps.push({
+          tipo: 'intermedio_hasta_fecha',
+          filtros: { con_medico: hasMedico, rango_dias_extra: 0, rango_dias_antes: diffDias },
+          params: { ...filter, rango_dias_antes: diffDias },
+        });
       }
 
-      steps.push({ tipo: 'ampliada_mismo_medico', filtros: { con_medico: hasMedico, rango_dias_extra: 45 }, params: { ...filter, rango_dias_extra: 45 } });
-      steps.push({ tipo: 'ampliada_sin_medico_rango_dias_original', filtros: { con_medico: false, rango_dias_extra: 0 }, params: { ...filter, medicos: [] } });
-      steps.push({ tipo: 'ampliada_sin_medico_rango_dias_extendido', filtros: { con_medico: false, rango_dias_extra: 45 }, params: { ...filter, medicos: [], rango_dias_extra: 45 } });
+      steps.push({
+        tipo: 'ampliada_mismo_medico',
+        filtros: { con_medico: hasMedico, rango_dias_extra: 45 },
+        params: { ...filter, rango_dias_extra: 45 },
+      });
+      steps.push({
+        tipo: 'ampliada_sin_medico_rango_dias_original',
+        filtros: { con_medico: false, rango_dias_extra: 0 },
+        params: { ...filter, medicos: [] },
+      });
+      steps.push({
+        tipo: 'ampliada_sin_medico_rango_dias_extendido',
+        filtros: { con_medico: false, rango_dias_extra: 45 },
+        params: { ...filter, medicos: [], rango_dias_extra: 45 },
+      });
 
       // Anclas = INICIO de cada rango de fechas, ordenadas por cercanía al ahora
-      const anchors = orderAnchorsByCloseness(pickAnchorsFromExtractorDates(filter.fechas || []), tiempoActualDT.toISODate()!);
+      const anchors = orderAnchorsByCloseness(
+        pickAnchorsFromExtractorDates(filter.fechas || []),
+        tiempoActualDT.toISODate()!,
+      );
       Logger.info('[CheckAvailability] Anclas calculadas para este filter', { anchors });
 
       for (const step of steps) {
-        if (globalSlots.length >= maxOpciones) break;
+        if (globalHorarios.length >= maxOpciones) break;
         Logger.info('[CheckAvailability] Iniciando step', { tipo: step.tipo, filtros: step.filtros });
 
         for (const anchor of anchors) {
-          if (globalSlots.length >= maxOpciones) break;
+          if (globalHorarios.length >= maxOpciones) break;
           Logger.info('[CheckAvailability] Evaluando ancla', { anchor });
 
           let blocks = planBlocksAroundAnchor(anchor, tiempoActualDT.toISODate()!, plannerOpts);
           if (step.tipo === 'intermedio_hasta_fecha') {
             blocks = blocks.filter((b) => b.direction === 'backward');
           }
-          Logger.info('[CheckAvailability] Bloques generados', { totalBlocks: blocks.length, direction: step.tipo === 'intermedio_hasta_fecha' ? 'backward-only' : 'both' });
+          Logger.info('[CheckAvailability] Bloques generados', {
+            totalBlocks: blocks.length,
+            direction: step.tipo === 'intermedio_hasta_fecha' ? 'backward-only' : 'both',
+          });
 
           for (const block of blocks) {
-            if (globalSlots.length >= maxOpciones) break;
-            Logger.info('[CheckAvailability] Explorando bloque', { start: block.start, end: block.end, direction: block.direction });
+            if (globalHorarios.length >= maxOpciones) break;
+            Logger.info('[CheckAvailability] Explorando bloque', {
+              start: block.start,
+              end: block.end,
+              direction: block.direction,
+            });
 
             const fechasBloque = expandRangeToFechas({ start: block.start, end: block.end });
-            const availabilityRequest = { tratamientos: step.params.tratamientos || [], medicos: step.params.medicos || [], espacios: step.params.espacios || [], fechas: fechasBloque, id_clinica: botConfig.clinicId, tiempo_actual: tiempoActualDT.toISO() as string };
-            Logger.info('[CheckAvailability] Consulta de disponibilidad construida', { fechasCount: fechasBloque.length, tratamientos: availabilityRequest.tratamientos, medicos: availabilityRequest.medicos, espacios: availabilityRequest.espacios });
+            const availabilityRequest = {
+              tratamientos: step.params.tratamientos || [],
+              medicos: step.params.medicos || [],
+              espacios: step.params.espacios || [],
+              fechas: fechasBloque,
+              id_clinica: botConfig.clinicId,
+              tiempo_actual: tiempoActualDT.toISO() as string,
+            };
+            Logger.info('[CheckAvailability] Consulta de disponibilidad construida', {
+              fechasCount: fechasBloque.length,
+              tratamientos: availabilityRequest.tratamientos,
+              medicos: availabilityRequest.medicos,
+              espacios: availabilityRequest.espacios,
+            });
 
-            const baseResult = await this.availabilityService.getAppointmentAvailability(availabilityRequest);
+            const baseResult = await this.availabilityService.getAppointmentAvailability(
+              availabilityRequest,
+            );
             if (!baseResult.success || !Array.isArray(baseResult.analisis_agenda)) {
-              Logger.warn('[CheckAvailability] Sin resultados en bloque', { start: block.start, end: block.end });
+              Logger.warn('[CheckAvailability] Sin resultados en bloque', {
+                start: block.start,
+                end: block.end,
+              });
               continue;
             }
 
-            Logger.info('[CheckAvailability] Resultados encontrados en bloque', { cantidad: baseResult.analisis_agenda.length });
-            Logger.debug('[CheckAvailability] Resultados (analisis_agenda) encontrados en bloque', { analisis_agenda: baseResult.analisis_agenda });
+            Logger.info('[CheckAvailability] Resultados encontrados en bloque', {
+              cantidad: baseResult.analisis_agenda.length,
+            });
+            Logger.debug('[CheckAvailability] Resultados (analisis_agenda) encontrados en bloque', {
+              analisis_agenda: baseResult.analisis_agenda,
+            });
 
-            // Presentador por bloque/ancla (aplica reglas de minutos, tope por día, etc.)
-            const presenterOpenAI = (this.availabilityRequestExtractorService as any)["openAIService"];
-            const presenterResultPerBlock = await AvailabilityResponsePresenterService(
+            // Presentador por bloque/ancla (aplica reglas configuradas y devuelve horarios ya concretos)
+            const presenterOpenAI = (this.availabilityRequestExtractorService as any)['openAIService'];
+            const presenterResultPerBlock: any = await AvailabilityResponsePresenterService(
               presenterOpenAI,
               baseResult.analisis_agenda.map((s) => ({ ...s })),
               configuracion_disponibilidades,
             );
-            const selectedByPresenter: SlotDisponibilidad[] = Array.isArray(presenterResultPerBlock?.disponibilidades)
-              ? (presenterResultPerBlock.disponibilidades as SlotDisponibilidad[])
-              : [];
-            Logger.info('[CheckAvailability] Presentador por bloque: selección', { seleccionadas: selectedByPresenter.length, presentacionPreview: (presenterResultPerBlock?.presentacion || '').slice(0, 120) });
 
-            const candidateSlots = selectedByPresenter.length ? selectedByPresenter : baseResult.analisis_agenda;
-            const ordered = this.orderSlots(candidateSlots, anchor, tiempoActualDT.toISO()!);
-            addSlots(ordered);
+            const selectedByPresenter: HorarioEscogido[] = Array.isArray(
+              presenterResultPerBlock?.horarios_escogidos,
+            )
+              ? (presenterResultPerBlock.horarios_escogidos as HorarioEscogido[])
+              : [];
+
+            Logger.info('[CheckAvailability] Presentador por bloque: selección', {
+              seleccionadas: selectedByPresenter.length,
+            });
+
+            const ordered = this.orderHorarios(selectedByPresenter, anchor, tiempoActualDT.toISO()!);
+            addHorarios(ordered, step.tipo);
             blocksConsultados.push(block);
 
-            if (globalSlots.length >= maxOpciones) break;
+            if (globalHorarios.length >= maxOpciones) break;
           }
         }
       }
 
-      if (globalSlots.length >= maxOpciones) break;
+      if (globalHorarios.length >= maxOpciones) break;
     }
 
-    // 6) Redacción final SIN pasar nuevamente por el presentador (evitamos re-filtrado global)
-    const presenterOpenAI = (this.availabilityRequestExtractorService as any)["openAIService"];
+    // 7) Selección final y cálculo de tipo_busqueda
+    const presenterOpenAI = (this.availabilityRequestExtractorService as any)['openAIService'];
 
-    const finalSlots = this.orderSlots(globalSlots, tiempoActualDT.toISODate()!, tiempoActualDT.toISO()!).slice(0, maxOpciones);
-    Logger.info('[CheckAvailability] Selección final de horarios (acumulador global, sin presentador final)', { finales: finalSlots.length });
+    const finalHorarios = this.orderHorarios(
+      globalHorarios,
+      tiempoActualDT.toISODate()!,
+      tiempoActualDT.toISO()!,
+    ).slice(0, maxOpciones);
+
+    Logger.info('[CheckAvailability] Selección final de horarios (acumulador global)', {
+      finales: finalHorarios.length,
+    });
+
+    const finalKeys = finalHorarios.map((h) => this.horarioKey(h));
+    const tiposUsadosFinal = finalKeys
+      .map((k) => horarioSource.get(k)?.tipo)
+      .filter((t): t is StepTipo => !!t);
+
+    let tipo_busqueda_final: string | undefined;
+    if (tiposUsadosFinal.length > 0) {
+      const unique = new Set(tiposUsadosFinal);
+      if (unique.size === 1) {
+        tipo_busqueda_final = tiposUsadosFinal[0];
+      } else {
+        const counts = new Map<StepTipo, number>();
+        for (const t of tiposUsadosFinal) counts.set(t, (counts.get(t) ?? 0) + 1);
+        tipo_busqueda_final = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      }
+    }
+
+    // 8) DISCLAIMER de rangos explorados (colapsado)
+    const disclaimerRanges = collapseBlocksToRanges(blocksConsultados);
+
+    // 9) Redacción final (pasando CONTEXTO_REDACTOR)
+    const diasMostrados = Array.from(
+      new Set(
+        finalHorarios
+          .map((s: any) => s?.fecha_cita || s?.fecha)
+          .filter((x: any): x is string => typeof x === 'string' && x.length > 0),
+      ),
+    );
+
+    const redactorContext = {
+      tipo_busqueda: tipo_busqueda_final || 'bloques',
+      disclaimer_fechas: disclaimerRanges,
+      dias_mostrados: diasMostrados,
+    } as Record<string, unknown>;
 
     const redactorResult = await AvailabilityResponseRedactorService(
       presenterOpenAI,
-      finalSlots,
+      finalHorarios,
       configuracion_disponibilidades,
-      { ahoraISO: tiempoActualDT.toISO() as string, timezone }
+      { ahoraISO: tiempoActualDT.toISO() as string, timezone, contextoRedactor: redactorContext },
     );
-    Logger.info('[CheckAvailability] Texto final generado por redactor', { longitud: redactorResult.mensaje?.length || 0, preview: redactorResult.mensaje?.substring(0, 120) });
 
-    // 7) DISCLAIMER de rangos explorados (colapsado)
-    const disclaimerRanges = collapseBlocksToRanges(blocksConsultados);
+    Logger.info('[CheckAvailability] Texto final generado por redactor', {
+      longitud: redactorResult.mensaje?.length || 0,
+      preview: redactorResult.mensaje?.substring(0, 120),
+    });
 
-    // 8) toolOutput final (incluye texto redactado)
+    // 10) toolOutput final (incluye texto redactado)
     const toolOutput = `#consultaAgendar
     TIEMPO_LOCAL: ${localTimeForPrompts}
     DISCLAIMER_FECHAS_BUSCADAS: ${JSON.stringify(disclaimerRanges)}
-    HORARIOS_DISPONIBLES: ${JSON.stringify({ tipo_busqueda: 'bloques', seleccion: finalSlots })}
+    HORARIOS_DISPONIBLES: ${JSON.stringify({ tipo_busqueda: tipo_busqueda_final || 'bloques', horarios_escogidos: finalHorarios })}
     HORARIOS_TEXTO: ${JSON.stringify(redactorResult.mensaje)}
     MENSAJE_USUARIO: ${JSON.stringify(params)}
     `;
 
-    Logger.info('[CheckAvailability] Ejecución completada con éxito', { leadId, acumulados: globalSlots.length, finales: finalSlots.length });
+    Logger.info('[CheckAvailability] Ejecución completada con éxito', {
+      leadId,
+      acumulados: globalHorarios.length,
+      finales: finalHorarios.length,
+    });
     return { success: true, toolOutput };
   }
 
   // =============================
   // Helpers
   // =============================
-  private slotKey(s: any): string {
-    // Normaliza a campos del dominio (preferimos los usados por AvailabilityDomainService)
-    const f = s?.fecha_cita || s?.fecha_inicio || s?.fecha || '';
-    const h = s?.hora_inicio_minima || s?.hora_inicio || s?.hora || '';
-    const m = s?.id_medico || s?.medico?.id_medico || s?.medico || '';
-    const e = s?.id_espacio || s?.espacio?.id_espacio || s?.espacio || '';
-    return `${f}T${h}|${m}|${e}`;
+  private horarioKey(h: HorarioEscogido): string {
+    const f = (h as any).fecha_cita || (h as any).fecha || '';
+    const hi = (h as any).hora_inicio || '';
+    const m = (h as any).id_medico || (h as any).medico?.id_medico || (h as any).medico || '';
+    const e = (h as any).id_espacio || (h as any).espacio?.id_espacio || (h as any).espacio || '';
+    return `${f}T${hi}|${m}|${e}`;
   }
 
-  private orderSlots(slots: SlotDisponibilidad[], anchorISO: string, nowISO: string): SlotDisponibilidad[] {
-    const toMillis = (s: any): number => {
-      const fecha = s?.fecha_cita || s?.fecha_inicio || s?.fecha;
-      const hora = s?.hora_inicio_minima || s?.hora_inicio || s?.hora || '00:00:00';
+  private orderHorarios(horarios: HorarioEscogido[], anchorISO: string, nowISO: string): HorarioEscogido[] {
+    const toMillis = (h: any): number => {
+      const fecha = h?.fecha_cita || h?.fecha;
+      const hora = h?.hora_inicio || '00:00';
       if (!fecha) return Number.MAX_SAFE_INTEGER;
-      const iso = `${fecha}T${hora.length === 5 ? hora + ':00' : hora}.000Z`;
+      const hhmm = /^\d{2}:\d{2}$/.test(hora) ? hora : String(hora || '00:00').substring(0, 5);
+      const iso = `${fecha}T${hhmm}:00.000Z`;
       return Date.parse(iso);
     };
 
     const anchorMillis = Date.parse(`${anchorISO}T00:00:00.000Z`);
     const nowMillis = Date.parse(nowISO);
 
-    return [...slots].sort((a: any, b: any) => {
+    return [...horarios].sort((a: any, b: any) => {
       const da = toMillis(a);
       const db = toMillis(b);
       const distAAnchor = Math.abs(da - anchorMillis);

@@ -1,3 +1,5 @@
+// packages/core/src/infrastructure/integrations/openai/ApiGateway.ts
+
 import OpenAI from "openai";
 import { openaiTools } from "@clinickeys-agents/core/utils";
 import {
@@ -232,12 +234,13 @@ export class OpenAIGateway {
   async parseResponse(
     systemPrompt: string,
     userMessage: string,
-    format: any
+    format: any,
+    model?: string,
   ): Promise<any> {
     const client = this.getClient();
     try {
       const resp = await client.responses.parse({
-        model: this.model,
+        model: model || this.model,
         input: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage },

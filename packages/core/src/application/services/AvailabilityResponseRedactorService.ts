@@ -1,14 +1,14 @@
 // packages/core/src/application/services/AvailabilityResponseRedactorService.ts
 
-import { SlotDisponibilidad } from "@clinickeys-agents/core/domain/availability";
-import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
+import { type HorarioEscogido } from "@clinickeys-agents/core/domain/availability";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
+import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
 import { readFile } from "fs/promises";
 import path from "path";
 import { z } from "zod";
 
 // =============================
-// Prompt caching
+// Prompt caching (robusto)
 // =============================
 let cachedSystemPrompt: string | null = null;
 
@@ -21,34 +21,28 @@ async function loadSystemPrompt(): Promise<string> {
   );
 
   try {
-    cachedSystemPrompt = await readFile(promptsPath, "utf8");
-    Logger.info("[AvailabilityResponseRedactorService] Prompt cargado desde archivo .md");
+    const content = await readFile(promptsPath, "utf8");
+    cachedSystemPrompt = content;
+    Logger.info("[AvailabilityResponseRedactorService] Prompt cargado", { promptsPath });
     return cachedSystemPrompt;
-  } catch (err) {
+  } catch {
     Logger.error(
-      "[AvailabilityResponseRedactorService] No se pudo leer el .md del prompt; usando fallback inline",
-      err
+      "[AvailabilityResponseRedactorService] No se pudo leer el .md del prompt; usando fallback inline"
     );
     cachedSystemPrompt = [
-      "Eres un redactor de disponibilidades médicas.",
-      "Recibes una lista de 0 a 3 SLOTS_SELECCIONADOS (cada uno con fecha/hora, médico, espacio y metadatos)",
-      "y una CONFIGURACION_DE_DISPONIBILIDADES que define criterios, tono y formato.",
-      "Tu salida debe ser un JSON válido con el siguiente schema:",
-      "{ mensaje: string, metadata?: object }",
-      "Reglas:",
-      "- Si no hay slots, responde con un mensaje empático indicando que no hay horarios en las fechas cercanas y proponiendo alternativas.",
-      "- Si hay 1–3 slots, preséntalos de forma clara y breve (puntos o líneas cortas).",
-      "- Respeta tono/formato de CONFIGURACION_DE_DISPONIBILIDADES (por ejemplo, orden, etiquetas, emojis permitidos, etc.).",
-      "- No inventes horarios ni datos.",
+      "Asistente Redactor de Disponibilidades.",
+      "Recibes SLOTS_SELECCIONADOS (0–3) y ASISTENTE_AGENDA_CONFIG.",
+      "Construye un único JSON { mensaje: string, metadata?: object }.",
+      "No filtras ni ordenas; respetas el orden de entrada.",
+      "Horas en 24h HH:mm; sin IDs visibles; sin Markdown ni texto fuera de JSON.",
     ].join("\n");
     return cachedSystemPrompt;
   }
 }
 
 // =============================
-// Schema de salida (validación mejorada)
+// Schema de salida (validación)
 // =============================
-// JSON genérico seguro (sin recurrir a any) y permitiendo null/undefined en metadata
 const JsonValue: z.ZodType<unknown> = z.lazy(() =>
   z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(JsonValue), z.record(JsonValue)])
 );
@@ -61,15 +55,21 @@ const FinalRedactionSchema = z.object({
 export type FinalRedaction = z.infer<typeof FinalRedactionSchema>;
 
 // =============================
-// Helper: normalizar contexto
+// Helpers
 // =============================
-function normalizeContext(contexto: unknown): string {
-  if (typeof contexto === "string") return contexto;
+function normalizeBlock(value: unknown): string {
+  if (typeof value === "string") return value;
   try {
-    return JSON.stringify(contexto ?? {}, null, 2);
+    return JSON.stringify(value ?? {}, null, 2);
   } catch {
-    return String(contexto ?? "");
+    return String(value ?? "");
   }
+}
+
+function toHHmm(hhmmOrHHmmss?: string | null): string {
+  if (!hhmmOrHHmmss) return "";
+  const m = /^(\d{2}:\d{2})(?::\d{2})?$/.exec(hhmmOrHHmmss);
+  return m ? m[1] : hhmmOrHHmmss;
 }
 
 // =============================
@@ -77,31 +77,28 @@ function normalizeContext(contexto: unknown): string {
 // =============================
 export async function AvailabilityResponseRedactorService(
   openAIService: IOpenAIService,
-  slotsSeleccionados: SlotDisponibilidad[],
-  configuracionDisponibilidades: string | Record<string, unknown>,
-  extras?: { ahoraISO?: string; timezone?: string }
+  horariosEscogidos: HorarioEscogido[],
+  asistenteAgendaConfig: string | Record<string, unknown>,
+  extras?: { ahoraISO?: string; timezone?: string; contextoRedactor?: Record<string, unknown> }
 ): Promise<FinalRedaction> {
   const systemPrompt = await loadSystemPrompt();
 
-  const safeSlots: SlotDisponibilidad[] = Array.isArray(slotsSeleccionados)
-    ? slotsSeleccionados
-    : [];
+  const safeSlots: HorarioEscogido[] = Array.isArray(horariosEscogidos) ? horariosEscogidos : [];
+  const configBlock = normalizeBlock(asistenteAgendaConfig);
+  const contextoRedactorBlock = extras?.contextoRedactor ? normalizeBlock(extras.contextoRedactor) : "";
 
-  const contexto = normalizeContext(configuracionDisponibilidades);
+  const parts: string[] = [];
+  parts.push(`ASISTENTE_AGENDA_CONFIG:\n${configBlock}`);
+  if (contextoRedactorBlock) parts.push(`CONTEXTO_REDACTOR:\n${contextoRedactorBlock}`);
+  parts.push(`SLOTS_SELECCIONADOS:\n${JSON.stringify(safeSlots, null, 2)}`);
+  if (extras?.ahoraISO) parts.push(`AHORA_LOCAL_ISO: ${extras.ahoraISO}`);
+  if (extras?.timezone) parts.push(`TIMEZONE: ${extras.timezone}`);
 
-  const userPrompt = [
-    `CONFIGURACION_DE_DISPONIBILIDADES:\n${contexto}`,
-    `SLOTS_SELECCIONADOS:\n${JSON.stringify(safeSlots, null, 2)}`,
-    extras?.ahoraISO ? `AHORA_LOCAL_ISO: ${extras.ahoraISO}` : "",
-    extras?.timezone ? `TIMEZONE: ${extras.timezone}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  const userPrompt = parts.join("\n\n");
 
   Logger.info("[AvailabilityResponseRedactorService] Iniciando redacción final", {
     slotsCount: safeSlots.length,
-    // configuracion: contexto,
-    userPrompt,
+    hasContextoRedactor: Boolean(extras?.contextoRedactor),
   });
 
   try {
@@ -109,30 +106,27 @@ export async function AvailabilityResponseRedactorService(
       systemPrompt,
       userPrompt,
       FinalRedactionSchema,
-      "FinalRedactionSchema"
+      "FinalRedactionSchema",
+      "gpt-4o-mini"
     );
 
-    if (!result || typeof result.mensaje !== "string" || !result.mensaje.trim()) {
+    if (!result || typeof (result as any).mensaje !== "string" || !(result as any).mensaje.trim()) {
       Logger.warn(
         "[AvailabilityResponseRedactorService] Respuesta vacía o inválida del LLM; usando fallback"
       );
       return fallbackMessage(safeSlots);
     }
 
+    const mensaje = String((result as any).mensaje).trim();
+    const metadata = (result as any).metadata;
+
     Logger.info("[AvailabilityResponseRedactorService] Redacción generada con éxito", {
-      mensaje: result.mensaje,
-      metadata: result.metadata,
+      mensajePreview: mensaje.slice(0, 160),
     });
 
-    return {
-      mensaje: result.mensaje.trim(),
-      metadata: result.metadata,
-    };
+    return { mensaje, metadata };
   } catch (error) {
-    Logger.error(
-      "[AvailabilityResponseRedactorService] Error al generar redacción final:",
-      error
-    );
+    Logger.error("[AvailabilityResponseRedactorService] Error al generar redacción final:", error);
     return fallbackMessage(safeSlots);
   }
 }
@@ -140,7 +134,7 @@ export async function AvailabilityResponseRedactorService(
 // =============================
 // Fallback local (sin LLM)
 // =============================
-function fallbackMessage(slots: SlotDisponibilidad[]): FinalRedaction {
+function fallbackMessage(slots: HorarioEscogido[]): FinalRedaction {
   if (!slots || slots.length === 0) {
     Logger.info("[AvailabilityResponseRedactorService] Fallback sin slots");
     return {
@@ -151,10 +145,10 @@ function fallbackMessage(slots: SlotDisponibilidad[]): FinalRedaction {
   }
 
   const lines = slots.slice(0, 3).map((s, idx) => {
-    const fecha = (s as any).fecha_inicio || (s as any).fecha || "";
+    const fecha = (s as any).fecha_legible || s.fecha_cita || "";
     const hora = (s as any).hora_inicio || (s as any).hora || "";
-    const medico = (s as any).medico?.nombre_medico || (s as any).medico || "";
-    const espacio = (s as any).espacio?.nombre_espacio || (s as any).espacio || "";
+    const medico = (s as any).nombre_medico || (s as any).medico?.nombre_medico || (s as any).medico || "";
+    const espacio = (s as any).nombre_espacio || (s as any).espacio?.nombre_espacio || (s as any).espacio || "";
     const partes: string[] = [];
     if (fecha) partes.push(`${fecha}`);
     if (hora) partes.push(`${hora}`);
@@ -164,7 +158,9 @@ function fallbackMessage(slots: SlotDisponibilidad[]): FinalRedaction {
     return `${idx + 1}. ${texto}`;
   });
 
-  Logger.info("[AvailabilityResponseRedactorService] Fallback con slots disponibles", { opciones: lines });
+  Logger.info("[AvailabilityResponseRedactorService] Fallback con slots disponibles", {
+    opciones: lines,
+  });
 
   return {
     mensaje: [

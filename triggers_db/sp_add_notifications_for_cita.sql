@@ -209,10 +209,10 @@ BEGIN
     SET v_payload = JSON_OBJECT(
       'patient_firstname', v_nombre_paciente,
       'patient_lastname', v_apellido_paciente,
-      'clinicName', v_nombre_clinica,
+      'clinic_name', v_nombre_clinica,
       'visit_week_day_name', v_dia_semana,
       'medic_full_name', v_nombre_medico,
-      'treatmentName', v_nombre_tratamiento,
+      'treatment_name', v_nombre_tratamiento,
       'visit_date', DATE_FORMAT(v_fecha_cita, '%d/%m'),
       'visit_init_time', TIME_FORMAT(v_hora_inicio, '%H:%i'),
       'visit_end_time', TIME_FORMAT(v_hora_fin, '%H:%i'),

@@ -96,7 +96,8 @@ Contexto:
         systemPrompt,
         userPrompt,
         ConsultaCitaSchema,
-        "consultaCitaSchema"
+        'consultaCitaSchema',
+        'gpt-4o-mini',
       );
 
       Logger.info(

@@ -250,13 +250,14 @@ export class OpenAIService implements IOpenAIService {
     systemPrompt: string,
     userMessage: string,
     schema: ZodType<any>,
-    schemaLabel = "schema"
+    schemaLabel = "schema",
+    model?: string,
   ): Promise<any> {
     this.logger.info("OpenAIService: getSchemaStructuredResponse", {
       schemaLabel,
     });
     const format = zodTextFormat(schema, schemaLabel);
-    return this.repo.parseResponse(systemPrompt, userMessage, format);
+    return this.repo.parseResponse(systemPrompt, userMessage, format, model);
   }
 
   // =========================== Helpers ===========================

@@ -33,5 +33,5 @@ export interface IOpenAIAssistantRepository {
 
   // =========================== Responses ===========================
   createResponse(systemPrompt: string, userMessage: string, type: "json_object" | "text"): Promise<any>;
-  parseResponse(systemPrompt: string, userMessage: string, format: any): Promise<any>;
+  parseResponse(systemPrompt: string, userMessage: string, format: any, model?: string): Promise<any>;
 }

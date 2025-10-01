@@ -30,7 +30,7 @@ import {
   THREAD_ID,
 } from '@clinickeys-agents/core/utils';
 
-import { localTime, CHAT_BOT_CUSTOM_FIELDS, mergePlaceholdersIntoContext } from '@clinickeys-agents/core/utils';
+import { localTime, mergePlaceholdersIntoContext } from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { KommoService, OpenAIService } from '@clinickeys-agents/core/application/services';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';

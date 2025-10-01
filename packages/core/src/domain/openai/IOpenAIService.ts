@@ -40,7 +40,8 @@ export interface IOpenAIService {
     systemPrompt: string,
     userMessage: string,
     schema: ZodType<any>,
-    schemaLabel?: string
+    schemaLabel?: string,
+    model?: string,
   ): Promise<any>;
 
   // =========================== Helpers ===========================
