@@ -357,13 +357,19 @@ export class AvailabilityDomainService {
         progMedicoEspacio: (progMedicoEspacio || []).length,
       });
 
-      if (!progMedicos?.length) {
+      // Corrección: sólo lanzar errores de "no hay programación" cuando
+      // no exista programación ni general ni específica.
+      const noProgMedicos = !progMedicos?.length;
+      const noProgEspacios = !progEspacios?.length;
+      const noProgMedicoEspacio = !progMedicoEspacio?.length;
+
+      if (noProgMedicos && noProgMedicoEspacio) {
         throw AvailabilityError.NO_PROG_MEDICOS(
           idsMedicos.map(String),
           fechasSeleccionadas.map((f) => f.fecha)
         );
       }
-      if (!progEspacios?.length) {
+      if (noProgEspacios && noProgMedicoEspacio) {
         throw AvailabilityError.NO_PROG_ESPACIOS(
           idsEspacios.map(String),
           fechasSeleccionadas.map((f) => f.fecha)

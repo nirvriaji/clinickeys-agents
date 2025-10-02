@@ -132,7 +132,7 @@ export const openaiTools: ReadonlyArray<OpenAITool> = [
         type: "object",
         properties: {
           id_cita: { type: "integer", description: "ID de la cita a actualizar" },
-          estado: { type: "string", enum: ["CANCELADA", "CONFIRMADA", "EN_CAMINO"], description: "Nuevo estado de la cita" },
+          estado: { type: "string", enum: ["PROGRAMADA", "CANCELADA", "CONFIRMADA", "EN_CAMINO"], description: "Nuevo estado de la cita" },
           summary: { type: "string", description: "Resumen breve de la interacción (80–150 caracteres). No debe mencionar el nombre del paciente" },
         },
         required: ["id_cita", "estado", "summary"],

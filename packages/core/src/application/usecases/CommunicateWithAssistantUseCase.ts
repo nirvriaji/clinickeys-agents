@@ -62,7 +62,7 @@ const ScheduleAppointmentSchema = CheckAvailabilitySchema.extend({
 
 const ManageAppointmentStateSchema = z.object({
   id_cita: z.number(),
-  estado: z.enum(["CANCELADA", "CONFIRMADA", "EN_CAMINO"]),
+  estado: z.enum(["PROGRAMADA", "CANCELADA", "CONFIRMADA", "EN_CAMINO"]),
   summary: z.string(),
 });
 
@@ -219,7 +219,7 @@ export class CommunicateWithAssistantUseCase {
                 leadId,
                 params: {
                   id_cita: ucResponse.createdAppointmentId,
-                  estado: "CANCELADA", // se desconfirma usando estado CANCELADA
+                  estado: "PROGRAMADA", // se desconfirma usando estado CANCELADA
                   summary: scheduleParams.summary,
                 },
               });

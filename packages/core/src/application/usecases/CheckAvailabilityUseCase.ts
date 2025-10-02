@@ -74,7 +74,7 @@ export class CheckAvailabilityUseCase {
     private readonly tratamientoRepositoryMySQL: ITratamientoRepository,
     private readonly medicoRepositoryMySQL: IMedicoRepository,
     private readonly espacioRepositoryMySQL: IEspacioRepository,
-  ) {}
+  ) { }
 
   public async execute(input: CheckAvailabilityInput): Promise<CheckAvailabilityOutput> {
     const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT } = input;
@@ -130,7 +130,12 @@ export class CheckAvailabilityUseCase {
       userParams: params,
     });
     const structuredFilters = await this.availabilityRequestExtractorService.extract(
-      JSON.stringify(params),
+      JSON.stringify({
+        tratamiento: params.tratamiento,
+        medico: params.medico,
+        espacio: params.espacio,
+        fechas: params.fechas,
+      }),
       {
         id_clinica: botConfig.clinicId,
         id_super_clinica: botConfig.superClinicId,
@@ -213,7 +218,7 @@ export class CheckAvailabilityUseCase {
           0,
           Math.floor(
             (new Date(firstFecha).getTime() - tiempoActualDT.toJSDate().getTime()) /
-              (1000 * 60 * 60 * 24),
+            (1000 * 60 * 60 * 24),
           ),
         );
         steps.push({

@@ -3,7 +3,7 @@
 import { AppointmentService } from '@clinickeys-agents/core/application/services';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 
-export type AppointmentState = "CANCELADA" | "CONFIRMADA" | "EN_CAMINO";
+export type AppointmentState = "PROGRAMADA" | "CANCELADA" | "CONFIRMADA" | "EN_CAMINO";
 
 interface ManageAppointmentStateInput {
   leadId: number;
@@ -21,6 +21,7 @@ interface ManageAppointmentStateOutput {
 
 // Estados según base de datos / dominio
 const STATE_CODES = {
+  PROGRAMADA: { field: "id_estado_cita", value: 1 },
   CANCELADA: { field: "id_estado_cita", value: 2 },
   CONFIRMADA: { field: "id_estados_cita_in", value: 36 },
   EN_CAMINO: { field: "id_estados_cita_in", value: 10 },

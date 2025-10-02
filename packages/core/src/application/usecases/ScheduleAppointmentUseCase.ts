@@ -167,7 +167,12 @@ export class ScheduleAppointmentUseCase {
     // =============================
     Logger.debug('[ScheduleAppointment] Extrayendo filtros estructurados');
     const structuredFilters = await this.availabilityRequestExtractorService.extract(
-      JSON.stringify(params),
+      JSON.stringify({
+        tratamiento: params.tratamiento,
+        medico: params.medico,
+        espacio: params.espacio,
+        fechas: params.fechas,
+      }),
       {
         id_clinica: botConfig.clinicId,
         id_super_clinica: botConfig.superClinicId,
@@ -248,7 +253,6 @@ export class ScheduleAppointmentUseCase {
           mensajeBotParlante: JSON.stringify({
             tratamiento: filter.tratamientos?.[0] || tratamiento,
             fechas: fechasStep,
-            horas,
             medico: filter.medicos?.[0] || null,
             espacio: filter.espacios?.[0] || null,
           }),

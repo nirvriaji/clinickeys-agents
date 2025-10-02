@@ -163,7 +163,7 @@ Si hay `disclaimer_fechas`, **no** lo pegues literal; resume implícitamente (p.
 
 ```json
 {
-  "mensaje": "Encontré estas opciones:\nSede: Sede X\n• 2025-09-29 12:20–12:50 — Profesional X\n• 2025-09-29 13:20–13:50 — Profesional X\n• 2025-09-30 17:20–17:50 — Profesional Y\n¿Alguna de estas te acomoda?",
+  "mensaje": "Encontré estas opciones:\nSede: Sede X\n• 2025-09-29 12:20 — Profesional X\n• 2025-09-29 13:20 — Profesional X\n• 2025-09-30 17:20 — Profesional Y\n¿Alguna de estas te acomoda?",
   "metadata": {"slots": 3}
 }
 ```
@@ -172,7 +172,7 @@ Si hay `disclaimer_fechas`, **no** lo pegues literal; resume implícitamente (p.
 
 ```json
 {
-  "mensaje": "Encontré estas opciones:\n• 2025-09-29 12:20–12:50 — Profesional X — Sede X\n• 2025-09-29 13:20–13:50 — Profesional X — Sede X\n• 2025-09-30 17:20–17:50 — Profesional Y — Sede Y\n¿Alguna de estas te acomoda?",
+  "mensaje": "Encontré estas opciones:\n• 2025-09-29 12:20 — Profesional X — Sede X\n• 2025-09-29 13:20 — Profesional X — Sede X\n• 2025-09-30 17:20 — Profesional Y — Sede Y\n¿Alguna de estas te acomoda?",
   "metadata": {"slots": 3}
 }
 ```
@@ -181,7 +181,7 @@ Si hay `disclaimer_fechas`, **no** lo pegues literal; resume implícitamente (p.
 
 ```json
 {
-  "mensaje": "Encontré estas opciones:\n• 2025-09-29 12:20–12:50 — Profesional X\n• 2025-09-29 13:20–13:50 — Profesional X\n• 2025-09-30 17:20–17:50 — Profesional Y\n¿Alguna de estas te acomoda?",
+  "mensaje": "Encontré estas opciones:\n• 2025-09-29 12:20 — Profesional X\n• 2025-09-29 13:20 — Profesional X\n• 2025-09-30 17:20 — Profesional Y\n¿Alguna de estas te acomoda?",
   "metadata": {"slots": 3}
 }
 ```

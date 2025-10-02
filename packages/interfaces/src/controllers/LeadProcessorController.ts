@@ -16,6 +16,7 @@ import {
   IdentifyPatientUseCase,
   ManageAppointmentStateUseCase,
   CreateTaskUseCase,
+  ClarifyPatientUseCase,
 } from "@clinickeys-agents/core/application/usecases";
 
 import {
@@ -148,6 +149,7 @@ export class LeadProcessorController {
     const createTaskUC = new CreateTaskUseCase(kommoService);
     const regularConversationUC = new RegularConversationUseCase();
     const identifyPatientUC = new IdentifyPatientUseCase(patientService);
+    const clarifyPatientUC = new ClarifyPatientUseCase();
 
     const communicateUC = new CommunicateWithAssistantUseCase({
       manageAppointmentStateUC,
@@ -159,6 +161,7 @@ export class LeadProcessorController {
       openAIService,
       kommoService,
       createTaskUC,
+      clarifyPatientUC
     });
 
     this.logger.debug("Fetching Kommo data for lead");
