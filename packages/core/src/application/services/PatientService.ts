@@ -5,8 +5,8 @@ import { IPresupuestoRepository, PresupuestoDTO } from "@clinickeys-agents/core/
 import { IPackBonoRepository, PackBonoConUsoDTO } from "@clinickeys-agents/core/domain/packBono";
 import { IPatientRepository, PatientDTO } from "@clinickeys-agents/core/domain/patient";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
-import { parsePhoneNumberFromString } from "libphonenumber-js";
 import { DateTime } from "luxon";
+import { PhoneNumber } from "@clinickeys-agents/core/domain/common";
 
 export interface GetPatientByPhoneOrCreateParams {
   nombre: string;
@@ -53,6 +53,9 @@ export class PatientService {
       superClinicId: params.id_super_clinica,
       kommo_lead_id: params.kommo_lead_id,
     });
+
+    // Guardamos el teléfono tal cual llega (para no alterar UX),
+    // pero las búsquedas siempre se harán con digitsOnly.
     const patientId = await this.patientRepo.createPatient(params);
     Logger.info("[PatientService] createPatient result", { patientId });
     return patientId;
@@ -65,27 +68,22 @@ export class PatientService {
       telefono: params.telefono,
       id_clinica: params.id_clinica,
     });
-    let telefonoNacional = params.telefono;
-    try {
-      const phoneObj = parsePhoneNumberFromString(params.telefono);
-      if (phoneObj) {
-        telefonoNacional = phoneObj.nationalNumber;
-        Logger.debug("[PatientService] Parsed national phone", {
-          telefonoNacional,
-        });
-      }
-    } catch (err) {
-      Logger.warn("[PatientService] Phone parse failed, using original", {
-        telefono: params.telefono,
-        error: err,
-      });
-    }
 
-    const pacientesExistentes =
-      await this.patientRepo.findByNationalPhoneAndClinic(
-        telefonoNacional,
-        Number(params.id_clinica)
-      );
+    // Normalizamos el teléfono del usuario con el VO.
+    const pn = PhoneNumber.fromFreeform(params.telefono);
+    const telefonoNacional = pn.national || pn.digitsOnly;
+    Logger.debug("[PatientService] Normalized user phone", {
+      input: params.telefono,
+      national: pn.national,
+      digitsOnly: pn.digitsOnly,
+      isValid: pn.isValid,
+    });
+
+    const pacientesExistentes = await this.patientRepo.findByNationalPhoneAndClinic(
+      telefonoNacional,
+      Number(params.id_clinica)
+    );
+
     if (pacientesExistentes && pacientesExistentes.length) {
       Logger.info("[PatientService] Existing patients found", {
         count: pacientesExistentes.length,
@@ -116,21 +114,14 @@ export class PatientService {
       id_clinica,
     });
 
-    let telefonoNacional = telefono;
-    try {
-      const phoneObj = parsePhoneNumberFromString(telefono);
-      if (phoneObj) {
-        telefonoNacional = phoneObj.nationalNumber;
-        Logger.debug("[PatientService] Parsed national phone", {
-          telefonoNacional,
-        });
-      }
-    } catch (err) {
-      Logger.warn("[PatientService] Phone parse failed, using original", {
-        telefono,
-        error: err,
-      });
-    }
+    const pn = PhoneNumber.fromFreeform(telefono);
+    const telefonoNacional = pn.national || pn.digitsOnly;
+    Logger.debug("[PatientService] Normalized basic phone", {
+      input: telefono,
+      national: pn.national,
+      digitsOnly: pn.digitsOnly,
+      isValid: pn.isValid,
+    });
 
     const pacientes = await this.patientRepo.findByNationalPhoneAndClinic(
       telefonoNacional,
@@ -179,7 +170,12 @@ export class PatientService {
       lead_phones.in_conversation,
       lead_phones.in_lead_cf,
       lead_phones.in_contact_cf,
-    ].filter(Boolean).map((t) => t!.trim());
+    ]
+      .filter(Boolean)
+      .map((t) => (t as string).trim())
+      .map((t) => PhoneNumber.fromFreeform(t)) // reforzamos invariantes, vengan de donde vengan
+      .map((pn) => pn.national || pn.digitsOnly)
+      .filter((t) => !!t);
 
     if (!telefonos.length) {
       Logger.warn("[PatientService] No phone available from lead_phones");
@@ -189,25 +185,10 @@ export class PatientService {
     const pacientesMap = new Map<number, PatientDTO>();
 
     for (const tel of telefonos) {
-      let telefonoSinPrefijo = tel;
-      try {
-        const phoneNumber = parsePhoneNumberFromString(tel);
-        if (phoneNumber) telefonoSinPrefijo = phoneNumber.nationalNumber;
-        Logger.debug("[PatientService] Extracted national phone", {
-          telefonoSinPrefijo,
-        });
-      } catch (err) {
-        Logger.warn("[PatientService] Phone parse failed for lead phone", {
-          tel,
-          error: err,
-        });
-      }
-
       const encontrados = await this.patientRepo.findByNationalPhoneAndClinic(
-        telefonoSinPrefijo,
+        tel,
         id_clinica
       );
-
       (encontrados || []).forEach((p) => pacientesMap.set(p.id_paciente, p));
     }
 
@@ -307,11 +288,10 @@ export class PatientService {
     const packSesiones = await this.packBonoRepo.getPackBonosSesionesByPacienteId(
       idPaciente
     );
-    const citasDetalle =
-      await this.appointmentRepo.getCitasDetallePorPackTratamiento(
-        idPaciente,
-        idClinica
-      );
+    const citasDetalle = await this.appointmentRepo.getCitasDetallePorPackTratamiento(
+      idPaciente,
+      idClinica
+    );
     const lookupCitas: Record<string, number[]> = {};
     (citasDetalle || []).forEach((row) => {
       const key = `${row.id_pack_bono}_${row.id_tratamiento}`;

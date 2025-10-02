@@ -1,3 +1,5 @@
+// packages/core/src/application/usecases/CheckAvailabilityUseCase.ts
+
 import {
   AvailabilityRequestExtractorService,
   AvailabilityFilterResult,

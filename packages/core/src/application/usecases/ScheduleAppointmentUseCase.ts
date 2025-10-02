@@ -25,11 +25,9 @@ import {
   PatientService,
   OpenAIService,
   PackBonoService,
-} from '@clinickeys-agents/core/application/services';
-import {
   AvailabilityRequestExtractorService,
-  AvailabilityFilterResult,
 } from '@clinickeys-agents/core/application/services';
+import { AvailabilityFilterResult } from '@clinickeys-agents/core/application/services';
 
 interface ScheduleAppointmentInput {
   botConfig: BotConfigDTO;
@@ -77,11 +75,11 @@ export class ScheduleAppointmentUseCase {
     private readonly patientService: PatientService,
     private readonly openAIService: OpenAIService,
     private readonly packBonoService: PackBonoService,
-    private readonly availabilityResponsePresenterService: AvailabilityRequestExtractorService,
+    private readonly availabilityRequestExtractorService: AvailabilityRequestExtractorService,
     private readonly tratamientoRepositoryMySQL: ITratamientoRepository,
     private readonly medicoRepositoryMySQL: IMedicoRepository,
     private readonly espacioRepositoryMySQL: IEspacioRepository,
-  ) { }
+  ) {}
 
   public async execute(input: ScheduleAppointmentInput): Promise<ScheduleAppointmentOutput> {
     const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, subdomain } = input;
@@ -168,7 +166,7 @@ export class ScheduleAppointmentUseCase {
     // 3) Filtros estructurados desde el mensaje del usuario
     // =============================
     Logger.debug('[ScheduleAppointment] Extrayendo filtros estructurados');
-    const structuredFilters = await this.availabilityResponsePresenterService.extract(
+    const structuredFilters = await this.availabilityRequestExtractorService.extract(
       JSON.stringify(params),
       {
         id_clinica: botConfig.clinicId,
@@ -181,10 +179,11 @@ export class ScheduleAppointmentUseCase {
       },
     );
 
-    const configuracion_disponibilidades = botConfig?.placeholders?.CONFIGURACION_DE_DISPONIBILIDADES || '';
+    // Configuración de agenda (texto libre)
+    const configuracion_disponibilidades = botConfig?.placeholders?.ASISTENTE_AGENDA_CONFIG || '';
 
     // =============================
-    // 5) Estrategia por STEPs (similar a CheckAvailability, pero orientado a agendar)
+    // 5) Estrategia por STEPs (similar a CheckAvailability, orientado a agendar)
     // =============================
     let finalPayload: Record<string, unknown> | null = null;
     let appointmentCreated: Record<string, any> | null = null;
@@ -240,6 +239,7 @@ export class ScheduleAppointmentUseCase {
           ? `${JSON.stringify(filter.fechas)}, los próximos 45 días`
           : JSON.stringify(filter.fechas);
 
+        // Llamamos al flujo completo del dominio (Extractor->Calculator->Presenter->Redactor)
         const availability = await this.availabilityService.getAvailabilityInfo({
           localTimeForPrompts,
           id_clinica: botConfig.clinicId,
@@ -254,27 +254,26 @@ export class ScheduleAppointmentUseCase {
           }),
           subdomain,
           leadId,
-          // CLAVE: pasar la configuración enriquecida con sedes
           contextoDisponibilidades: configuracion_disponibilidades,
         });
 
         Logger.info('[ScheduleAppointment] Disponibilidad recibida', {
           success: availability.success,
           presentacion_disponibilidades: (availability.presentacion_disponibilidades || '').slice(0, 120),
-          count: (availability.disponibilidades || []).length,
+          horarios_escogidos: (availability.horarios_escogidos || []).length,
         });
 
-        // Avanzar si hay slots, aun si la presentación viene vacía
-        if (availability.success && Array.isArray(availability.disponibilidades) && availability.disponibilidades.length > 0) {
+        // Avanzar solo si hay horarios concretos seleccionados
+        if (availability.success && Array.isArray(availability.horarios_escogidos) && availability.horarios_escogidos.length > 0) {
           finalPayload = {
             tipo_busqueda: step.tipo,
             filtros_aplicados: step.filtros,
-            horarios: availability.disponibilidades,
+            horarios: availability.horarios_escogidos,
             tratamiento: { id: null, nombre: filter.tratamientos?.[0] || tratamiento },
             horarios_texto: availability.presentacion_disponibilidades || '',
           };
 
-          Logger.debug('[ScheduleAppointment] FinalPayload con horarios disponibles', {
+          Logger.debug('[ScheduleAppointment] FinalPayload con horarios seleccionados', {
             slots: (finalPayload as any).horarios?.length,
           });
 
@@ -344,7 +343,7 @@ export class ScheduleAppointmentUseCase {
             Logger.error('[ScheduleAppointment] Error al extraer datos con IA', { extractorData });
           }
 
-          // Hayamos creado o no, dejamos de iterar pasos: ya hubo slots
+          // Hayamos creado o no, dejamos de iterar pasos: ya hubo horarios seleccionados
           break;
         }
       }

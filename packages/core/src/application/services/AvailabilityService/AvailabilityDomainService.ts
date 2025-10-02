@@ -1,6 +1,6 @@
 // packages/core/src/application/services/AvailabilityService/AvailabilityDomainService.ts
 
-import { AvailabilityRequestExtractorService, AvailabilityResponsePresenterService } from "@clinickeys-agents/core/application/services";
+import { AvailabilityRequestExtractorService, AvailabilityResponsePresenterService, AvailabilityResponseRedactorService } from "@clinickeys-agents/core/application/services";
 import { ITratamientoRepository, TratamientoSearchResultDTO } from "@clinickeys-agents/core/domain/tratamiento";
 import { AvailabilityCalculator, AvailabilityAdjuster } from "@clinickeys-agents/core/domain/availability";
 import { ejecutarConReintento } from "@clinickeys-agents/core/infrastructure/helpers";
@@ -14,7 +14,9 @@ import {
   MedicoEntrada,
   EspacioEntrada,
   SlotDisponibilidad,
+  HorarioEscogido,
 } from "@clinickeys-agents/core/domain/availability";
+import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
 
 interface GetAvailabilityInfoInput {
   leadId?: number;
@@ -51,18 +53,21 @@ export class AvailabilityDomainService {
   private treatmentRepo: ITratamientoRepository;
   private doctorRepo: IMedicoRepository;
   private spaceRepo: IEspacioRepository;
-  private readonly availabilityResponsePresenterService: AvailabilityRequestExtractorService;
+  private readonly availabilityRequestExtractorService: AvailabilityRequestExtractorService;
+  private readonly openAIService: IOpenAIService;
 
   constructor(
     treatmentRepo: ITratamientoRepository,
     doctorRepo: IMedicoRepository,
     spaceRepo: IEspacioRepository,
-    availabilityResponsePresenterService: AvailabilityRequestExtractorService
+    availabilityRequestExtractorService: AvailabilityRequestExtractorService,
+    openAIService: IOpenAIService
   ) {
     this.treatmentRepo = treatmentRepo;
     this.doctorRepo = doctorRepo;
     this.spaceRepo = spaceRepo;
-    this.availabilityResponsePresenterService = availabilityResponsePresenterService;
+    this.availabilityRequestExtractorService = availabilityRequestExtractorService;
+    this.openAIService = openAIService;
   }
 
   async fetchTreatmentsWithDoctorsAndSpaces({
@@ -435,7 +440,7 @@ export class AvailabilityDomainService {
     success: boolean;
     message: string | null;
     fechas_buscadas: string | null;
-    disponibilidades: SlotDisponibilidad[];
+    horarios_escogidos: HorarioEscogido[];
     presentacion_disponibilidades: string;
   }> {
     const {
@@ -455,107 +460,123 @@ export class AvailabilityDomainService {
       tieneContextoDisponibilidades: !!(contextoDisponibilidades && contextoDisponibilidades.trim() !== ""),
     });
 
-    const tratamientos = await this.treatmentRepo.getActiveTreatmentsForClinic(
-      id_clinica,
-      id_super_clinica
-    );
-    const nombresTratamientos = tratamientos.map((t) => t.nombre_tratamiento);
-    const medicos = await this.doctorRepo.getMedicos(
-      id_clinica,
-      id_super_clinica
-    );
-    const nombresMedicos = medicos.map((m) => m.nombre_completo);
-    const espacios = await this.spaceRepo.findByClinica(id_clinica);
-    const nombresEspacios = espacios.map((e) => e.nombre);
+    try {
+      const tratamientos = await this.treatmentRepo.getActiveTreatmentsForClinic(
+        id_clinica,
+        id_super_clinica
+      );
+      const nombresTratamientos = tratamientos.map((t) => t.nombre_tratamiento);
+      const medicos = await this.doctorRepo.getMedicos(
+        id_clinica,
+        id_super_clinica
+      );
+      const nombresMedicos = medicos.map((m) => m.nombre_completo);
+      const espacios = await this.spaceRepo.findByClinica(id_clinica);
+      const nombresEspacios = espacios.map((e) => e.nombre);
 
-    Logger.info("[AvailabilityDomainService] Catálogos para extractor cargados", {
-      tratamientos: nombresTratamientos.length,
-      medicos: nombresMedicos.length,
-      espacios: nombresEspacios.length,
-    });
-
-    const filters = await this.availabilityResponsePresenterService.extract(mensajeBotParlante, {
-      id_clinica,
-      id_super_clinica,
-      tiempo_actual,
-      localTimeForPrompts,
-      tratamientosDisponibles: nombresTratamientos,
-      medicosDisponibles: nombresMedicos,
-      espaciosDisponibles: nombresEspacios,
-    });
-
-    Logger.info("[AvailabilityDomainService] Filtros extraídos por extractor", {
-      totalFilters: (filters || []).length,
-      primerFilter: filters && filters[0],
-    });
-
-    const availabilityRequest: AppointmentAvailabilityInput = {
-      tratamientos: filters[0]?.tratamientos ?? [],
-      medicos: filters[0]?.medicos ?? [],
-      espacios: filters[0]?.espacios ?? [],
-      fechas: filters[0]?.fechas ?? [],
-      id_clinica,
-      tiempo_actual,
-    };
-
-    if (!availabilityRequest.tratamientos.length) {
-      Logger.warn("[AvailabilityDomainService] Ningún tratamiento disponible en clínica para filtros extraídos");
-      return {
-        success: false,
-        message: "No se encontraron tratamientos disponibles en la clínica.",
-        fechas_buscadas: null,
-        disponibilidades: [],
-        presentacion_disponibilidades: "",
-      };
-    }
-
-    const baseResult = await this.getAppointmentAvailability(availabilityRequest);
-
-    if (!baseResult.success || !baseResult.analisis_agenda) {
-      Logger.warn("[AvailabilityDomainService] Sin disponibilidad base o error en cálculo de agenda", baseResult);
-      return {
-        ...baseResult,
-        fechas_buscadas: JSON.stringify(availabilityRequest.fechas),
-        presentacion_disponibilidades: "",
-        disponibilidades: [],
-      };
-    }
-
-    if (contextoDisponibilidades && contextoDisponibilidades.trim() !== "") {
-      const presenterSlots = baseResult.analisis_agenda.map((s) => ({
-        ...s,
-      }));
-
-      Logger.info("[AvailabilityDomainService] Enviando slots al presentador para generar presentacion", {
-        slots: presenterSlots.length,
+      Logger.info("[AvailabilityDomainService] Catálogos para extractor cargados", {
+        tratamientos: nombresTratamientos.length,
+        medicos: nombresMedicos.length,
+        espacios: nombresEspacios.length,
       });
 
-      const result = await AvailabilityResponsePresenterService(
-        this.availabilityResponsePresenterService["openAIService"],
-        presenterSlots,
-        contextoDisponibilidades
+      const filters = await this.availabilityRequestExtractorService.extract(mensajeBotParlante, {
+        id_clinica,
+        id_super_clinica,
+        tiempo_actual,
+        localTimeForPrompts,
+        tratamientosDisponibles: nombresTratamientos,
+        medicosDisponibles: nombresMedicos,
+        espaciosDisponibles: nombresEspacios,
+      });
+
+      Logger.info("[AvailabilityDomainService] Filtros extraídos por extractor", {
+        totalFilters: (filters || []).length,
+        primerFilter: filters && filters[0],
+      });
+
+      const availabilityRequest: AppointmentAvailabilityInput = {
+        tratamientos: filters[0]?.tratamientos ?? [],
+        medicos: filters[0]?.medicos ?? [],
+        espacios: filters[0]?.espacios ?? [],
+        fechas: filters[0]?.fechas ?? [],
+        id_clinica,
+        tiempo_actual,
+      };
+
+      if (!availabilityRequest.tratamientos.length) {
+        Logger.warn("[AvailabilityDomainService] Ningún tratamiento disponible en clínica para filtros extraídos");
+        return {
+          success: false,
+          message: "No se encontraron tratamientos disponibles en la clínica.",
+          fechas_buscadas: null,
+          horarios_escogidos: [],
+          presentacion_disponibilidades: "",
+        };
+      }
+
+      const baseResult = await this.getAppointmentAvailability(availabilityRequest);
+
+      // Aunque no haya disponibilidad base, pasamos por Presenter/Redactor (tienen fallbacks)
+      const slots: SlotDisponibilidad[] = Array.isArray(baseResult.analisis_agenda)
+        ? baseResult.analisis_agenda
+        : [];
+
+      Logger.info("[AvailabilityDomainService] Enviando slots al presentador para generar horarios_escogidos", {
+        slots: slots.length,
+      });
+
+      const selectorResult = await AvailabilityResponsePresenterService(
+        this.openAIService,
+        slots,
+        contextoDisponibilidades || ""
       );
 
-      Logger.info("[AvailabilityDomainService] Presentación y disponibilidades recibidas del presentador", {
-        presentacionLen: (result.presentacion || "").length,
-        disponibilidades: (result.disponibilidades || []).length,
+      const horariosSeleccionados = Array.isArray(selectorResult.horarios_escogidos)
+        ? selectorResult.horarios_escogidos
+        : [];
+
+      Logger.info("[AvailabilityDomainService] Presentador retornó horarios_escogidos", {
+        count: horariosSeleccionados.length,
+      });
+
+      const redactor = await AvailabilityResponseRedactorService(
+        this.openAIService,
+        horariosSeleccionados,
+        contextoDisponibilidades || "",
+        { ahoraISO: tiempo_actual }
+      );
+
+      Logger.info("[AvailabilityDomainService] Redactor generó mensaje", {
+        mensaje_len: (redactor?.mensaje || "").length,
       });
 
       return {
-        ...baseResult,
+        success: baseResult.success,
+        message: baseResult.message ?? null,
         fechas_buscadas: JSON.stringify(availabilityRequest.fechas),
-        presentacion_disponibilidades: result.presentacion,
-        disponibilidades: result.disponibilidades as SlotDisponibilidad[],
+        horarios_escogidos: horariosSeleccionados,
+        presentacion_disponibilidades: redactor?.mensaje || "",
+      };
+    } catch (e) {
+      Logger.error("[AvailabilityDomainService] Error en getAvailabilityInfo", e);
+      if (e instanceof AvailabilityError) {
+        return {
+          success: !e.isLogOnly ? false : true,
+          message: e.message,
+          fechas_buscadas: null,
+          horarios_escogidos: [],
+          presentacion_disponibilidades: "",
+        };
+      }
+      const ed = AvailabilityError.ERROR_DESCONOCIDO(e);
+      return {
+        success: false,
+        message: ed.message,
+        fechas_buscadas: null,
+        horarios_escogidos: [],
+        presentacion_disponibilidades: "",
       };
     }
-
-    Logger.info("[AvailabilityDomainService] Sin contexto de disponibilidades; retornando base sin presentación");
-
-    return {
-      ...baseResult,
-      fechas_buscadas: JSON.stringify(availabilityRequest.fechas),
-      presentacion_disponibilidades: "",
-      disponibilidades: [],
-    };
   }
 }

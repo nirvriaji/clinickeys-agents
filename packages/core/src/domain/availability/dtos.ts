@@ -190,7 +190,7 @@ export const HorarioEscogidoSchema = z.object({
   nombre_tratamiento: z.string(),
   duracion_tratamiento: z.number(), // minutos
   fecha_legible: z.string().nullable().optional(),
-  especifica: z.boolean().optional(), // informativo si provino de ventana específica
+  especifica: z.boolean().nullable().optional(), // informativo si provino de ventana específica
 });
 export type HorarioEscogido = z.infer<typeof HorarioEscogidoSchema>;
 

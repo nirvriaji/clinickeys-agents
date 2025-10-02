@@ -295,7 +295,7 @@ El asistente recibe un texto que contiene, entre otra información, un **hashtag
 
 * Objetivo: **marcar** la cita con `id_estados_cita_in = 10` (paciente en camino) y **generar un resumen** para registrar en `comentario_ia`.
 * Identificar la cita a actualizar combinando **MENSAJE_USUARIO** y/o **CITAS_PACIENTE**. Prioridad para desambiguar: 1) `id_cita`; 2) nombre de tratamiento + fecha/hora; 3) profesional/espacio más próximo a la hora actual. Si hay múltiples, elegir la **cita futura más cercana**.
-* Construir `summary`: frase breve (1–2 oraciones) que refleje que el paciente **va en camino** y capture detalles relevantes (p. ej., ETA, retraso, transporte).
+* Construir `summary`: frase breve (1–2 oraciones) que refleje que el paciente **va en camino** y capture detalles relevantes (p. ej., ETA, retraso, transporte), no debe mencionar el nombre del paciente.
 
 **Devolver**:
 
@@ -321,7 +321,7 @@ El asistente recibe un texto que contiene, entre otra información, un **hashtag
 }
 ```
 
-> **Nota**: Si el MENSAJE_USUARIO no aporta ETA u otros detalles, usar un `summary` genérico: "Paciente informa que va en camino." El backend persistirá este `summary` en `comentario_ia`.
+> **Nota**: Si el MENSAJE_USUARIO no aporta ETA u otros detalles, usar un `summary` genérico: "Paciente informa que va en camino, no debe mencionar el nombre del paciente." El backend persistirá este `summary` en `comentario_ia`.
 
 ---
 

@@ -111,7 +111,8 @@ export class LeadProcessorController {
       tratamientoRepo,
       medicoRepo,
       espacioRepo,
-      getEstructuredAvailabilityRequestUC
+      getEstructuredAvailabilityRequestUC,
+      openAIService
     );
     const appointmentService = new AppointmentService(appointmentRepo);
     const packBonoService = new PackBonoService(packBonoRepo);

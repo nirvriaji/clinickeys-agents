@@ -128,7 +128,7 @@ Antes de cualquier función: valida que esté permitida por la configuración. S
 * **clarificar_paciente**: resuelve ambigüedad de identidad.
 * **conversación_regular**: información general (no invocar funciones).
 
-**Summaries**: toda función que afecte citas/agenda incluye **summary (80–150 caracteres)**, tono coherente, **sin IDs internos**.
+**Summaries**: toda función que afecte citas/agenda incluye **summary (80–150 caracteres)**, tono coherente, **sin IDs internos**, No debe mencionar el nombre del paciente.
 
 ---
 

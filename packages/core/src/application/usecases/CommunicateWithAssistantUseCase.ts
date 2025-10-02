@@ -8,6 +8,7 @@ import {
   IdentifyPatientUseCase,
   CreateTaskUseCase,
   ManageAppointmentStateUseCase,
+  ClarifyPatientUseCase,
 } from '@clinickeys-agents/core/application/usecases';
 
 import {
@@ -83,6 +84,32 @@ const IdentifyPatientSchema = z.object({
   telefono: z.string(),
 });
 
+// Schema mínimo para clarificar_paciente.
+// Acepta `candidatos` como string (JSON serializado) o como array con los campos esenciales.
+const ClarifyPatientSchema = z.object({
+  id_clinica: z.number().optional(),
+  candidatos: z.union([
+    z.string(),
+    z.array(
+      z.object({
+        id_paciente: z.number().optional(),
+        nombre: z.string().optional(),
+        apellido: z.string().optional(),
+        telefono: z.string().optional(),
+        // En algunos casos puede venir envuelto en { paciente: {...} }
+        paciente: z
+          .object({
+            id_paciente: z.number(),
+            nombre: z.string(),
+            apellido: z.string(),
+            telefono: z.string().optional(),
+          })
+          .optional(),
+      })
+    ),
+  ]),
+});
+
 export interface CommunicateInput {
   botConfig: BotConfigDTO;
   leadId: number;
@@ -115,6 +142,7 @@ export interface CommunicateWithAssistantUseCaseDeps {
   createTaskUC: CreateTaskUseCase;
   regularConversationUC: RegularConversationUseCase;
   identifyPatientUC: IdentifyPatientUseCase;
+  clarifyPatientUC: ClarifyPatientUseCase; // NUEVO
 }
 
 export class CommunicateWithAssistantUseCase {
@@ -223,6 +251,42 @@ export class CommunicateWithAssistantUseCase {
             tiempoActualDT: localTime(botConfig.timezone),
           });
           break;
+        case 'clarificar_paciente':
+          Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: clarificar_paciente');
+          // Normalizar entrada para el UC a partir del esquema flexible.
+          const parsed = ClarifyPatientSchema.parse(params);
+
+          // Parsear candidatos si vienen como string JSON o como objetos con `paciente` anidado.
+          let candidatesArr: Array<{ id_paciente: number; nombre: string; apellido: string; telefono: string }>; 
+          try {
+            const raw = Array.isArray(parsed.candidatos)
+              ? parsed.candidatos
+              : JSON.parse(parsed.candidatos as string);
+
+            candidatesArr = (raw as any[]).map((item: any) => {
+              const base = item?.paciente || item || {};
+              return {
+                id_paciente: Number(base.id_paciente),
+                nombre: String(base.nombre || ''),
+                apellido: String(base.apellido || ''),
+                telefono: base.telefono ? String(base.telefono) : '',
+              };
+            }).filter((c: any) => Number.isFinite(c.id_paciente));
+          } catch (e) {
+            Logger.warn('[CommunicateWithAssistant] No se pudo parsear candidatos en clarificar_paciente; se enviará vacío', { error: e });
+            candidatesArr = [];
+          }
+
+          ucResponse = await this.deps.clarifyPatientUC.execute({
+            botConfig,
+            leadId,
+            normalizedLeadCF,
+            params: {
+              id_clinica: parsed.id_clinica ?? botConfig.clinicId,
+              candidatos: candidatesArr,
+            },
+          });
+          break;
         default:
           Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: conversación regular');
           ucResponse = await this.deps.regularConversationUC.execute({
@@ -247,6 +311,7 @@ export class CommunicateWithAssistantUseCase {
           functionCalls,
           rawOutput: toolOutputWithPlaceholders,
         });
+        Logger.info('[CommunicateWithAssistant] Respuesta final tras functionCalls', { resolvedMessage: resolved });
         Logger.info('[CommunicateWithAssistant] Respuesta final tras functionCalls', { resolvedMessage: resolved.message });
         finalMsg = resolved.message || '';
       }
