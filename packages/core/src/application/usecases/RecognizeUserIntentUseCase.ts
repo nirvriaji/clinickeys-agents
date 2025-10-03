@@ -107,14 +107,18 @@ export class RecognizeUserIntentUseCase {
       leadId,
       tiempoActualDT,
     });
+    const hasAppointments = (patientInfo.patients || []).some((p) => (p.appointments || []).length > 0);
     Logger.info('[RecognizeUserIntent] Información de pacientes obtenida', {
       patientsCount: patientInfo.patients?.length || 0,
-      hasAppointments: (patientInfo.patients || []).some((p) => (p.appointments || []).length > 0),
+      hasAppointments,
     });
-
-    let MENSAJE_USUARIO = '';
     const allAppointments = patientInfo.patients.flatMap((p) => p.appointments || []);
-    if (reminderMessage && Array.isArray(allAppointments) && allAppointments.length) {
+    Logger.info('[RecognizeUserIntent] Reminder message and appointments conditions', {
+      hasReminderMessage: reminderMessage,
+      totalAppointments: allAppointments,
+    });
+    let MENSAJE_USUARIO = '';
+    if (reminderMessage && hasAppointments) {
       MENSAJE_USUARIO = `MENSAJE_RECORDATORIO_CITA: ${reminderMessage}. MENSAJE_USUARIO (Respuesta al recordatorio): ${userMessage}`;
       Logger.info('[RecognizeUserIntent] Mensaje del usuario clasificado como respuesta a recordatorio', {
         hasReminderMessage: !!reminderMessage,

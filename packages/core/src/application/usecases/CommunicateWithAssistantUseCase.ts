@@ -219,7 +219,7 @@ export class CommunicateWithAssistantUseCase {
                 leadId,
                 params: {
                   id_cita: ucResponse.createdAppointmentId,
-                  estado: "PROGRAMADA", // se desconfirma usando estado CANCELADA
+                  estado: "PROGRAMADA",
                   summary: scheduleParams.summary,
                 },
               });
