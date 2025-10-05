@@ -1,6 +1,7 @@
 export * from "./AvailabilityResponsePresenterService";
 export * from "./AvailabilityResponseRedactorService";
 export * from "./AvailabilityRequestExtractorService";
+export * from "./AgendaConfigCompilerService";
 export * from "./AvailabilityService";
 export * from "./NotificationService";
 export * from "./AppointmentService";

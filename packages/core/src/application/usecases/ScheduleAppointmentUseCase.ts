@@ -67,6 +67,25 @@ interface StepDefinition {
   params: AvailabilityFilterResult & { rango_dias_extra?: number; rango_dias_antes?: number };
 }
 
+// Representa el objeto cuando la cita fue creada correctamente
+interface CreatedAppointment {
+  id_cita: number;
+  id_medico?: number;
+  id_espacio?: number;
+  id_tratamiento?: number;
+  id_pack_bono?: number;
+  id_presupuesto?: number;
+  fecha_cita: string; // YYYY-MM-DD
+  hora_inicio: string; // HH:MM
+  hora_fin?: string; // HH:MM
+  nombre_medico?: string;
+  apellido_medico?: string;
+  nombre_tratamiento?: string;
+  isSoon?: boolean;
+  // permitir campos adicionales del extractor
+  [k: string]: any;
+}
+
 export class ScheduleAppointmentUseCase {
   constructor(
     private readonly kommoService: KommoService,
@@ -188,20 +207,23 @@ export class ScheduleAppointmentUseCase {
     const configuracion_disponibilidades = botConfig?.placeholders?.ASISTENTE_AGENDA_CONFIG || '';
 
     // =============================
-    // 5) Estrategia por STEPs (similar a CheckAvailability, orientado a agendar)
+    // 4) Estrategia por STEPs (idéntica a CheckAvailability a nivel de rangos)
     // =============================
     let finalPayload: Record<string, unknown> | null = null;
-    let appointmentCreated: Record<string, any> | null = null;
+    let appointmentCreated: CreatedAppointment | null = null;
 
     for (const filter of structuredFilters as AvailabilityFilterResult[]) {
-      const firstFecha = filter.fechas?.[0]?.fecha;
+      // Tomar la primera fecha de referencia a partir del primer rango
+      const firstRange = (filter.date_ranges || [])[0];
+      const firstFecha = firstRange?.start_date;
 
       const steps: StepDefinition[] = [];
 
+      // original → 5 días extra (alineado con CheckAvailability)
       steps.push({
         tipo: 'original',
-        filtros: { con_medico: !!(filter.medicos && filter.medicos.length), rango_dias_extra: 0 },
-        params: { ...filter },
+        filtros: { con_medico: !!(filter.medicos && filter.medicos.length), rango_dias_extra: 5 },
+        params: { ...filter, rango_dias_extra: 5 },
       });
 
       if (firstFecha) {
@@ -209,7 +231,7 @@ export class ScheduleAppointmentUseCase {
           0,
           Math.floor(
             (new Date(firstFecha).getTime() - tiempoActualDT.toJSDate().getTime()) /
-            (1000 * 60 * 60 * 24),
+              (1000 * 60 * 60 * 24),
           ),
         );
         steps.push({
@@ -219,18 +241,21 @@ export class ScheduleAppointmentUseCase {
         });
       }
 
+      // ampliada con mismo médico → 45 días
       steps.push({
         tipo: 'ampliada_mismo_medico',
         filtros: { con_medico: !!(filter.medicos && filter.medicos.length), rango_dias_extra: 45 },
         params: { ...filter, rango_dias_extra: 45 },
       });
 
+      // sin médico, rango original
       steps.push({
         tipo: 'ampliada_sin_medico_rango_dias_original',
-        filtros: { con_medico: false, rango_dias_extra: 0 },
-        params: { ...filter, medicos: [] },
+        filtros: { con_medico: false, rango_dias_extra: 5 },
+        params: { ...filter, medicos: [], rango_dias_extra: 5 },
       });
 
+      // sin médico, extendido
       steps.push({
         tipo: 'ampliada_sin_medico_rango_dias_extendido',
         filtros: { con_medico: false, rango_dias_extra: 45 },
@@ -240,20 +265,25 @@ export class ScheduleAppointmentUseCase {
       for (const step of steps) {
         Logger.debug('[ScheduleAppointment] Buscando disponibilidad', { step: step.tipo, filtros: step.filtros });
 
-        const fechasStep = step.filtros.rango_dias_extra === 45
-          ? `${JSON.stringify(filter.fechas)}, los próximos 45 días`
-          : JSON.stringify(filter.fechas);
+        // Construir una representación textual de los rangos para el mensaje del extractor
+        const rangesText = (filter.date_ranges || [])
+          .map((r) => `del ${r.start_date} al ${r.end_date}`)
+          .join('; ');
 
-        // Llamamos al flujo completo del dominio (Extractor->Calculator->Presenter->Redactor)
+        const fechasStepText = step.filtros.rango_dias_extra > 0
+          ? `${rangesText}; y además los próximos ${step.filtros.rango_dias_extra} días`
+          : rangesText;
+
+        // Llamamos al flujo completo de dominio (incluye bloques, presenter, redactor)
         const availability = await this.availabilityService.getAvailabilityInfo({
           localTimeForPrompts,
           id_clinica: botConfig.clinicId,
           id_super_clinica: botConfig.superClinicId,
           tiempo_actual: tiempoActualDT.toISO() as string,
-          mensajeBotParlante: JSON.stringify({
+          parametrosSolicitudCita: JSON.stringify({
             tratamiento: filter.tratamientos?.[0] || tratamiento,
-            fechas: fechasStep,
-            medico: filter.medicos?.[0] || null,
+            fechas: fechasStepText,
+            medico: step.filtros.con_medico ? (filter.medicos?.[0] || null) : null,
             espacio: filter.espacios?.[0] || null,
           }),
           subdomain,
@@ -323,23 +353,25 @@ export class ScheduleAppointmentUseCase {
               p_comentario_ia: summary,
             });
 
-            const id_cita = spResponse?.[0]?.[0]?.id_cita;
+            const id_cita: number | undefined = spResponse?.[0]?.[0]?.id_cita;
 
             if (id_cita) {
               Logger.info('[ScheduleAppointment] Cita creada', { id_cita });
               await this.packBonoService.procesarPackbonoPresupuestoDeCita('on_crear_cita', id_cita);
 
-              appointmentCreated = { ...extractorData, id_cita };
+              const created: CreatedAppointment = {
+                ...extractorData,
+                id_cita,
+              };
 
-              // Marcar si la cita es pronto para confirmar
-              if (appointmentCreated) {
-                const isSoon = isAppointmentSoon(
-                  appointmentCreated.fecha_cita,
-                  tiempoActualDT.toISO() as string,
-                  botConfig.timezone,
-                );
-                appointmentCreated.isSoon = isSoon;
-              }
+              // Marcar si la cita es pronto para confirmar (narrowing por construcción)
+              created.isSoon = isAppointmentSoon(
+                created.fecha_cita,
+                tiempoActualDT.toISO() as string,
+                botConfig.timezone,
+              );
+
+              appointmentCreated = created;
             } else {
               Logger.error('[ScheduleAppointment] No se obtuvo id_cita del SP');
             }
@@ -371,14 +403,14 @@ export class ScheduleAppointmentUseCase {
 
     let toolOutput: string;
 
-    if (appointmentCreated?.id_cita) {
+    if (appointmentCreated) {
       const fechaLegible = formatFechaCita(appointmentCreated.fecha_cita);
       const doctorLine = appointmentCreated.nombre_medico
-        ? `\n- El médico es “${appointmentCreated.nombre_medico} ${appointmentCreated.apellido_medico}”.`
+        ? `\n- El médico es “${appointmentCreated.nombre_medico} ${appointmentCreated.apellido_medico ?? ''}”.`
         : '';
-      toolOutput = `#agendarCita\n- La cita de “${appointmentCreated.nombre_tratamiento}” ha sido agendada para el ${fechaLegible} a las ${appointmentCreated.hora_inicio}.${doctorLine}`;
+      toolOutput = `#agendarCita\n- La cita de “${appointmentCreated.nombre_tratamiento ?? tratamiento}” ha sido agendada para el ${fechaLegible} a las ${appointmentCreated.hora_inicio}.${doctorLine}`;
     } else if ((finalPayload as any).horarios.length === 0) {
-      toolOutput = '#agendarCita\nLo siento, en este momento no hay horarios disponibles para el día solicitado. ¿Te gustaría buscar otro día o franja horaria?';
+      toolOutput = '#agendarCita\nLo siento, en este momento no hay horarios disponibles para el día solicitado. ¿Te gustaría enviar de nuevo tu mensaje con otra fecha o franja horaria (por ejemplo “próximo martes por la tarde”)?';
     } else {
       toolOutput = '#agendarCita\nLo siento, parece que ocurrió un problema al confirmar la cita. ¿Podrías indicarnos otra opción de hora o día, por favor?';
     }
@@ -391,16 +423,16 @@ export class ScheduleAppointmentUseCase {
 
     Logger.info('[ScheduleAppointment] Ejecución completada', {
       success: true,
-      createdAppointmentId: appointmentCreated?.id_cita || null,
-      needsConfirmation: appointmentCreated?.isSoon || false,
+      createdAppointmentId: appointmentCreated ? appointmentCreated.id_cita : null,
+      needsConfirmation: appointmentCreated ? (appointmentCreated.isSoon || false) : false,
     });
 
     return {
       success: true,
       toolOutput,
       customFields,
-      createdAppointmentId: appointmentCreated?.id_cita,
-      needsConfirmation: appointmentCreated?.isSoon || false,
+      createdAppointmentId: appointmentCreated ? appointmentCreated.id_cita : undefined,
+      needsConfirmation: appointmentCreated ? (appointmentCreated.isSoon || false) : false,
     };
   }
 }

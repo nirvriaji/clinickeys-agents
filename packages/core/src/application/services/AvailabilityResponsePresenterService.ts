@@ -29,7 +29,7 @@ async function loadSystemPrompt(): Promise<string> {
       "[AvailabilityResponsePresenterService] No se pudo leer el .md del prompt; usando fallback inline",
       err
     );
-    // Fallback mínimo alineado al nuevo contrato (horarios_escogidos)
+    // Fallback mínimo alineado al contrato (horarios_escogidos)
     cachedSystemPrompt = [
       "Asistente Selector de Horarios.",
       "Recibirás DISPONIBILIDADES_ORIGINALES (rango con hora_inicio_minima/hora_inicio_maxima) y ASISTENTE_AGENDA_CONFIG.",
@@ -56,7 +56,7 @@ function addMinutesHHmm(hhmmOrHHmmss: string, minutes: number): string {
   const h = parseInt(base[1], 10);
   const m = parseInt(base[2], 10);
   const total = h * 60 + m + (Number.isFinite(minutes) ? minutes : 0);
-  const norm = ((total % 1440) + 1440) % 1440; // wrap 24h de forma segura
+  const norm = ((total % 1440) + 1440) % 1440; // wrap 24h seguro
   const hh = String(Math.floor(norm / 60)).padStart(2, "0");
   const mm = String(norm % 60).padStart(2, "0");
   return `${hh}:${mm}`;
@@ -90,12 +90,8 @@ export async function AvailabilityResponsePresenterService(
   // Compatibilidad: `contexto` contiene el bloque de configuración en texto libre
   const configTexto: string = typeof contexto === "string" ? contexto : String(contexto ?? "");
 
-  // CONTEXTO técnico: opcional (punto de extensión futuro)
-  const contextoTecnico = {} as Record<string, unknown>;
-
   const userPrompt =
     `ASISTENTE_AGENDA_CONFIG:\n${configTexto}\n\n` +
-    `CONTEXTO:\n${stringifyJSONSafe(contextoTecnico)}\n\n` +
     `DISPONIBILIDADES_ORIGINALES:\n${JSON.stringify(raw_disponibilidades ?? [], null, 2)}`;
 
   Logger.info("[AvailabilityResponsePresenterService] Inicio selección", {

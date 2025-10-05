@@ -1,32 +1,48 @@
 // packages/core/src/application/services/AvailabilityService/AvailabilityDomainService.ts
 
-import { AvailabilityRequestExtractorService, AvailabilityResponsePresenterService, AvailabilityResponseRedactorService } from "@clinickeys-agents/core/application/services";
+import { AvailabilityRequestExtractorService, AvailabilitySQLBuilder } from "@clinickeys-agents/core/application/services";
 import { ITratamientoRepository, TratamientoSearchResultDTO } from "@clinickeys-agents/core/domain/tratamiento";
 import { AvailabilityCalculator, AvailabilityAdjuster } from "@clinickeys-agents/core/domain/availability";
 import { ejecutarConReintento } from "@clinickeys-agents/core/infrastructure/helpers";
-import { AvailabilitySQLBuilder } from "@clinickeys-agents/core/application/services";
 import { IEspacioRepository, EspacioBasicDTO } from "@clinickeys-agents/core/domain/espacio";
 import { IMedicoRepository } from "@clinickeys-agents/core/domain/medico";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { AvailabilityError } from "@clinickeys-agents/core/domain/errors";
+import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
 import {
+  pickAnchorsFromExtractorDates,
+  orderAnchorsByCloseness,
+  planBlocksAroundAnchor,
+  expandRangeToFechas,
+  type Block,
+  type PlannerOptions,
+} from "@clinickeys-agents/core/application/services";
+import type {
   TratamientoEntrada,
   MedicoEntrada,
   EspacioEntrada,
   SlotDisponibilidad,
   HorarioEscogido,
 } from "@clinickeys-agents/core/domain/availability";
-import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
+
+// Nuevo pipeline (Compiler + Accumulator + Redactor v3)
+import { AvailabilityResponseRedactorService, SlotAccumulator, AgendaConfigCompilerService } from "@clinickeys-agents/core/application/services";
+import {  } from "@clinickeys-agents/core/application/services";
+import type {
+  AgendaPolicyResolved,
+  SlotAccumulatorInput,
+  SlotAccumulatorOutput,
+} from "@clinickeys-agents/core/application/services";
 
 interface GetAvailabilityInfoInput {
   leadId?: number;
   subdomain: string;
   id_clinica: number;
-  tiempo_actual: string;
+  tiempo_actual: string; // ISO local clinic time
   id_super_clinica: number;
-  mensajeBotParlante: string;
-  localTimeForPrompts: string;
-  contextoDisponibilidades: string;
+  parametrosSolicitudCita: string; // texto libre o JSON serializado
+  localTimeForPrompts: string; // string legible para prompts
+  contextoDisponibilidades: string; // configuración textual
 }
 
 export interface GetTreatmentsDataInput {
@@ -38,7 +54,7 @@ export interface AppointmentAvailabilityInput {
   tratamientos: string[];
   medicos?: string[];
   espacios?: string[];
-  fechas: { fecha: string }[];
+  fechas: { fecha: string }[]; // fechas concretas (YYYY-MM-DD)
   id_clinica: number;
   tiempo_actual: string;
 }
@@ -96,9 +112,7 @@ export class AvailabilityDomainService {
       throw AvailabilityError.TRATAMIENTOS_NO_ENCONTRADOS(tratamientosConsultados);
     }
 
-    const tratamientosExactos = treatmentsFound.filter(
-      (t) => t.is_exact === 1
-    );
+    const tratamientosExactos = treatmentsFound.filter((t) => t.is_exact === 1);
     if (!tratamientosExactos.length) {
       Logger.warn("[AvailabilityDomainService] Ningún tratamiento es coincidencia exacta");
       throw AvailabilityError.TRATAMIENTOS_NO_EXACTOS(tratamientosConsultados);
@@ -357,8 +371,7 @@ export class AvailabilityDomainService {
         progMedicoEspacio: (progMedicoEspacio || []).length,
       });
 
-      // Corrección: sólo lanzar errores de "no hay programación" cuando
-      // no exista programación ni general ni específica.
+      // Solo lanzar errores de programación cuando no exista programación ni general ni específica.
       const noProgMedicos = !progMedicos?.length;
       const noProgEspacios = !progEspacios?.length;
       const noProgMedicoEspacio = !progMedicoEspacio?.length;
@@ -454,7 +467,7 @@ export class AvailabilityDomainService {
       id_super_clinica,
       tiempo_actual,
       localTimeForPrompts,
-      mensajeBotParlante,
+      parametrosSolicitudCita,
       contextoDisponibilidades,
     } = input;
 
@@ -486,7 +499,7 @@ export class AvailabilityDomainService {
         espacios: nombresEspacios.length,
       });
 
-      const filters = await this.availabilityRequestExtractorService.extract(mensajeBotParlante, {
+      const filters = await this.availabilityRequestExtractorService.extract(parametrosSolicitudCita, {
         id_clinica,
         id_super_clinica,
         tiempo_actual,
@@ -501,67 +514,180 @@ export class AvailabilityDomainService {
         primerFilter: filters && filters[0],
       });
 
-      const availabilityRequest: AppointmentAvailabilityInput = {
-        tratamientos: filters[0]?.tratamientos ?? [],
-        medicos: filters[0]?.medicos ?? [],
-        espacios: filters[0]?.espacios ?? [],
-        fechas: filters[0]?.fechas ?? [],
-        id_clinica,
-        tiempo_actual,
-      };
+      // Configuración base alineada con CheckAvailability (rangos/ventanas intactos)
+      const blockDays = 5;
+      const maxOpciones = 10;
+      const plannerBase: Pick<PlannerOptions, "blockDays"> = { blockDays };
 
-      if (!availabilityRequest.tratamientos.length) {
-        Logger.warn("[AvailabilityDomainService] Ningún tratamiento disponible en clínica para filtros extraídos");
-        return {
-          success: false,
-          message: "No se encontraron tratamientos disponibles en la clínica.",
-          fechas_buscadas: null,
-          horarios_escogidos: [],
-          presentacion_disponibilidades: "",
-        };
+      const analisisAgendaAcumulado: SlotDisponibilidad[] = [];
+      const allFechasBuscadas: string[] = [];
+
+      for (const filter of filters || []) {
+        const tratamientosSel = filter?.tratamientos ?? [];
+        const medicosSel = filter?.medicos ?? [];
+        const espaciosSel = filter?.espacios ?? [];
+
+        // Expandir date_ranges → fechas {fecha}
+        const fechasExtractor: { fecha: string }[] = [];
+        const drs = Array.isArray((filter as any).date_ranges) ? (filter as any).date_ranges : [];
+        for (const r of drs) {
+          const start = r?.start_date;
+          const end = r?.end_date;
+          if (typeof start === "string" && typeof end === "string") {
+            const fechasRango = expandRangeToFechas({ start, end });
+            fechasExtractor.push(...fechasRango);
+          }
+        }
+
+        // Anclas ordenadas por cercanía
+        const anchors = orderAnchorsByCloseness(
+          pickAnchorsFromExtractorDates(fechasExtractor),
+          tiempo_actual.substring(0, 10)
+        );
+
+        Logger.info("[AvailabilityDomainService] Anclas calculadas", { anchors });
+
+        type StepTipo =
+          | "original"
+          | "intermedio_hasta_fecha"
+          | "ampliada_mismo_medico"
+          | "ampliada_sin_medico_rango_dias_original"
+          | "ampliada_sin_medico_rango_dias_extendido";
+
+        const hasMedico = (medicosSel || []).length > 0;
+
+        const steps: {
+          tipo: StepTipo;
+          filtros: { con_medico: boolean; rango_dias_extra: number; backwardOnly?: boolean };
+          medicos: string[];
+          planner: PlannerOptions;
+        }[] = [];
+
+        // original → 5 días hacia adelante
+        steps.push({
+          tipo: "original",
+          filtros: { con_medico: hasMedico, rango_dias_extra: 5 },
+          medicos: medicosSel,
+          planner: { ...plannerBase, forwardMaxDays: 5 },
+        });
+
+        // intermedio_hasta_fecha → backward only desde cada ancla hasta hoy
+        steps.push({
+          tipo: "intermedio_hasta_fecha",
+          filtros: { con_medico: hasMedico, rango_dias_extra: 0, backwardOnly: true },
+          medicos: medicosSel,
+          planner: { ...plannerBase, forwardMaxDays: 5 },
+        });
+
+        // ampliada_mismo_medico → 45 días
+        steps.push({
+          tipo: "ampliada_mismo_medico",
+          filtros: { con_medico: hasMedico, rango_dias_extra: 45 },
+          medicos: medicosSel,
+          planner: { ...plannerBase, forwardMaxDays: 45 },
+        });
+
+        // sin médico, rango original (5 días)
+        steps.push({
+          tipo: "ampliada_sin_medico_rango_dias_original",
+          filtros: { con_medico: false, rango_dias_extra: 5 },
+          medicos: [],
+          planner: { ...plannerBase, forwardMaxDays: 5 },
+        });
+
+        // sin médico, extendido (45 días)
+        steps.push({
+          tipo: "ampliada_sin_medico_rango_dias_extendido",
+          filtros: { con_medico: false, rango_dias_extra: 45 },
+          medicos: [],
+          planner: { ...plannerBase, forwardMaxDays: 45 },
+        });
+
+        for (const step of steps) {
+          for (const anchor of anchors) {
+            let blocks = planBlocksAroundAnchor(anchor, tiempo_actual.substring(0, 10), step.planner);
+            if (step.filtros.backwardOnly) {
+              blocks = blocks.filter((b) => b.direction === "backward");
+            }
+
+            for (const block of blocks) {
+              const fechasBlock = expandRangeToFechas({ start: block.start, end: block.end });
+              allFechasBuscadas.push(...fechasBlock.map((f) => f.fecha));
+
+              const availabilityRequest: AppointmentAvailabilityInput = {
+                tratamientos: tratamientosSel,
+                medicos: step.medicos,
+                espacios: espaciosSel,
+                fechas: fechasBlock,
+                id_clinica,
+                tiempo_actual,
+              };
+
+              const baseResult = await this.getAppointmentAvailability(availabilityRequest);
+              if (!baseResult.success || !Array.isArray(baseResult.analisis_agenda)) {
+                continue;
+              }
+
+              const slots: SlotDisponibilidad[] = baseResult.analisis_agenda;
+              analisisAgendaAcumulado.push(...slots);
+            }
+          }
+        }
       }
 
-      const baseResult = await this.getAppointmentAvailability(availabilityRequest);
-
-      // Aunque no haya disponibilidad base, pasamos por Presenter/Redactor (tienen fallbacks)
-      const slots: SlotDisponibilidad[] = Array.isArray(baseResult.analisis_agenda)
-        ? baseResult.analisis_agenda
-        : [];
-
-      Logger.info("[AvailabilityDomainService] Enviando slots al presentador para generar horarios_escogidos", {
-        slots: slots.length,
+      Logger.info("[AvailabilityDomainService] Ventanas recolectadas (analisis_agenda)", {
+        total: analisisAgendaAcumulado.length,
       });
 
-      const selectorResult = await AvailabilityResponsePresenterService(
+      // Compiler: resolver política desde el texto + nombres/IDs reales
+      const policy: AgendaPolicyResolved = await AgendaConfigCompilerService(
         this.openAIService,
-        slots,
-        contextoDisponibilidades || ""
+        contextoDisponibilidades || "",
+        analisisAgendaAcumulado,
+        {
+          lista_sedes_clinica: [], // no disponible aquí; si lo tienes en config, puedes inyectarlo
+          presentacion_override: { mostrar_medicos: "auto" },
+        }
       );
 
-      const horariosSeleccionados = Array.isArray(selectorResult.horarios_escogidos)
-        ? selectorResult.horarios_escogidos
-        : [];
-
-      Logger.info("[AvailabilityDomainService] Presentador retornó horarios_escogidos", {
-        count: horariosSeleccionados.length,
+      Logger.info("[AvailabilityDomainService] Policy compilada", {
+        minutos_globales: policy?.minutos_globales?.length || 0,
+        reglas_tratamiento: policy?.reglas_minutos_por_tratamiento_resueltas?.length || 0,
       });
 
+      // Accumulator: generar top10 determinista a partir de la policy
+      const accInput: SlotAccumulatorInput = {
+        policy,
+        filters: filters || [],
+        windows: analisisAgendaAcumulado as any,
+        contexto: {
+          horas_preferencia_usuario: [],
+          disclaimer_fechas: undefined,
+          ahoraISO: tiempo_actual,
+        },
+      };
+      const accResult: SlotAccumulatorOutput = await SlotAccumulator(accInput);
+
+      const finalHorarios: HorarioEscogido[] = (accResult.opciones_top10 || []) as any;
+
+      Logger.info("[AvailabilityDomainService] Selección final (Accumulator)", {
+        finales: finalHorarios.length,
+        dias_mostrados: accResult.dias_mostrados?.length || 0,
+      });
+
+      // Redactor v3: ahora recibe **policy** (JSON) en lugar de texto
       const redactor = await AvailabilityResponseRedactorService(
         this.openAIService,
-        horariosSeleccionados,
-        contextoDisponibilidades || "",
+        finalHorarios,
+        { policy },
         { ahoraISO: tiempo_actual }
       );
 
-      Logger.info("[AvailabilityDomainService] Redactor generó mensaje", {
-        mensaje_len: (redactor?.mensaje || "").length,
-      });
-
       return {
-        success: baseResult.success,
-        message: baseResult.message ?? null,
-        fechas_buscadas: JSON.stringify(availabilityRequest.fechas),
-        horarios_escogidos: horariosSeleccionados,
+        success: finalHorarios.length > 0,
+        message: null,
+        fechas_buscadas: JSON.stringify(Array.from(new Set(allFechasBuscadas)).sort()),
+        horarios_escogidos: finalHorarios,
         presentacion_disponibilidades: redactor?.mensaje || "",
       };
     } catch (e) {

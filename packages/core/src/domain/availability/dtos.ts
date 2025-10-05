@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
 /**
- * ============================
+ * ======================================
  * Entidades de dominio (entrada/base)
- * ============================
+ * ======================================
  */
 
 /**
@@ -41,9 +41,9 @@ export interface TratamientoEntrada {
 export interface ProgramacionMedicoRow {
   id_medico: number;
   fecha_inicio: string; // YYYY-MM-DD (dateStrings: true)
-  fecha_fin: string;    // YYYY-MM-DD (dateStrings: true)
-  hora_inicio: string;  // HH:mm:ss
-  hora_fin: string;     // HH:mm:ss
+  fecha_fin: string; // YYYY-MM-DD (dateStrings: true)
+  hora_inicio: string; // HH:mm:ss
+  hora_fin: string; // HH:mm:ss
 }
 
 /**
@@ -52,9 +52,9 @@ export interface ProgramacionMedicoRow {
 export interface ProgramacionEspacioRow {
   id_espacio: number;
   fecha_inicio: string; // YYYY-MM-DD
-  fecha_fin: string;    // YYYY-MM-DD
-  hora_inicio: string;  // HH:mm:ss
-  hora_fin: string;     // HH:mm:ss
+  fecha_fin: string; // YYYY-MM-DD
+  hora_inicio: string; // HH:mm:ss
+  hora_fin: string; // HH:mm:ss
 }
 
 /**
@@ -64,9 +64,9 @@ export interface ProgramacionMedicoEspacioRow {
   id_medico: number;
   id_espacio: number;
   fecha_inicio: string; // YYYY-MM-DD
-  fecha_fin: string;    // YYYY-MM-DD
-  hora_inicio: string;  // HH:mm:ss
-  hora_fin: string;     // HH:mm:ss
+  fecha_fin: string; // YYYY-MM-DD
+  hora_inicio: string; // HH:mm:ss
+  hora_fin: string; // HH:mm:ss
 }
 
 /**
@@ -77,7 +77,7 @@ export interface CitaProgramadaRow {
   id_espacio: number;
   fecha_cita: string; // YYYY-MM-DD
   hora_inicio: string; // HH:mm:ss
-  hora_fin: string;    // HH:mm:ss
+  hora_fin: string; // HH:mm:ss
 }
 
 /**
@@ -109,17 +109,17 @@ export interface Ventana extends VentanaBase {
 }
 
 /**
- * ============================
+ * ======================================
  * Slots de disponibilidad (salida del dominio de agenda)
- * ============================
+ * ======================================
  *
  * Este es el shape "histórico" generado por AvailabilityDomainService: los rangos vienen como
  * `hora_inicio_minima`/`hora_inicio_maxima` (HH:mm:ss). Es la **entrada** para el selector/presentador.
  */
 export interface SlotDisponibilidad {
-  fecha_cita: string;           // YYYY-MM-DD
-  hora_inicio_minima: string;   // HH:mm:ss
-  hora_inicio_maxima: string;   // HH:mm:ss
+  fecha_cita: string; // YYYY-MM-DD
+  hora_inicio_minima: string; // HH:mm:ss
+  hora_inicio_maxima: string; // HH:mm:ss
   id_medico: number;
   nombre_medico: string;
   id_espacio: number;
@@ -127,37 +127,14 @@ export interface SlotDisponibilidad {
   id_tratamiento: number;
   nombre_tratamiento: string;
   duracion_tratamiento: number; // minutos
-  especifica: boolean;          // true si proviene de ventana específica
+  especifica: boolean; // true si proviene de ventana específica
   fecha_legible?: string | null; // p.ej. "Lunes, 16 de septiembre"
 }
 
 /**
- * ============================
- * Peticiones de consulta (extractor)
- * ============================
- */
-export const ConsultaCitaSchema = z.object({
-  filters: z.array(
-    z.object({
-      tratamientos: z.array(z.string()),
-      medicos: z.array(z.string()),
-      espacios: z.array(z.string()),
-      aparatologias: z.array(z.string()),
-      especialidades: z.array(z.string()),
-      fechas: z.array(
-        z.object({
-          fecha: z.string().refine((s) => /^\d{4}-\d{2}-\d{2}$/.test(s)),
-          horas: z.array(z.object({ hora_inicio: z.string(), hora_fin: z.string() })),
-        })
-      ),
-    })
-  ),
-});
-
-/**
- * ============================
- * Schemas (zod)
- * ============================
+ * ======================================
+ * Schemas (zod) para validaciones internas
+ * ======================================
  */
 
 // Shape del slot tal como llega desde el dominio (entrada del presentador)
@@ -225,9 +202,9 @@ export const MetadataSchema = z
   .optional();
 
 /**
- * ============================
+ * ======================================
  * Contrato de salida del **Selector/Presentador**
- * ============================
+ * ======================================
  *
  * Reemplaza al antiguo "PresentacionYDisponibilidades". El selector **materializa** inicios dentro
  * de rangos válidos y devuelve horarios concretos (inicio/fin) sin inventar datos externos.
@@ -241,8 +218,8 @@ export const SelectorHorariosSchema = z.object({
 export type SelectorHorarios = z.infer<typeof SelectorHorariosSchema>;
 
 /**
- * ============================
+ * ======================================
  * Re-exports útiles
- * ============================
+ * ======================================
  */
 export type { SlotDisponibilidad as SlotDisponibilidadType };

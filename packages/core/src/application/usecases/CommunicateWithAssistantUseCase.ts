@@ -257,7 +257,7 @@ export class CommunicateWithAssistantUseCase {
           const parsed = ClarifyPatientSchema.parse(params);
 
           // Parsear candidatos si vienen como string JSON o como objetos con `paciente` anidado.
-          let candidatesArr: Array<{ id_paciente: number; nombre: string; apellido: string; telefono: string }>; 
+          let candidatesArr: Array<{ id_paciente: number; nombre: string; apellido: string; telefono: string }>;
           try {
             const raw = Array.isArray(parsed.candidatos)
               ? parsed.candidatos
