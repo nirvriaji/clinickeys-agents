@@ -130,7 +130,6 @@ export class LeadProcessorController {
       patientService,
       openAIService,
       packBonoService,
-      getEstructuredAvailabilityRequestUC,
       tratamientoRepo,
       medicoRepo,
       espacioRepo,

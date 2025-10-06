@@ -158,6 +158,7 @@ export default SlotAccumulator;
 // =============================
 interface AnySlot {
   fecha_cita: string;
+  fecha_legible: string;
   hora_inicio: string; // HH:mm
   id_medico?: number | string;
   nombre_medico?: string;
@@ -231,6 +232,7 @@ function slotChronoCmp(a: AnySlot, b: AnySlot): number {
 function asSlot(w: any, fecha: string, hora: string): AnySlot {
   return {
     fecha_cita: fecha,
+    fecha_legible: (w as any).fecha_legible,
     hora_inicio: hora,
     id_medico: (w as any).id_medico,
     nombre_medico: (w as any).nombre_medico,

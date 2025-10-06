@@ -49,15 +49,38 @@ const CheckAvailabilitySchema = z.object({
   summary: z.string(),
 });
 
-const ScheduleAppointmentSchema = CheckAvailabilitySchema.extend({
+const ScheduleAppointmentSchema = z.object({
+  // Datos del paciente / control
   nombre: z.string(),
   apellido: z.string(),
   telefono: z.string(),
+  summary: z.string(),
   id_paciente: z.number(),
   shouldCreatePatient: z.boolean(),
-  id_pack_bono: z.string().nullable().optional(),
-  id_presupuesto: z.string().nullable().optional(),
   isThirdParty: z.boolean(),
+
+  // Vínculos comerciales opcionales
+  id_pack_bono: z.number().nullable().optional(),
+  id_presupuesto: z.number().nullable().optional(),
+
+  // Opción de horario elegida (requerida)
+  horarioEscogido: z.object({
+    fecha_cita: z.string(),        // 'YYYY-MM-DD'
+    fecha_legible: z.string(),
+    hora_inicio: z.string(),       // 'HH:MM'
+    hora_fin: z.string(),          // 'HH:MM' (si no llega, el UC calcula con la duración)
+
+    id_tratamiento: z.number(),
+    id_medico: z.number(),
+    id_espacio: z.number(),
+
+    // Metadatos opcionales (si vienen desde el redactor/selector)
+    nombre_tratamiento: z.string(),
+    nombre_medico: z.string(),
+    nombre_espacio: z.string(),
+    duracion_tratamiento: z.number(),
+    especifica: z.boolean().nullable().optional(),
+  }),
 });
 
 const ManageAppointmentStateSchema = z.object({

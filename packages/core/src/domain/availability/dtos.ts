@@ -128,7 +128,7 @@ export interface SlotDisponibilidad {
   nombre_tratamiento: string;
   duracion_tratamiento: number; // minutos
   especifica: boolean; // true si proviene de ventana específica
-  fecha_legible?: string | null; // p.ej. "Lunes, 16 de septiembre"
+  fecha_legible?: string; // p.ej. "Lunes, 16 de septiembre"
 }
 
 /**
@@ -149,7 +149,7 @@ export const DisponibilidadSchema = z.object({
   nombre_tratamiento: z.string(),
   duracion_tratamiento: z.number(),
   especifica: z.boolean(),
-  fecha_legible: z.string().nullable().optional(),
+  fecha_legible: z.string().optional(),
   fecha_cita: z.string(),
 });
 export type Disponibilidad = z.infer<typeof DisponibilidadSchema>;
@@ -166,7 +166,7 @@ export const HorarioEscogidoSchema = z.object({
   id_tratamiento: z.number(),
   nombre_tratamiento: z.string(),
   duracion_tratamiento: z.number(), // minutos
-  fecha_legible: z.string().nullable().optional(),
+  fecha_legible: z.string(),
   especifica: z.boolean().nullable().optional(), // informativo si provino de ventana específica
 });
 export type HorarioEscogido = z.infer<typeof HorarioEscogidoSchema>;
@@ -200,22 +200,6 @@ export const MetadataSchema = z
   .strict()
   .nullable()
   .optional();
-
-/**
- * ======================================
- * Contrato de salida del **Selector/Presentador**
- * ======================================
- *
- * Reemplaza al antiguo "PresentacionYDisponibilidades". El selector **materializa** inicios dentro
- * de rangos válidos y devuelve horarios concretos (inicio/fin) sin inventar datos externos.
- */
-export const SelectorHorariosSchema = z.object({
-  horarios_escogidos: z.array(HorarioEscogidoSchema),
-  dias_mostrados: z.array(z.string()).nullable().optional(), // ISO YYYY-MM-DD
-  criterio_orden: z.string().nullable().optional(),
-  metadata: MetadataSchema,
-});
-export type SelectorHorarios = z.infer<typeof SelectorHorariosSchema>;
 
 /**
  * ======================================
