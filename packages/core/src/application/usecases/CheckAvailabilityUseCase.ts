@@ -13,7 +13,6 @@ import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
 import type { DateTime } from 'luxon';
 
-// Planner utils (rangos/anclas/bloques)
 import {
   pickAnchorsFromExtractorDates,
   orderAnchorsByCloseness,
@@ -24,7 +23,6 @@ import {
   type PlannerOptions,
 } from '@clinickeys-agents/core/application/services';
 
-// Nuevo pipeline JSON‑first
 import {
   AvailabilityResponseRedactorService,
   AgendaConfigCompilerService,
@@ -60,7 +58,6 @@ interface CheckAvailabilityOutput {
   toolOutput: string;
 }
 
-// Procedencia por slot (tipos de step)
  type StepTipo =
   | 'original'
   | 'intermedio_hasta_fecha'

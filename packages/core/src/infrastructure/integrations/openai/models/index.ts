@@ -1,5 +1,3 @@
-// packages/core/src/infrastructure/integrations/openai/models/index.ts
-
 // Interfaces propias para desacoplar del SDK de OpenAI v4
 
 export interface Assistant {
@@ -19,7 +17,7 @@ export interface Thread {
 
 export interface Run {
   id: string;
-  status: string;
+  status: string; // e.g., "queued" | "in_progress" | "requires_action" | "completed" | "failed" | "expired" | "cancelling"
   assistant_id: string;
   thread_id: string;
   created_at?: number;
@@ -29,7 +27,7 @@ export interface Run {
         id: string;
         function: {
           name: string;
-          arguments: string;
+          arguments: string; // JSON string per OpenAI API
         };
       }>;
     };
@@ -38,11 +36,13 @@ export interface Run {
 
 export interface OpenAIMessageResponse {
   id: string;
-  role: string;
-  content: Array<{
-    type: string;
-    text?: { value: string };
-  }> | { text?: { value: string } };
+  role: string; // "user" | "assistant" | "tool" | ...
+  content:
+    | Array<{
+        type: string;
+        text?: { value: string };
+      }>
+    | { text?: { value: string } };
   created_at?: number;
 }
 
@@ -57,7 +57,7 @@ export interface SubmitToolOutputsPayload {
   runId: string;
   toolOutputs: Array<{
     tool_call_id: string;
-    output: any;
+    output: any; // OpenAI acepta string; mantenemos any para compatibilidad ascendente de capas
   }>;
 }
 
@@ -71,4 +71,12 @@ export interface CreateAssistantPayload {
 
 export interface UpdateAssistantPayload {
   instructions?: string;
+}
+
+// Resultado estándar que consumen los orquestadores/UCs
+export interface ResponseResult {
+  threadId: string;
+  runId: string;
+  message?: string;
+  functionCalls?: FunctionCallPayload[];
 }

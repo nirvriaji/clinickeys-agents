@@ -1,5 +1,3 @@
-// packages/core/src/application/usecases/CommunicateWithAssistantUseCase.ts
-
 import {
   CheckAvailabilityUseCase,
   ScheduleAppointmentUseCase,
@@ -16,9 +14,6 @@ import {
   PLEASE_WAIT_MESSAGE,
   REMINDER_MESSAGE,
   NOTIFICATION_ID,
-  PATIENT_FIRST_NAME,
-  PATIENT_LAST_NAME,
-  PATIENT_PHONE,
   CLINIC_NAME,
   APPOINTMENT_DATE,
   APPOINTMENT_START_TIME,
@@ -168,6 +163,8 @@ export interface CommunicateWithAssistantUseCaseDeps {
   clarifyPatientUC: ClarifyPatientUseCase; // NUEVO
 }
 
+const MAX_TOOL_CYCLES = 6; // límite de seguridad para evitar bucles infinitos
+
 export class CommunicateWithAssistantUseCase {
   constructor(private deps: CommunicateWithAssistantUseCaseDeps) {}
 
@@ -177,6 +174,7 @@ export class CommunicateWithAssistantUseCase {
     try {
       Logger.info('[CommunicateWithAssistant] Inicio de ejecución', { leadId, userMessage, reminderMessage });
 
+      // 1) Reconocer intención (puede devolver 0..N functionCalls)
       const intentResult = await this.deps.recognizeIntentUC.execute({
         botConfigType: botConfig.botConfigType,
         botConfigId: botConfig.botConfigId,
@@ -193,152 +191,205 @@ export class CommunicateWithAssistantUseCase {
         botConfig,
       } as any);
 
-      const { intent: intentName, params, assistantResult } = intentResult;
-      const { threadId: thId, runId, functionCalls, message: assistantPlainMessage } = assistantResult || {};
-      Logger.info('[CommunicateWithAssistant] Intent detectada', { intentName, thId, runId });
-      Logger.debug('[CommunicateWithAssistant] Parámetros de intent', { params });
+      let { assistantResult } = intentResult;
+      let { threadId: thId, runId } = assistantResult || {};
+      let pendingCalls = assistantResult?.functionCalls || [];
+      let finalAssistantMessage = assistantResult?.message || '';
+      Logger.info('[CommunicateWithAssistant] Intent detectada', { intentName: intentResult.intent, thId, runId });
 
-      let ucResponse: UseCaseResponse;
-      switch (intentName) {
-        case 'consulta_agendar':
-          Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: consulta_agendar');
-          ucResponse = await this.deps.checkAvailabilityUC.execute({
-            botConfig,
-            leadId,
-            normalizedLeadCF,
-            params: CheckAvailabilitySchema.parse(params),
-            timezone: botConfig.timezone,
-            tiempoActualDT: localTime(botConfig.timezone),
-            subdomain: botConfig.kommo.subdomain,
-          });
-          break;
-        case 'agendar_cita':
-          Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: agendar_cita');
-          const scheduleParams = ScheduleAppointmentSchema.parse(params);
-          ucResponse = await this.deps.scheduleAppointmentUC.execute({
-            botConfig,
-            leadId,
-            normalizedLeadCF,
-            params: scheduleParams,
-            timezone: botConfig.timezone,
-            tiempoActualDT: localTime(botConfig.timezone),
-            subdomain: botConfig.kommo.subdomain,
-          });
+      // Campos custom acumulados a lo largo de las tools
+      const accumulatedCF: Record<string, string> = {};
 
-          if (ucResponse.success && ucResponse.createdAppointmentId) {
-            if (ucResponse.needsConfirmation) {
-              Logger.info('[CommunicateWithAssistant] Cita es hoy/mañana, confirmando automáticamente', { id_cita: ucResponse.createdAppointmentId });
-              await this.deps.manageAppointmentStateUC.execute({
+      // 2) Bucle de resolución de tools → submit → poll → siguiente ronda
+      for (let cycle = 0; cycle < MAX_TOOL_CYCLES; cycle++) {
+        Logger.info('[CommunicateWithAssistant] Ciclo de tools', { cycle, toolCalls: pendingCalls.length });
+
+        // Si no hay tool-calls pendientes, rompemos y usamos el mensaje (si lo hay)
+        if (!pendingCalls.length) break;
+
+        // Ejecutar cada tool-call localmente (UC correspondientes)
+        const batchOutputs: Array<{ tool_call_id: string; output: string }> = [];
+
+        for (const call of pendingCalls) {
+          const name = (call?.name || '').trim();
+          const args = (call?.arguments || {}) as Record<string, unknown>;
+          Logger.info('[CommunicateWithAssistant] Ejecutando tool local', { name, argsKeys: Object.keys(args) });
+
+          let ucResponse: UseCaseResponse | null = null;
+
+          switch (name) {
+            case 'consulta_agendar': {
+              Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: consulta_agendar');
+              const parsed = CheckAvailabilitySchema.parse(args);
+              ucResponse = await this.deps.checkAvailabilityUC.execute({
+                botConfig,
                 leadId,
+                normalizedLeadCF,
+                params: parsed,
+                timezone: botConfig.timezone,
+                tiempoActualDT: localTime(botConfig.timezone),
+                subdomain: botConfig.kommo.subdomain,
+              });
+              break;
+            }
+            case 'agendar_cita': {
+              Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: agendar_cita');
+              const scheduleParams = ScheduleAppointmentSchema.parse(args);
+              ucResponse = await this.deps.scheduleAppointmentUC.execute({
+                botConfig,
+                leadId,
+                normalizedLeadCF,
+                params: scheduleParams,
+                timezone: botConfig.timezone,
+                tiempoActualDT: localTime(botConfig.timezone),
+                subdomain: botConfig.kommo.subdomain,
+              });
+
+              if (ucResponse.success && ucResponse.createdAppointmentId) {
+                if (ucResponse.needsConfirmation) {
+                  Logger.info('[CommunicateWithAssistant] Cita es hoy/mañana, confirmando automáticamente', { id_cita: ucResponse.createdAppointmentId });
+                  await this.deps.manageAppointmentStateUC.execute({
+                    leadId,
+                    params: {
+                      id_cita: ucResponse.createdAppointmentId,
+                      estado: 'CONFIRMADA',
+                      summary: scheduleParams.summary,
+                    },
+                  });
+                } else {
+                  Logger.info('[CommunicateWithAssistant] Cita no es hoy/mañana, desconfirmando automáticamente', { id_cita: ucResponse.createdAppointmentId });
+                  await this.deps.manageAppointmentStateUC.execute({
+                    leadId,
+                    params: {
+                      id_cita: ucResponse.createdAppointmentId,
+                      estado: 'PROGRAMADA',
+                      summary: scheduleParams.summary,
+                    },
+                  });
+                }
+              }
+              break;
+            }
+            case 'gestionar_estado_cita': {
+              Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: gestionar_estado_cita');
+              const parsed = ManageAppointmentStateSchema.parse(args);
+              ucResponse = await this.deps.manageAppointmentStateUC.execute({
+                leadId,
+                params: parsed,
+              });
+              break;
+            }
+            case 'crear_tarea': {
+              Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: crear_tarea');
+              const parsed = CreateTaskSchema.parse(args);
+              ucResponse = await this.deps.createTaskUC.execute({
+                botConfig,
+                leadId,
+                normalizedLeadCF,
+                params: parsed,
+              });
+              break;
+            }
+            case 'identificar_paciente': {
+              Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: identificar_paciente');
+              const parsed = IdentifyPatientSchema.parse(args);
+              ucResponse = await this.deps.identifyPatientUC.execute({
+                leadId,
+                botConfig,
+                params: parsed,
+                tiempoActualDT: localTime(botConfig.timezone),
+              });
+              break;
+            }
+            case 'clarificar_paciente': {
+              Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: clarificar_paciente');
+              const parsed = ClarifyPatientSchema.parse(args);
+
+              // Parsear candidatos si vienen como string JSON o como objetos con `paciente` anidado.
+              let candidatesArr: Array<{ id_paciente: number; nombre: string; apellido: string; telefono: string }>;
+              try {
+                const raw = Array.isArray(parsed.candidatos)
+                  ? parsed.candidatos
+                  : JSON.parse(parsed.candidatos as string);
+
+                candidatesArr = (raw as any[])
+                  .map((item: any) => {
+                    const base = item?.paciente || item || {};
+                    return {
+                      id_paciente: Number(base.id_paciente),
+                      nombre: String(base.nombre || ''),
+                      apellido: String(base.apellido || ''),
+                      telefono: base.telefono ? String(base.telefono) : '',
+                    };
+                  })
+                  .filter((c: any) => Number.isFinite(c.id_paciente));
+              } catch (e) {
+                Logger.warn('[CommunicateWithAssistant] No se pudo parsear candidatos en clarificar_paciente; se enviará vacío', { error: e });
+                candidatesArr = [];
+              }
+
+              ucResponse = await this.deps.clarifyPatientUC.execute({
+                botConfig,
+                leadId,
+                normalizedLeadCF,
                 params: {
-                  id_cita: ucResponse.createdAppointmentId,
-                  estado: "CONFIRMADA",
-                  summary: scheduleParams.summary,
+                  id_clinica: parsed.id_clinica ?? botConfig.clinicId,
+                  candidatos: candidatesArr,
                 },
               });
-            } else {
-              Logger.info('[CommunicateWithAssistant] Cita no es hoy/mañana, desconfirmando automáticamente', { id_cita: ucResponse.createdAppointmentId });
-              await this.deps.manageAppointmentStateUC.execute({
-                leadId,
-                params: {
-                  id_cita: ucResponse.createdAppointmentId,
-                  estado: "PROGRAMADA",
-                  summary: scheduleParams.summary,
-                },
+              break;
+            }
+            default: {
+              // Conversación regular como último recurso
+              Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: conversación regular');
+              ucResponse = await this.deps.regularConversationUC.execute({
+                params: RegularConversationSchema.parse({ assistantMessage: finalAssistantMessage || '' }),
               });
             }
           }
-          break;
-        case 'gestionar_estado_cita':
-          Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: gestionar_estado_cita');
-          ucResponse = await this.deps.manageAppointmentStateUC.execute({
-            leadId,
-            params: ManageAppointmentStateSchema.parse(params),
-          });
-          break;
-        case 'crear_tarea':
-          Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: crear_tarea');
-          ucResponse = await this.deps.createTaskUC.execute({
-            botConfig,
-            leadId,
-            normalizedLeadCF,
-            params: CreateTaskSchema.parse(params),
-          });
-          break;
-        case 'identificar_paciente':
-          Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: identificar_paciente');
-          ucResponse = await this.deps.identifyPatientUC.execute({
-            leadId,
-            botConfig,
-            params: IdentifyPatientSchema.parse(params),
-            tiempoActualDT: localTime(botConfig.timezone),
-          });
-          break;
-        case 'clarificar_paciente':
-          Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: clarificar_paciente');
-          // Normalizar entrada para el UC a partir del esquema flexible.
-          const parsed = ClarifyPatientSchema.parse(params);
 
-          // Parsear candidatos si vienen como string JSON o como objetos con `paciente` anidado.
-          let candidatesArr: Array<{ id_paciente: number; nombre: string; apellido: string; telefono: string }>;
-          try {
-            const raw = Array.isArray(parsed.candidatos)
-              ? parsed.candidatos
-              : JSON.parse(parsed.candidatos as string);
-
-            candidatesArr = (raw as any[]).map((item: any) => {
-              const base = item?.paciente || item || {};
-              return {
-                id_paciente: Number(base.id_paciente),
-                nombre: String(base.nombre || ''),
-                apellido: String(base.apellido || ''),
-                telefono: base.telefono ? String(base.telefono) : '',
-              };
-            }).filter((c: any) => Number.isFinite(c.id_paciente));
-          } catch (e) {
-            Logger.warn('[CommunicateWithAssistant] No se pudo parsear candidatos en clarificar_paciente; se enviará vacío', { error: e });
-            candidatesArr = [];
+          if (!ucResponse || !ucResponse.success) {
+            Logger.error('[CommunicateWithAssistant] El caso de uso devolvió error', { name });
+            throw new Error('El caso de uso devolvió error.');
           }
 
-          ucResponse = await this.deps.clarifyPatientUC.execute({
-            botConfig,
-            leadId,
-            normalizedLeadCF,
-            params: {
-              id_clinica: parsed.id_clinica ?? botConfig.clinicId,
-              candidatos: candidatesArr,
-            },
-          });
-          break;
-        default:
-          Logger.info('[CommunicateWithAssistant] Ejecutando caso de uso: conversación regular');
-          ucResponse = await this.deps.regularConversationUC.execute({
-            params: RegularConversationSchema.parse({ assistantMessage: assistantPlainMessage || '' }),
-          });
-      }
+          // Acumular CF
+          if (ucResponse.customFields) {
+            Object.assign(accumulatedCF, ucResponse.customFields);
+          }
 
-      if (!ucResponse.success) {
-        Logger.error('[CommunicateWithAssistant] El caso de uso devolvió error', { intentName, ucResponse });
-        throw new Error('El caso de uso devolvió error.');
-      }
+          // Preparar output para la tool correspondiente (con placeholders)
+          const toolOutputWithPlaceholders = `${ucResponse.toolOutput}\n${mergePlaceholdersIntoContext(botConfig.placeholders)}`;
+          batchOutputs.push({ tool_call_id: call.tool_call_id, output: toolOutputWithPlaceholders });
+        }
 
-      let finalMsg: string = assistantPlainMessage || '';
-
-      if (runId && Array.isArray(functionCalls) && functionCalls.length > 0) {
-        Logger.info('[CommunicateWithAssistant] Resolviendo functionCalls', { count: functionCalls.length });
-        Logger.info('[CommunicateWithAssistant] ToolOutput recibido del UC', { toolOutput: ucResponse.toolOutput });
-        const toolOutputWithPlaceholders = `${ucResponse.toolOutput}\n${mergePlaceholdersIntoContext(botConfig.placeholders)}`;
-        const resolved = await this.deps.openAIService.getResponseFromWaitingAssistant({
+        // Enviar outputs al run y esperar siguiente estado
+        Logger.info('[CommunicateWithAssistant] Enviando outputs al run', { count: batchOutputs.length });
+        const resolved = await this.deps.openAIService.submitToolOutputsAndPoll({
           threadId: thId!,
           runId: runId!,
-          functionCalls,
-          rawOutput: toolOutputWithPlaceholders,
+          outputs: batchOutputs,
         });
-        Logger.info('[CommunicateWithAssistant] Respuesta final tras functionCalls', { resolvedMessage: resolved });
-        Logger.info('[CommunicateWithAssistant] Respuesta final tras functionCalls', { resolvedMessage: resolved.message });
-        finalMsg = resolved.message || '';
+
+        Logger.info('[CommunicateWithAssistant] Resultado tras submit', {
+          hasMessage: !!resolved.message,
+          nextCalls: resolved.functionCalls?.length || 0,
+        });
+
+        if (resolved.message) {
+          finalAssistantMessage = resolved.message || '';
+          pendingCalls = [];
+          break; // terminó el flujo
+        }
+
+        // Si no hay mensaje, se espera otra ronda de function calls
+        pendingCalls = resolved.functionCalls || [];
       }
 
+      // Si no hubo tool-calls en ningún ciclo y el assistant ya traía mensaje, usarlo
+      let finalMsg: string = finalAssistantMessage || '';
+
+      // 3) Construir y enviar CF a Kommo
       const baseFields: Record<string, string> = {
         [APPOINTMENT_WEEKDAY_NAME]: '',
         [APPOINTMENT_START_TIME]: '',
@@ -356,10 +407,10 @@ export class CommunicateWithAssistantUseCase {
         [PATIENT_MESSAGE_PROCESSED_CHUNK]: userMessage,
       };
 
-      const customFields = { ...baseFields, ...(ucResponse.customFields ?? {}) };
+      const customFields = { ...baseFields, ...accumulatedCF };
       Logger.info('[CommunicateWithAssistant] Campos construidos para Kommo', {
         baseFields,
-        ucCustomFields: ucResponse.customFields,
+        ucCustomFields: accumulatedCF,
         mergedCustomFields: customFields,
       });
 

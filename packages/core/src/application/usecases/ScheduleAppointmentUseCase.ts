@@ -9,14 +9,10 @@ import {
   PATIENT_PHONE,
 } from '@clinickeys-agents/core/utils';
 import { KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
-import { ITratamientoRepository } from '@clinickeys-agents/core/domain/tratamiento';
-import { IMedicoRepository } from '@clinickeys-agents/core/domain/medico';
-import { IEspacioRepository } from '@clinickeys-agents/core/domain/espacio';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import type { DateTime } from 'luxon';
 
-// Servicios (manteniendo contratos existentes)
 import {
   KommoService,
   AppointmentService,
@@ -26,7 +22,6 @@ import {
   PackBonoService,
 } from '@clinickeys-agents/core/application/services';
 
-// Planner utils y acumulador/redactor/compilador JSON‑first (idénticos a CheckAvailability)
 import {
   pickAnchorsFromExtractorDates,
   orderAnchorsByCloseness,
@@ -59,7 +54,6 @@ interface ScheduleAppointmentInput {
     id_pack_bono?: number | null;
     id_presupuesto?: number | null;
 
-    // Horario elegido ya reconocido por el asistente principal
     horarioEscogido: {
       fecha_cita?: string; // YYYY-MM-DD
       fecha?: string; // alias aceptado
@@ -88,7 +82,6 @@ interface ScheduleAppointmentOutput {
   needsConfirmation?: boolean;
 }
 
-// Tipos de step (alineados con CheckAvailability)
 type StepTipo =
   | 'original'
   | 'intermedio_hasta_fecha'
@@ -104,9 +97,6 @@ export class ScheduleAppointmentUseCase {
     private readonly patientService: PatientService,
     private readonly openAIService: OpenAIService,
     private readonly packBonoService: PackBonoService,
-    private readonly tratamientoRepositoryMySQL: ITratamientoRepository,
-    private readonly medicoRepositoryMySQL: IMedicoRepository,
-    private readonly espacioRepositoryMySQL: IEspacioRepository,
   ) {}
 
   public async execute(input: ScheduleAppointmentInput): Promise<ScheduleAppointmentOutput> {

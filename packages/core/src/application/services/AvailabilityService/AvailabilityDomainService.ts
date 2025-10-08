@@ -9,30 +9,12 @@ import { IMedicoRepository } from "@clinickeys-agents/core/domain/medico";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { AvailabilityError } from "@clinickeys-agents/core/domain/errors";
 import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
-import {
-  pickAnchorsFromExtractorDates,
-  orderAnchorsByCloseness,
-  planBlocksAroundAnchor,
-  expandRangeToFechas,
-  type Block,
-  type PlannerOptions,
-} from "@clinickeys-agents/core/application/services";
 import type {
   TratamientoEntrada,
   MedicoEntrada,
   EspacioEntrada,
   SlotDisponibilidad,
-  HorarioEscogido,
 } from "@clinickeys-agents/core/domain/availability";
-
-// Nuevo pipeline (Compiler + Accumulator + Redactor v3)
-import { AvailabilityResponseRedactorService, SlotAccumulator, AgendaConfigCompilerService } from "@clinickeys-agents/core/application/services";
-import {  } from "@clinickeys-agents/core/application/services";
-import type {
-  AgendaPolicyResolved,
-  SlotAccumulatorInput,
-  SlotAccumulatorOutput,
-} from "@clinickeys-agents/core/application/services";
 
 interface GetAvailabilityInfoInput {
   leadId?: number;

@@ -1,12 +1,10 @@
-// packages/core/src/application/usecases/RecognizeUserIntentUseCase.ts
-
 import { FetchPatientInfoUseCase } from '@clinickeys-agents/core/application/usecases';
 import { BotConfigType, BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { AvailabilityError } from '@clinickeys-agents/core/domain/errors';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { getClinicLocalTimestamp } from '@clinickeys-agents/core/utils';
-import { IOpenAIService } from '@clinickeys-agents/core/domain/openai';
 import type { DateTime } from 'luxon';
+import { IOpenAIService } from '@clinickeys-agents/core/domain/openai';
 
 // =============================
 // Tipos
@@ -117,6 +115,7 @@ export class RecognizeUserIntentUseCase {
       hasReminderMessage: reminderMessage,
       totalAppointments: allAppointments,
     });
+
     let MENSAJE_USUARIO = '';
     if (reminderMessage && hasAppointments) {
       MENSAJE_USUARIO = `MENSAJE_RECORDATORIO_CITA: ${reminderMessage}. MENSAJE_USUARIO (Respuesta al recordatorio): ${userMessage}`;
@@ -136,8 +135,7 @@ export class RecognizeUserIntentUseCase {
     // Contexto para el asistente
     // =============================
 
-    // Nuevo modelo: solo inyectamos el placeholder unificado del asistente principal
-    // "ASISTENTE_PRINCIPAL_CONFIG". Si no existe, enviamos string vacío.
+    // Inyectamos solo el placeholder unificado del asistente principal
     const placeholdersPrincipal = JSON.stringify({
       ASISTENTE_PRINCIPAL_CONFIG: botConfig?.placeholders?.ASISTENTE_PRINCIPAL_CONFIG || '',
     });
@@ -197,8 +195,10 @@ export class RecognizeUserIntentUseCase {
       });
     }
 
+    // Tomamos la PRIMERA tool call como "intención primaria" para el enrutamiento inicial del orquestador,
+    // pero dejamos TODAS en assistantResult.functionCalls para que aguas arriba se puedan resolver en lote/loop.
     const firstCall = assistantResult.functionCalls && assistantResult.functionCalls[0];
-    let intent = firstCall?.name?.trim() as KnownIntent | undefined;
+    let intent = (firstCall?.name?.trim() as KnownIntent | undefined);
 
     if (!intent) {
       Logger.warn('[RecognizeUserIntent] Intención no detectada, se usará conversación_regular', {

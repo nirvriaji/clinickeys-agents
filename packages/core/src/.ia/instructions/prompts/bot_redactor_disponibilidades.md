@@ -174,7 +174,7 @@ El llamador valida con el esquema:
 }
 ```
 
-La etiqueta de esquema es `RedactorHorariosSchemaV3`.
+La etiqueta de esquema es `RedactorHorariosSchema`.
 
 ---
 

@@ -13,7 +13,7 @@ import type { AgendaPolicyResolved } from '@clinickeys-agents/core/application/s
 // =============================
 const ScalarValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
-const RedactorHorariosSchemaV3 = z
+const RedactorHorariosSchema = z
   .object({
     mensaje: z.string(),
     metadata: z.record(ScalarValueSchema).nullable(),
@@ -21,12 +21,12 @@ const RedactorHorariosSchemaV3 = z
   .strict();
 
 /**
- * Redactor de disponibilidades (v3, JSON-first)
+ * Redactor de disponibilidades (JSON-first)
  * - Recibe universo/top10 de slots ya válidos (generados por código)
  * - Recibe la política ya compilada (AgendaPolicyResolved)
  * - Redacta el mensaje final (24h, español neutro, sin IDs)
  *
- * Importante: esta versión solo acepta JSON (policy), no texto legacy.
+ * Importante: esta versión solo acepta JSON (policy).
  */
 export async function AvailabilityResponseRedactorService(
   openAIService: any,
@@ -42,14 +42,14 @@ export async function AvailabilityResponseRedactorService(
 
   const promptsPath = path.resolve(
     __dirname,
-    'packages/core/src/.ia/instructions/prompts/bot_redactor_disponibilidades_v3.md',
+    'packages/core/src/.ia/instructions/prompts/bot_redactor_disponibilidades.md',
   );
 
   let systemPrompt = '';
   try {
     systemPrompt = fs.readFileSync(promptsPath, 'utf8');
   } catch (err) {
-    Logger.error('[AvailabilityResponseRedactorService] No se pudo cargar el prompt del redactor v3', {
+    Logger.error('[AvailabilityResponseRedactorService] No se pudo cargar el prompt del redactor', {
       promptsPath,
       err,
     });
@@ -79,20 +79,20 @@ export async function AvailabilityResponseRedactorService(
     mostrar_sede,
   } as const;
 
-  Logger.info('[AvailabilityResponseRedactorService] Solicitando redacción v3 (JSON-first)', {
+  Logger.info('[AvailabilityResponseRedactorService] Solicitando redacción (JSON-first)', {
     slots: Array.isArray(slots) ? slots.length : 0,
     mostrar_medicos: userPayload.mostrar_medicos,
     sedes: userPayload.sedes_lista.length,
   });
 
   // Llamada al modelo con firma posicional + schema Zod real
-  const schemaLabel = 'RedactorHorariosSchemaV3';
+  const schemaLabel = 'RedactorHorariosSchema';
   const model = opts?.model || 'gpt-4o-mini';
 
   const parsed = await openAIService.getSchemaStructuredResponse(
     systemPrompt,
     JSON.stringify(userPayload),
-    RedactorHorariosSchemaV3,
+    RedactorHorariosSchema,
     schemaLabel,
     model,
   );

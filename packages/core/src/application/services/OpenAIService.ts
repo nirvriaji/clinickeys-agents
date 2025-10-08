@@ -1,5 +1,3 @@
-// packages/core/src/application/services/OpenAIService.ts
-
 import { IOpenAIAssistantRepository, IOpenAIService } from "@clinickeys-agents/core/domain/openai";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { zodTextFormat } from "openai/helpers/zod";
@@ -8,20 +6,10 @@ import {
   CreateAssistantPayload,
   UpdateAssistantPayload,
   Assistant,
+  FunctionCallPayload,
+  ResponseResult,
+  Run,
 } from "@clinickeys-agents/core/infrastructure/integrations/openai/models";
-
-interface FunctionCallPayload {
-  tool_call_id: string;
-  name: string;
-  arguments: Record<string, any>;
-}
-
-interface ResponseResult {
-  threadId: string;
-  runId: string;
-  message?: string;
-  functionCalls?: FunctionCallPayload[];
-}
 
 const TIME_TO_POLL = 300000; // 5 minutos
 
@@ -239,6 +227,72 @@ export class OpenAIService implements IOpenAIService {
     throw new Error(`Run en estado inesperado: ${finished.status}`);
   }
 
+  // =========================== NUEVO: submit en lote y poll ===========================
+
+  async submitToolOutputsAndPoll(params: {
+    threadId: string;
+    runId: string;
+    outputs: Array<{ tool_call_id: string; output: string }>;
+  }): Promise<ResponseResult> {
+    const { threadId, runId, outputs } = params;
+
+    if (!threadId || !runId) {
+      throw new Error("threadId y runId son obligatorios en submitToolOutputsAndPoll");
+    }
+    if (!Array.isArray(outputs) || outputs.length === 0) {
+      throw new Error("outputs debe ser un arreglo no vacío en submitToolOutputsAndPoll");
+    }
+
+    for (const o of outputs) {
+      if (!o?.tool_call_id || typeof o.output !== "string") {
+        throw new Error("Cada output debe incluir tool_call_id y output:string");
+      }
+    }
+
+    this.logger.info("OpenAIService: submitToolOutputsAndPoll → submit", {
+      threadId,
+      runId,
+      outputs: outputs.length,
+    });
+
+    await this.repo.submitToolOutputs({
+      threadId,
+      runId,
+      toolOutputs: outputs,
+    });
+
+    const finished = await this.pollUntilResolved(threadId, runId);
+
+    this.logger.info("OpenAIService: submitToolOutputsAndPoll → polled", {
+      threadId,
+      runId: finished.id,
+      status: finished.status,
+    });
+
+    if (finished.status === "requires_action") {
+      return {
+        threadId,
+        runId: finished.id,
+        functionCalls: finished.required_action?.submit_tool_outputs?.tool_calls.map((tc: any) => ({
+          tool_call_id: tc.id,
+          name: tc.function.name,
+          arguments: JSON.parse(tc.function.arguments),
+        })),
+      } as ResponseResult;
+    }
+
+    if (finished.status === "completed") {
+      const messages = await this.repo.listMessages(threadId);
+      const assistantMsg = messages.find((m: any) => m.role === "assistant");
+      if (!assistantMsg) throw new Error("No assistant message found");
+      const contentRaw = assistantMsg.content as any;
+      const content = Array.isArray(contentRaw) ? contentRaw[0]?.text?.value : contentRaw?.text?.value;
+      return { threadId, runId: finished.id, message: content || "" };
+    }
+
+    throw new Error(`Run en estado inesperado tras submit: ${finished.status}`);
+  }
+
   async getJsonStructuredResponse(
     systemPrompt: string,
     userMessage: string
@@ -266,7 +320,7 @@ export class OpenAIService implements IOpenAIService {
     threadId: string,
     runId: string,
     timeoutMs = TIME_TO_POLL
-  ) {
+  ): Promise<Run> {
     const start = Date.now();
     while (true) {
       const run = await this.repo.retrieveRun(threadId, runId);

@@ -1,4 +1,4 @@
-// packages/core/src/application/services/AvailabilityService/availabilityBlockPlanner.ts
+// packages/core/src/application/services/AvailabilityService/AvailabilityBlockPlanner.ts
 
 import { DateTime } from "luxon";
 
