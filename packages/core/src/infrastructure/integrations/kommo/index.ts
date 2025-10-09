@@ -1,2 +1,2 @@
-export * from './ApiGateway';
+export * from './KommoApiGateway';
 export * from './models';

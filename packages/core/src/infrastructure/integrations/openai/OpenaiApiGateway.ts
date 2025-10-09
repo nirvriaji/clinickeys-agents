@@ -1,4 +1,4 @@
-// packages/core/src/infrastructure/integrations/openai/ApiGateway.ts
+// packages/core/src/infrastructure/integrations/openai/OpenaiApiGateway.ts
 
 import OpenAI from "openai";
 import { openaiTools } from "@clinickeys-agents/core/utils";

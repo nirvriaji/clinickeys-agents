@@ -1,4 +1,4 @@
-// packages/core/src/infrastructure/integrations/kommo/ApiGateway.ts
+// packages/core/src/infrastructure/integrations/kommo/KommoApiGateway.ts
 
 import { HttpClient } from "@clinickeys-agents/core/infrastructure/external";
 import type {

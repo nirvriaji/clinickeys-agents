@@ -130,9 +130,6 @@ export class LeadProcessorController {
       patientService,
       openAIService,
       packBonoService,
-      tratamientoRepo,
-      medicoRepo,
-      espacioRepo,
     );
 
     const checkAvailabilityUC = new CheckAvailabilityUseCase(
