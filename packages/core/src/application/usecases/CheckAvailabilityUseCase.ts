@@ -1,5 +1,3 @@
-// packages/core/src/application/usecases/CheckAvailabilityUseCase.ts
-
 import {
   AvailabilityRequestExtractorService,
   AvailabilityDomainService,
@@ -35,6 +33,10 @@ import type {
 
 import { type HorarioEscogido, type SlotDisponibilidad } from '@clinickeys-agents/core/domain/availability';
 
+// =============================
+// Tipos de entrada/salida
+// =============================
+
 interface CheckAvailabilityInput {
   botConfig: BotConfigDTO;
   leadId: number;
@@ -44,7 +46,7 @@ interface CheckAvailabilityInput {
     medico?: string | null;
     espacio?: string | null;
     fechas: string; // texto libre (rangos, fechas sueltas)
-    horas: string; // texto libre ("mañana", "cualquier hora", etc.) — se usa como preferencia
+    horas: string; // texto libre ("mañana", "cualquier hora", etc.) — preferencia de presentación
     rango_dias_extra?: number; // opcional
     summary: string;
   };
@@ -58,6 +60,7 @@ interface CheckAvailabilityOutput {
   toolOutput: string;
 }
 
+// Para logging de estrategia aplicada en cada iteración
  type StepTipo =
   | 'original'
   | 'intermedio_hasta_fecha'
@@ -65,6 +68,15 @@ interface CheckAvailabilityOutput {
   | 'ampliada_sin_medico_rango_dias_original'
   | 'ampliada_sin_medico_rango_dias_extendido';
 
+/**
+ * Use case: Buscar disponibilidad de citas considerando filtros del usuario.
+ *
+ * - Extrae filtros estructurados usando `AvailabilityRequestExtractorService`.
+ * - Genera "ventanas" (blocks) alrededor de anclas de fecha y consulta el dominio.
+ * - Compila una política por-bloque (AgendaConfigCompilerService) y acumula slots (SlotAccumulator).
+ * - Redacta un texto amigable (AvailabilityResponseRedactorService) y entrega un payload estandarizado
+ *   para la tool `consulta_agendar`.
+ */
 export class CheckAvailabilityUseCase {
   constructor(
     private readonly kommoService: any,
@@ -94,14 +106,17 @@ export class CheckAvailabilityUseCase {
     });
 
     // 1) Mensaje "please-wait"
-    Logger.info('[CheckAvailability] Enviando mensaje inicial al bot (please-wait)', { leadId });
-    await this.kommoService.sendBotInitialMessage({
-      leadId,
-      normalizedLeadCF,
-      salesbotId: botConfig.kommo.salesbotId,
-      message:
-        'Muy bien, voy a mirar la agenda para ver las citas que tenemos disponibles. Un momento por favor.',
-    });
+    try {
+      await this.kommoService.sendBotInitialMessage({
+        leadId,
+        normalizedLeadCF,
+        salesbotId: botConfig.kommo.salesbotId,
+        message: 'Muy bien, voy a mirar la agenda para ver las citas disponibles. Un momento, por favor.',
+      });
+    } catch (err) {
+      // No "rompe" el flujo si falla el mensaje inicial; seguimos con la búsqueda
+      Logger.warn('[CheckAvailability] No se pudo enviar el mensaje inicial al bot (continuando de todos modos)', { err });
+    }
 
     // 2) Catálogos (para el extractor)
     const tratamientos = await this.tratamientoRepositoryMySQL.getActiveTreatmentsForClinic(
@@ -109,11 +124,13 @@ export class CheckAvailabilityUseCase {
       botConfig.superClinicId,
     );
     const nombresTratamientos = tratamientos.map((t) => t.nombre_tratamiento);
+
     const medicos = await this.medicoRepositoryMySQL.getMedicos(
       botConfig.clinicId,
       botConfig.superClinicId,
     );
     const nombresMedicos = medicos.map((m) => m.nombre_completo);
+
     const espacios = await this.espacioRepositoryMySQL.findByClinica(botConfig.clinicId);
     const nombresEspacios = espacios.map((e) => e.nombre);
 
@@ -155,13 +172,13 @@ export class CheckAvailabilityUseCase {
       const aclaracion =
         'No he podido interpretar bien su solicitud para buscar horarios. ¿Podría reenviar su mensaje indicando el tratamiento y fechas aproximadas que prefiere?';
 
-      const toolOutput = `#consultaAgendar\n` +
-        `    TIEMPO_LOCAL: ${localTimeForPrompts}\n` +
-        `    DISCLAIMER_FECHAS_BUSCADAS: []\n` +
-        `    HORARIOS_DISPONIBLES: ${JSON.stringify({ tipo_busqueda: 'bloques', horarios_escogidos: [] })}\n` +
-        `    HORARIOS_TEXTO: ${JSON.stringify(aclaracion)}\n` +
-        `    MENSAJE_USUARIO: ${JSON.stringify(params)}\n` +
-        `    `;
+      const toolOutput = `#consultaAgendar\n`
+        + `    TIEMPO_LOCAL: ${localTimeForPrompts}\n`
+        + `    DISCLAIMER_FECHAS_BUSCADAS: []\n`
+        + `    HORARIOS_DISPONIBLES: ${JSON.stringify({ tipo_busqueda: 'bloques', horarios_escogidos: [] })}\n`
+        + `    HORARIOS_TEXTO: ${JSON.stringify(aclaracion)}\n`
+        + `    MENSAJE_USUARIO: ${JSON.stringify(params)}\n`
+        + `    `;
 
       Logger.warn('[CheckAvailability] Extractor sin filtros; devolviendo mensaje de aclaración');
       return { success: true, toolOutput };
@@ -429,14 +446,14 @@ export class CheckAvailabilityUseCase {
       preview: redactorResult.mensaje?.substring(0, 120),
     });
 
-    // 7) toolOutput final
-    const toolOutput = `#consultaAgendar\n` +
-      `    TIEMPO_LOCAL: ${localTimeForPrompts}\n` +
-      `    DISCLAIMER_FECHAS_BUSCADAS: ${JSON.stringify(disclaimerRanges)}\n` +
-      `    HORARIOS_DISPONIBLES: ${JSON.stringify({ tipo_busqueda: lastTipoBusquedaFromBlock || 'bloques', horarios_escogidos: finalHorarios })}\n` +
-      `    HORARIOS_TEXTO: ${JSON.stringify(redactorResult.mensaje)}\n` +
-      `    MENSAJE_USUARIO: ${JSON.stringify(params)}\n` +
-      `    `;
+    // 7) toolOutput final (payload idempotente para tool "consulta_agendar")
+    const toolOutput = `#consultaAgendar\n`
+      + `    TIEMPO_LOCAL: ${localTimeForPrompts}\n`
+      + `    DISCLAIMER_FECHAS_BUSCADAS: ${JSON.stringify(disclaimerRanges)}\n`
+      + `    HORARIOS_DISPONIBLES: ${JSON.stringify({ tipo_busqueda: lastTipoBusquedaFromBlock || 'bloques', horarios_escogidos: finalHorarios })}\n`
+      + `    HORARIOS_TEXTO: ${JSON.stringify(redactorResult.mensaje)}\n`
+      + `    MENSAJE_USUARIO: ${JSON.stringify(params)}\n`
+      + `    `;
 
     Logger.info('[CheckAvailability] Ejecución completada con éxito', {
       leadId,
@@ -484,3 +501,5 @@ export class CheckAvailabilityUseCase {
     });
   }
 }
+
+export default CheckAvailabilityUseCase;

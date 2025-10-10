@@ -1,18 +1,24 @@
-// packages/core/src/application/services/AgendaConfigCompilerService.ts
-
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import path from 'path';
 import { readFile } from 'fs/promises';
+import type { IOpenAIService } from '@clinickeys-agents/core/domain/openai';
 import type { AgendaPolicyResolved } from '@clinickeys-agents/core/application/services';
 import { AgendaPolicyResolvedSchema } from '@clinickeys-agents/core/application/services';
 
 /**
- * Asistente "Compiler" de agenda (JSON‑first, sin legacy).
- * Lee el prompt `bot_compiler_agenda.md` y solicita al LLM que emita un JSON válido
- * conforme a `AgendaPolicyResolvedSchema`.
+ * AgendaConfigCompilerService
+ *
+ * "Compila" una política de presentación de agenda a partir de:
+ * - Texto de configuración (asistente_agenda_config_text)
+ * - Análisis local de agenda (analisis_agenda)
+ * - Contexto de preferencias/overrides
+ *
+ * Emite un JSON válido que cumple con AgendaPolicyResolvedSchema.
+ *
+ * Nota: usa Responses API v5 vía IOpenAIService.getSchemaStructuredResponse.
  */
 export async function AgendaConfigCompilerService(
-  openAIService: any,
+  openAIService: IOpenAIService,
   asistente_agenda_config_text: string,
   analisis_agenda: any[],
   contexto?: {
@@ -24,7 +30,7 @@ export async function AgendaConfigCompilerService(
     model?: string;
   },
 ): Promise<AgendaPolicyResolved> {
-  // 1) Cargar prompt system desde archivo (sin fallback de rutas)
+  // 1) Cargar prompt del "compiler"
   const promptsPath = path.resolve(
     __dirname,
     'packages/core/src/.ia/instructions/prompts/bot_compiler_agenda.md',
@@ -39,8 +45,8 @@ export async function AgendaConfigCompilerService(
       promptsPath,
       err,
     });
-    // Preferimos fallar de forma controlada con un prompt mínimo explícito
-    systemPrompt = 'Eres un compilador de políticas de agenda. Responde SOLO con JSON válido.';
+    // Fallback mínimo — preferimos continuar con instrucciones claras y estrictas
+    systemPrompt = 'Eres un compilador de políticas de agenda. Responde SOLO con JSON válido que cumpla el esquema solicitado.';
   }
 
   // 2) Construir payload de usuario (stringificado)
@@ -59,16 +65,12 @@ export async function AgendaConfigCompilerService(
   } as const;
 
   Logger.info('[AgendaConfigCompilerService] Solicitando compilación de política', {
-    tieneAnalisis: Array.isArray(userPayload.analisis_agenda)
-      ? userPayload.analisis_agenda.length
-      : 0,
-    sedes: Array.isArray(userPayload.contexto.lista_sedes_clinica)
-      ? userPayload.contexto.lista_sedes_clinica.length
-      : 0,
+    tieneAnalisis: userPayload.analisis_agenda.length,
+    sedes: userPayload.contexto.lista_sedes_clinica.length,
     mostrar_medicos: userPayload.contexto.presentacion_override?.mostrar_medicos || 'auto',
   });
 
-  // 3) Llamar a OpenAI con firma POSICIONAL (como el extractor) y schema Zod real
+  // 3) Llamar a OpenAI con esquema Zod real
   const schemaLabel = 'AgendaPolicyResolvedSchema';
   const model = contexto?.model || 'gpt-4o-mini';
 
@@ -80,7 +82,7 @@ export async function AgendaConfigCompilerService(
     model,
   );
 
-  // 4) Normalizar y asegurar defaults
+  // 4) Normalizar y asegurar defaults conservadores
   const normalized = normalizeAgendaPolicy(parsed);
   return normalized;
 }
@@ -128,8 +130,9 @@ function normalizeAgendaPolicy(raw: any): AgendaPolicyResolved {
     const reglas = raw.reglas_minutos_por_tratamiento_resueltas
       .map((r: any) => ({
         id_tratamiento: typeof r?.id_tratamiento === 'number' ? r.id_tratamiento : undefined,
-        nombre_tratamiento_bd:
-          typeof r?.nombre_tratamiento_bd === 'string' ? r.nombre_tratamiento_bd : undefined,
+        nombre_tratamiento_bd: typeof r?.nombre_tratamiento_bd === 'string'
+          ? r.nombre_tratamiento_bd
+          : undefined,
         minutos_permitidos: normalizeMinList(r?.minutos_permitidos) || [],
       }))
       .filter((r: any) =>

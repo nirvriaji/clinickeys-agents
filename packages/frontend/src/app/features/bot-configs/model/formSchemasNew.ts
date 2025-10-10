@@ -10,9 +10,6 @@ export const botConfigTypeSchema = z.enum(["notificationBot", "chatBot"]);
 // Record utilitario para placeholders (opcional / nullable)
 const placeholdersSchema = z.record(z.string()).optional().nullable();
 
-// Record utilitario para assistants (opcional / nullable)
-const assistantsSchema = z.record(z.string()).optional().nullable();
-
 // Base con campos comunes. En edición puedes hacer PATCH parcial sobre estos.
 // Nota: kommoSalesbotId es string (si la API trae number, conviértelo antes en adapters).
 const baseSchema = z.object({
@@ -28,7 +25,6 @@ const baseSchema = z.object({
   superClinicId: z.union([z.string(), z.number()]),
   clinicSource: z.literal("legacy"),
   fieldsProfile: z.literal("default_kommo_profile"),
-  assistants: assistantsSchema,
   placeholders: placeholdersSchema,
 });
 
@@ -71,7 +67,6 @@ export const editSchema = baseSchema
     timezone: true,
     isEnabled: true,
     openaiApikey: true,
-    assistants: true,
     placeholders: true, // <- MUY IMPORTANTE para que no se descarten
     // clinicId y superClinicId los fija el backend a partir del recurso (o adapters)
   });

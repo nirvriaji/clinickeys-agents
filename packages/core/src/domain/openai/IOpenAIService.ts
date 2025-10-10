@@ -6,11 +6,6 @@ import {
   ToolOutputPayload,
 } from "@clinickeys-agents/core/infrastructure/integrations/openai/models";
 
-/**
- * ⚠️ Refactor: Interfaz alineada con OpenAI Responses API (SDK v5).
- * Elimina por completo Assistants/Threads/Runs y expone utilidades
- * para encadenar responses con tool calls y structured outputs.
- */
 export interface IOpenAIService {
   /**
    * Ejecuta una respuesta con tools habilitados. Puede devolver llamadas a funciones.

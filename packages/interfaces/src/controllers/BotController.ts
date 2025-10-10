@@ -1,5 +1,3 @@
-// packages/core/src/interface/controllers/BotController.ts
-
 import { BotConfigDTO, BotConfigType } from "@clinickeys-agents/core/domain/botConfig";
 import {
   AddBotUseCase,
@@ -20,6 +18,12 @@ export interface BotControllerProps {
   listGlobalUseCase: ListGlobalBotConfigsUseCase;
 }
 
+/**
+ * BotController
+ *
+ * Capa delgada de orquestación para exponer los casos de uso de configuración de bots
+ * a los handlers HTTP. No contiene lógica de negocio.
+ */
 export class BotController {
   private readonly addUseCase: AddBotUseCase;
   private readonly deleteUseCase: DeleteBotUseCase;
@@ -35,9 +39,11 @@ export class BotController {
     this.listGlobalUseCase = props.listGlobalUseCase;
   }
 
-  // --- CHAT BOT (config + assistants) --------------------------------------
+  // ───────────────────────────────────────────────────────────────────────────
+  // CHAT BOT (config + creación de artefactos OpenAI si aplica)
+  // ───────────────────────────────────────────────────────────────────────────
   addChatBot(input: AddBotInput): Promise<BotConfigDTO> {
-    // Aquí se asume que input ya es validado y corresponde a chatBot
+    // El AddBotUseCase valida y crea tanto la config como los artefactos necesarios
     return this.addUseCase.execute({ ...input, botConfigType: BotConfigType.ChatBot });
   }
 
@@ -50,9 +56,10 @@ export class BotController {
     });
   }
 
-  // --- NOTIFICATION BOT (sólo registro) -----------------------------------
+  // ───────────────────────────────────────────────────────────────────────────
+  // NOTIFICATION BOT (solo registro de config)
+  // ───────────────────────────────────────────────────────────────────────────
   addNotificationBot(input: AddBotInput): Promise<BotConfigDTO> {
-    // Aquí se asume que input ya es validado y corresponde a notificationBot
     return this.addUseCase.execute({ ...input, botConfigType: BotConfigType.NotificationBot });
   }
 
@@ -65,7 +72,9 @@ export class BotController {
     });
   }
 
-  // --- BOT-CONFIG (sólo configuración) -------------------------------------
+  // ───────────────────────────────────────────────────────────────────────────
+  // BOT-CONFIG (lectura / actualización)
+  // ───────────────────────────────────────────────────────────────────────────
   updateBotConfig(input: UpdateBotConfigInput): Promise<void> {
     return this.updateUseCase.execute(input);
   }
@@ -74,7 +83,7 @@ export class BotController {
     botConfigType: BotConfigType,
     botConfigId: string,
     clinicSource: string,
-    clinicId: number
+    clinicId: number,
   ): Promise<BotConfigDTO | null> {
     return this.getUseCase.execute(botConfigType, botConfigId, clinicSource, clinicId);
   }
@@ -83,3 +92,5 @@ export class BotController {
     return this.listGlobalUseCase.execute(input);
   }
 }
+
+export default BotController;

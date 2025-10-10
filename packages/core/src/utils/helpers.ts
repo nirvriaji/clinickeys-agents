@@ -205,11 +205,6 @@ function capitalizeFirst(s: string): string {
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
-/**
- * Convierte los placeholders de configuración en un bloque de contexto legible.
- * Esto permite pasarlos al assistant como parte del mensaje del usuario
- * (en RecognizeUserIntent y CommunicateWithAssistant), excepto los que estén en la blacklist.
- */
 export function mergePlaceholdersIntoContext(
   placeholders: Record<string, string | undefined> = {}
 ): string {
@@ -217,11 +212,7 @@ export function mergePlaceholdersIntoContext(
     return "";
   }
 
-  // Lista de placeholders que no deben incluirse en el contexto
-  const EXCLUDED_KEYS = new Set<string>(["CONFIGURACION_DE_DISPONIBILIDADES"]);
-
   const entries = Object.entries(placeholders)
-    .filter(([key, value]) => !EXCLUDED_KEYS.has(key) && value != null && value !== "")
     .map(([key, value]) => `${key}: ${value}`);
 
   if (entries.length === 0) {

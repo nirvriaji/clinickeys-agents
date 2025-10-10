@@ -5,11 +5,6 @@ import {
   ToolOutputPayload,
 } from "@clinickeys-agents/core/infrastructure/integrations/openai/models";
 
-/**
- * ⚠️ Refactor: Esta interfaz ahora modela el repositorio basado en
- * Responses API (SDK v5). El nombre del archivo se conserva por compatibilidad,
- * pero ya NO expone métodos de Assistants/Threads/Runs.
- */
 export interface IOpenAIAssistantRepository {
   /**
    * Crea una respuesta. Si `useTools` es true, el modelo puede emitir tool calls.

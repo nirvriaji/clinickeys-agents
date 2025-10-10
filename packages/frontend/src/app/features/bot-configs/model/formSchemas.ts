@@ -46,7 +46,6 @@ export const updateBotConfigSchema = baseBotConfigSchema
     fieldsProfile: z.literal("default_kommo_profile"), // siempre "default_kommo_profile"
     botConfigType: botConfigTypeSchema,
     openaiApikey: z.string().nullable().optional(),
-    assistants: z.record(z.string(), z.string()).nullable().optional(),
   });
 
 export const placeholderSchema = z.object({

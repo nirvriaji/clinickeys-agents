@@ -31,7 +31,6 @@ export class BotConfig {
   };
   readonly openai?: {
     apiKey: string;
-    assistants?: Record<string, string>;
   };
   readonly createdAt: number;
   readonly updatedAt: number;
@@ -61,7 +60,6 @@ export class BotConfig {
     if (dto.openai) {
       this.openai = {
         apiKey: dto.openai.apiKey,
-        assistants: dto.openai.assistants,
       };
     }
     this.createdAt = dto.createdAt;

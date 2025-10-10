@@ -106,10 +106,9 @@ export const botConfigDynamo = new sst.aws.Dynamo(`BotConfigDynamo${SUFFIX}`, {
     /**
      * Datos relacionados a OpenAI.
      * - apiKey: API key para acceso a OpenAI.
-     * - assistantIds: Diccionario de IDs de asistentes OpenAI, agrupados por contexto.
      *    Ejemplo: { "spanishQA": "...", "medicalBot": "..." }
      */
-    // openai: "map", // { apiKey: string, assistantIds: Record<string, string> }
+    // openai: "map", // { apiKey: string }
 
     // =======================
     // Fechas y metadatos

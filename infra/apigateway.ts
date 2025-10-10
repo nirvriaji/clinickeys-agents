@@ -56,6 +56,5 @@ for (const [route, handler] of routes) {
       ...ENVIRONMENT,
       BOT_CONFIGS_TABLE_NAME: botConfigDynamo.name
     },
-    copyFiles: route == "POST /bots" ? [{ from: "packages/core/src/.ia/instructions/templates/speakingBot.md" }] : [],
   });
 }

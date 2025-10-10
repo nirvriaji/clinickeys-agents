@@ -7,7 +7,6 @@ import { CountrySelect } from "@/app/shared/ui/CountrySelect";
 import { Select } from "@/app/shared/ui/Select";
 import { timezoneOptions } from "@/app/shared/lib/timezoneOptions";
 import { KommoUserSelector } from "@/app/features/bot-configs/ui/KommoUserSelector";
-import { AssistantsList } from "@/app/shared/ui/AssistantsList";
 import type { BotConfigType } from "@/app/entities/bot-config/types";
 import type { Field } from "@/app/features/bot-configs/model/fieldPolicy";
 
@@ -25,7 +24,6 @@ export function StepGeneral({ methods, botType, isEditable }: StepGeneralProps) 
     watch,
   } = methods;
 
-  const assistants = watch("assistants") as Record<string, string>;
   const isChatBot = botType === "chatBot";
   const kommoSubdomain = watch("kommoSubdomain");
   const kommoLongLivedToken = watch("kommoLongLivedToken");
@@ -225,10 +223,6 @@ export function StepGeneral({ methods, botType, isEditable }: StepGeneralProps) 
           />
         )}
       />
-
-      {botType === "chatBot" && assistants && Object.keys(assistants).length > 0 && (
-        <AssistantsList assistants={assistants} />
-      )}
     </div>
   );
 }

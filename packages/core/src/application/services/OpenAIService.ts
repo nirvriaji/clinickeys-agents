@@ -12,8 +12,7 @@ import {
 
 /**
  * OpenAIService (Responses API v5)
- * Administra todo el flujo de reasoning, function calling y structured outputs.
- * Reemplaza completamente la lógica de Assistants/Threads/Runs.
+ * Capa de aplicación que orquesta flujos con el repositorio de Responses.
  */
 export class OpenAIService {
   private repo: OpenAIResponseRepository;
@@ -23,8 +22,8 @@ export class OpenAIService {
   }
 
   /**
-   * Ejecuta una respuesta con posibilidad de function calling.
-   * Si el modelo decide invocar herramientas, las devuelve como functionCalls[].
+   * Ejecuta una primera respuesta con tools habilitadas (function calling).
+   * Si el modelo decide invocar herramientas, éstas vendrán en `functionCalls`.
    */
   async getResponseWithTools(
     systemPrompt: string,
@@ -32,8 +31,25 @@ export class OpenAIService {
     model?: string
   ): Promise<ResponseResult> {
     Logger.info("[OpenAIService] getResponseWithTools");
-    const response = await this.repo.createResponseWithTools(systemPrompt, userMessage, model);
-    return response;
+    return this.repo.createResponseWithTools(systemPrompt, userMessage, model);
+  }
+
+  /**
+   * Continúa una response existente enviando un nuevo input (usuario) y,
+   * opcionalmente, manteniendo tools habilitadas para que el modelo pueda
+   * seguir emitiendo function calls sobre el MISMO responseId.
+   */
+  async continueResponse(
+    previousResponseId: string,
+    userMessage: string,
+    useTools = true,
+    model?: string
+  ): Promise<ResponseResult> {
+    Logger.info("[OpenAIService] continueResponse", {
+      previousResponseId,
+      useTools,
+    });
+    return this.repo.continueResponse(previousResponseId, userMessage, useTools, model);
   }
 
   /**
@@ -54,6 +70,8 @@ export class OpenAIService {
 
   /**
    * Flujo completo: ejecuta tools, reenvía outputs y resuelve el reasoning final.
+   * Útil para tareas batch o utilitarios, pero en producción solemos preferir
+   * el control fino de ciclo en capas superiores (p. ej. PrimaryBotService).
    */
   async resolveToolFlow(
     systemPrompt: string,
@@ -91,7 +109,7 @@ export class OpenAIService {
   }
 
   /**
-   * Crea una respuesta JSON estructurada (no function calling).
+   * Ejecuta Responses.parse para obtener un JSON estructurado (sin tools).
    */
   async getJsonStructuredResponse(
     systemPrompt: string,
@@ -102,7 +120,7 @@ export class OpenAIService {
   }
 
   /**
-   * Usa zodTextFormat para parsear outputs con esquema Zod.
+   * Usa zodTextFormat para parsear outputs con esquema Zod (Responses.parse).
    */
   async getSchemaStructuredResponse(
     systemPrompt: string,

@@ -1,7 +1,6 @@
 "use client";
 
 import { TextInput } from "@/app/shared/ui/TextInput";
-import { AssistantsList } from "@/app/shared/ui/AssistantsList";
 import type { UseFormReturn } from "react-hook-form";
 import type { BotConfigType } from "@/app/entities/bot-config/types";
 
@@ -14,7 +13,6 @@ interface StepReviewProps {
 export function StepReview({ methods, botType, readOnly = true }: StepReviewProps) {
   const values = methods.watch();
   const placeholders: Record<string, string> = methods.watch("placeholders") || {};
-  const assistants = (values.assistants || {}) as Record<string, string>;
 
   const safe = (val: unknown): string =>
     val !== null && val !== undefined ? String(val) : "";
@@ -56,13 +54,6 @@ export function StepReview({ methods, botType, readOnly = true }: StepReviewProp
               <TextInput key={key} label={key} value={safe(value)} disabled={readOnly} />
             ))}
           </div>
-        </div>
-      )}
-
-      {botType === "chatBot" && assistants && Object.keys(assistants).length > 0 && (
-        <div>
-          <h3 className="text-md font-semibold mt-4 mb-2">Asistentes</h3>
-          <AssistantsList assistants={assistants} />
         </div>
       )}
     </div>

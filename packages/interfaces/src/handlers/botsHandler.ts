@@ -1,9 +1,9 @@
-// packages/core/src/interface/handlers/botsHandler.ts (RESTful refactor)
+// packages/interfaces/src/handlers/botsHandler.ts (RESTful refactor, Responses API)
+
+import type { Handler, APIGatewayProxyEventV2 as E, APIGatewayProxyResultV2 as R } from "aws-lambda";
 
 import { createDynamoDocumentClient, getEnvVar } from "@clinickeys-agents/core/infrastructure/helpers";
 import { BotConfigRepositoryDynamo } from "@clinickeys-agents/core/infrastructure/botConfig";
-import { OpenAIGateway } from "@clinickeys-agents/core/infrastructure/integrations/openai";
-import { OpenAIAssistantRepository } from "@clinickeys-agents/core/infrastructure/openai";
 import { BotConfigService } from "@clinickeys-agents/core/application/services";
 import { BotConfigType } from "@clinickeys-agents/core/domain/botConfig";
 import { BotController } from "../controllers/BotController";
@@ -19,25 +19,16 @@ import {
   type ListGlobalBotConfigsInput,
 } from "@clinickeys-agents/core/application/usecases";
 
-import type { Handler, APIGatewayProxyEventV2 as E, APIGatewayProxyResultV2 as R } from "aws-lambda";
-
 // -------------------- DI --------------------
-const docClient = createDynamoDocumentClient({
-  region: getEnvVar("AWS_REGION"),
-});
-
+const docClient = createDynamoDocumentClient({ region: getEnvVar("AWS_REGION") });
 const botConfigTableName = getEnvVar("BOT_CONFIGS_TABLE_NAME");
 const botConfigRepo = new BotConfigRepositoryDynamo({ tableName: botConfigTableName, docClient });
 const botConfigService = new BotConfigService(botConfigRepo);
 
-// Factory que crea un repositorio de assistants para el apiKey recibido
-const openaiRepoFactory = (apiKey: string) =>
-  new OpenAIAssistantRepository(new OpenAIGateway({ apiKey }));
-
 const controller = new BotController({
-  addUseCase: new AddBotUseCase(botConfigRepo, openaiRepoFactory),
+  addUseCase: new AddBotUseCase(botConfigRepo),
   updateUseCase: new UpdateBotConfigUseCase({ botConfigService }),
-  deleteUseCase: new DeleteBotUseCase({ botConfigRepo, openaiRepoFactory }),
+  deleteUseCase: new DeleteBotUseCase({ botConfigRepo }),
   getUseCase: new GetBotConfigUseCase({ botConfigService }),
   listGlobalUseCase: new ListGlobalBotConfigsUseCase({ botConfigService }),
 });
@@ -46,10 +37,7 @@ const controller = new BotController({
 function parseBody(event: E): any | undefined {
   if (event.body == null) return undefined;
 
-  // Soporte para base64
-  const raw = event.isBase64Encoded
-    ? Buffer.from(event.body, "base64").toString("utf8")
-    : event.body;
+  const raw = event.isBase64Encoded ? Buffer.from(event.body, "base64").toString("utf8") : event.body;
 
   if (typeof raw === "string") {
     const s = raw.trim();
@@ -60,7 +48,6 @@ function parseBody(event: E): any | undefined {
       throw new Error("Invalid JSON body");
     }
   }
-  // En algunos runtimes/locals ya llega como objeto
   if (typeof raw === "object") return raw as any;
   return undefined;
 }
@@ -120,7 +107,7 @@ export const handler: Handler<E, R> = async (event) => {
       return jsonResponse(204);
     }
 
-    // --- UPDATE BOT-CONFIG (ahora solo por path, no por body id) ------------
+    // --- UPDATE BOT-CONFIG --------------------------------------------------
     const patchMatch = path.match(/^\/bot-configs\/([^\/]+)\/([^\/]+)\/([^\/]+)\/([^\/]+)$/);
     if (method === "PATCH" && patchMatch) {
       const [, botConfigType, botConfigId, clinicSource, clinicIdStr] = patchMatch;
@@ -141,7 +128,7 @@ export const handler: Handler<E, R> = async (event) => {
       return jsonResponse(200, { ok: true });
     }
 
-    // --- GET ONE BOT-CONFIG por path ----------------------------------------
+    // --- GET ONE BOT-CONFIG -------------------------------------------------
     const singleConfigMatch = path.match(/^\/bot-configs\/([^\/]+)\/([^\/]+)\/([^\/]+)\/([^\/]+)$/);
     if (method === "GET" && singleConfigMatch) {
       const [, botConfigType, botConfigId, clinicSource, clinicIdStr] = singleConfigMatch;
@@ -174,7 +161,7 @@ export const handler: Handler<E, R> = async (event) => {
       return jsonResponse(200, result);
     }
 
-    // --- ENABLE/DISABLE BOT ---------------------------------------------------
+    // --- ENABLE/DISABLE BOT -------------------------------------------------
     const enableMatch = path.match(/^\/bots\/([^\/]+)\/([^\/]+)\/([^\/]+)\/([^\/]+)\/enabled$/);
     if (method === "PATCH" && enableMatch) {
       const [, botConfigType, botConfigId, clinicSource, clinicIdStr] = enableMatch;

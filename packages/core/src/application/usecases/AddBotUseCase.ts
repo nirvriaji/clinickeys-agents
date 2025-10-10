@@ -1,12 +1,6 @@
-// packages/core/src/application/usecases/AddBotUseCase.ts
-
-import { BotConfigDTO, BotConfigType, ChatBotConfigDTO, NotificationBotConfigDTO } from "@clinickeys-agents/core/domain/botConfig";
-import { defaultPlaceholders, generateInstructionsRaw } from "@clinickeys-agents/core/utils";
-import { IOpenAIAssistantRepository } from "@clinickeys-agents/core/domain/openai";
-import { IBotConfigRepository } from "@clinickeys-agents/core/domain/botConfig";
+import { BotConfigDTO, BotConfigType, ChatBotConfigDTO, NotificationBotConfigDTO, IBotConfigRepository } from "@clinickeys-agents/core/domain/botConfig";
+import { defaultPlaceholders } from "@clinickeys-agents/core/utils";
 import { ulid } from "ulidx";
-import path from "path";
-import fs from "fs";
 
 export interface AddBotInput {
   botConfigType: BotConfigType;
@@ -17,65 +11,43 @@ export interface AddBotInput {
   kommoResponsibleUserId: number;
   kommoLongLivedToken: string;
   kommoSalesbotId: number;
+  /**
+   * Requerido SOLO para ChatBot. Para NotificationBot se ignora.
+   */
   openaiApikey?: string;
   defaultCountry: string;
   timezone: string;
   description: string;
   fieldsProfile: string;
+  /**
+   * Placeholders iniciales (se fusionan con defaultPlaceholders). Solo aplica a ChatBot.
+   */
   placeholders?: Record<string, string>;
 }
 
+/**
+ * AddBotUseCase (versión Responses API)
+ */
 export class AddBotUseCase {
   private readonly botConfigRepo: IBotConfigRepository;
-  private readonly openaiRepoFactory: (apiKey: string) => IOpenAIAssistantRepository;
 
-  constructor(
-    botConfigRepo: IBotConfigRepository,
-    openaiRepoFactory: (apiKey: string) => IOpenAIAssistantRepository
-  ) {
+  constructor(botConfigRepo: IBotConfigRepository) {
     this.botConfigRepo = botConfigRepo;
-    this.openaiRepoFactory = openaiRepoFactory;
   }
 
   async execute(input: AddBotInput): Promise<BotConfigDTO> {
     const botConfigId = ulid();
 
     if (input.botConfigType === BotConfigType.ChatBot) {
+      // Validación mínima: ChatBot requiere apiKey de OpenAI
       if (!input.openaiApikey) {
         throw new Error("openaiApikey es obligatorio para chatBot");
       }
 
-      const placeholders: Record<string, string> = { ...defaultPlaceholders, ...(input.placeholders || {}) };
-
-      const templateDir = path.resolve(__dirname, "packages/core/src/.ia/instructions/templates");
-      const assistantFiles = fs.readdirSync(templateDir).filter((file) => file.endsWith(".md"));
-      if (assistantFiles.length === 0) {
-        throw new Error("No hay templates .md disponibles para crear assistants.");
-      }
-
-      const assistants: ChatBotConfigDTO["openai"]["assistants"] = {} as ChatBotConfigDTO["openai"]["assistants"];
-      if (!assistants) {
-        throw new Error("Error al inicializar assistants");
-      }
-
-      const openaiRepo = this.openaiRepoFactory(input.openaiApikey);
-
-      for (const fileName of assistantFiles) {
-        const assistantKey = path.basename(fileName, ".md");
-        // Usamos generateInstructionsRaw para dejar los placeholders intactos
-        const instructionText = generateInstructionsRaw(assistantKey);
-        const assistant = await openaiRepo.createAssistant({
-          name: assistantKey,
-          instructions: instructionText,
-          top_p: 0.01,
-          temperature: 0.01,
-        });
-        assistants[assistantKey] = assistant.id;
-      }
-
-      if (!assistants.speakingBot) {
-        throw new Error("El assistant 'speakingBot' es obligatorio en ChatBot");
-      }
+      const placeholders: Record<string, unknown> = {
+        ...defaultPlaceholders,
+        ...(input.placeholders ?? {}),
+      };
 
       const toSave: Omit<ChatBotConfigDTO, "pk" | "sk" | "bucket" | "createdAt" | "updatedAt"> = {
         botConfigType: input.botConfigType,
@@ -96,14 +68,13 @@ export class AddBotUseCase {
         fieldsProfile: input.fieldsProfile,
         openai: {
           apiKey: input.openaiApikey,
-          assistants,
         },
         placeholders,
         isEnabled: true,
       };
 
       const savedDto = await this.botConfigRepo.create(toSave);
-      return savedDto;
+      return savedDto as BotConfigDTO;
     }
 
     if (input.botConfigType === BotConfigType.NotificationBot) {
@@ -128,9 +99,11 @@ export class AddBotUseCase {
       };
 
       const savedDto = await this.botConfigRepo.create(toSave);
-      return savedDto;
+      return savedDto as BotConfigDTO;
     }
 
     throw new Error("Tipo de botConfigType no soportado en AddBotUseCase");
   }
 }
+
+export default AddBotUseCase;

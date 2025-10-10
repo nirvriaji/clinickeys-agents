@@ -25,7 +25,6 @@ export function toCreateDefaults(): CreateBotConfigPayload {
     clinicId: 0,
     superClinicId: 0,
     openaiApikey: "",
-    assistants: {},
   };
 }
 
@@ -48,7 +47,6 @@ export function toEditDefaults(bot: BotConfig): UpdateBotConfigPayload {
     clinicId: bot.clinicId,
     superClinicId: bot.superClinicId,
     openaiApikey: bot.openai?.apiKey ?? "",
-    assistants: bot.openai?.assistants ?? {},
     placeholders: bot.placeholders ?? {},
   };
 }
@@ -73,7 +71,6 @@ export function toCreatePayload(values: any): CreateBotConfigPayload {
     superClinicId: values.superClinicId,
     openaiApikey: values.openaiApikey,
     placeholders: values.botConfigType === "chatBot" ? values.placeholders : undefined,
-    assistants: values.assistants,
   };
 }
 
@@ -96,7 +93,6 @@ export function toEditPayload(values: any, initialData: BotConfig): UpdateBotCon
     clinicId: initialData.clinicId,
     superClinicId: initialData.superClinicId,
     openaiApikey: values.openaiApikey,
-    assistants: values.assistants,
     placeholders: values.botConfigType === "chatBot" ? values.placeholders : undefined,
   };
 }

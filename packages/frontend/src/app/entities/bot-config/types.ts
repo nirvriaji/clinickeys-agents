@@ -19,7 +19,6 @@ export interface BotConfig {
   };
   openai?: {
     apiKey: string;
-    assistants?: Record<string, string>; // Solo chatBot, solo lectura en edición
   };
   defaultCountry: string;
   timezone: string;

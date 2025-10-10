@@ -5,8 +5,6 @@ export enum BotConfigType {
   ChatBot = "chatBot",
 }
 
-type AssistantsMap = { speakingBot: string } & Record<string, string>;
-
 // ========== DTOs para CREACIÓN de Bots ==========
 
 export interface CreateChatBotConfigDTO {
@@ -82,7 +80,6 @@ export type ChatBotConfigDTO = BaseBotConfigDTO & {
   botConfigType: BotConfigType.ChatBot;
   openai: {
     apiKey: string;
-    assistants?: AssistantsMap;
   };
 };
 

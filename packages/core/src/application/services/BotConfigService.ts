@@ -1,5 +1,3 @@
-// packages/core/src/application/services/BotConfigService.ts
-
 import {
   BotConfigDTO,
   BotConfigEnrichedDTO,
@@ -15,10 +13,9 @@ import {
   NOTIFICATION_BOT_CUSTOM_FIELDS,
 } from "@clinickeys-agents/core/utils";
 import { BotConfigEnricher } from "@clinickeys-agents/core/application/services";
-import { UpdateBotConfigPayload } from "@clinickeys-agents/core/application/usecases";
+import type { UpdateBotConfigPayload } from "@clinickeys-agents/core/application/usecases";
 import { KommoApiGateway } from "@clinickeys-agents/core/infrastructure/integrations/kommo";
 import { KommoRepository } from "@clinickeys-agents/core/infrastructure/kommo";
-
 import type { KommoCustomFieldExistence } from "@clinickeys-agents/core/application/services";
 import type { KommoLeadCustomFieldDefinition } from "@clinickeys-agents/core/infrastructure/integrations/kommo/models";
 
@@ -30,6 +27,8 @@ interface PartialBaseDTO {
   isEnabled: boolean;
   botConfigId: string;
 }
+
+// DTOs internos "listos para persistir" según tipo
 
 type PartialChatBotConfigDTO = Omit<CreateChatBotConfigDTO, "botConfigType"> &
   PartialBaseDTO & {
@@ -46,9 +45,16 @@ type PartialNotificationBotConfigDTO = Omit<
     botConfigType: BotConfigType.NotificationBot;
   };
 
+/**
+ * BotConfigService
+ * - Orquesta CRUD sobre el repositorio de configs
+ * - Enriquecimiento con estado de custom fields de Kommo
+ * - Merge de placeholders por defecto
+ */
 export class BotConfigService {
   constructor(private readonly repo: IBotConfigRepository) {}
 
+  // ▶️ Lectura (enriquecida)
   async getEnrichedBotConfig(
     botConfigType: BotConfigType,
     botConfigId: string,
@@ -63,34 +69,46 @@ export class BotConfigService {
     );
     if (!dto) return null;
 
-    const hasKommoCreds = dto.kommo?.subdomain && dto.kommo?.longLivedToken;
-    let kommoCustomFields: KommoCustomFieldExistence[] = [{ field_name: "", field_type: "", exists: false }];
+    const hasKommoCreds = !!(dto.kommo?.subdomain && dto.kommo?.longLivedToken);
+    let kommoCustomFields: KommoCustomFieldExistence[] = [];
     let requiredCustomFields: string[] = [];
+
     if (dto.botConfigType === BotConfigType.ChatBot) {
       requiredCustomFields = CHAT_BOT_CUSTOM_FIELDS;
     } else if (dto.botConfigType === BotConfigType.NotificationBot) {
       requiredCustomFields = NOTIFICATION_BOT_CUSTOM_FIELDS;
     }
+
     if (hasKommoCreds) {
       try {
         const gateway = new KommoApiGateway({
-          longLivedToken: dto.kommo.longLivedToken,
-          subdomain: dto.kommo.subdomain,
+          longLivedToken: dto.kommo!.longLivedToken,
+          subdomain: dto.kommo!.subdomain,
         });
         const kommoRepo = new KommoRepository(gateway);
-        const allFields = (await kommoRepo.fetchCustomFields('leads')) as KommoLeadCustomFieldDefinition[];
+        const allFields = (await kommoRepo.fetchCustomFields("leads")) as KommoLeadCustomFieldDefinition[];
         kommoCustomFields = mapKommoCustomFields(requiredCustomFields, allFields);
       } catch {
-        kommoCustomFields = requiredCustomFields.map(name => ({
+        // Si falla Kommo, marcamos como inexistentes para que el enricher indique no-ready
+        kommoCustomFields = requiredCustomFields.map((name) => ({
           field_name: name,
           field_type: "",
           exists: false,
         }));
       }
+    } else {
+      // Sin credenciales, devolvemos el set requerido marcado como inexistente
+      kommoCustomFields = requiredCustomFields.map((name) => ({
+        field_name: name,
+        field_type: "",
+        exists: false,
+      }));
     }
+
     return BotConfigEnricher.enrich(dto, kommoCustomFields);
   }
 
+  // ▶️ Lectura (raw)
   async getBotConfig(
     botConfigType: BotConfigType,
     botConfigId: string,
@@ -105,6 +123,7 @@ export class BotConfigService {
     );
   }
 
+  // ▶️ Creación (ChatBot)
   async createChatBotConfig(
     input: CreateChatBotConfigDTO & { botConfigId: string }
   ): Promise<BotConfigDTO> {
@@ -125,6 +144,7 @@ export class BotConfigService {
     return this.repo.create(toSave);
   }
 
+  // ▶️ Creación (NotificationBot)
   async createNotificationBotConfig(
     input: CreateNotificationBotConfigDTO & { botConfigId: string }
   ): Promise<BotConfigDTO> {
@@ -138,6 +158,7 @@ export class BotConfigService {
     return this.repo.create(toSave);
   }
 
+  // ▶️ Listados enriquecidos por clínica
   async listEnrichedByClinic(
     clinicSource: string,
     clinicId: number,
@@ -150,39 +171,56 @@ export class BotConfigService {
       limit,
       cursor
     );
+
     const enrichedItems = await Promise.all(
-      items.map(async dto => {
-        const hasKommoCreds = dto.kommo?.subdomain && dto.kommo?.longLivedToken;
-        let kommoCustomFields: KommoCustomFieldExistence[] = [{ field_name: "", field_type: "", exists: false }];
+      items.map(async (dto) => {
+        const hasKommoCreds = !!(dto.kommo?.subdomain && dto.kommo?.longLivedToken);
+        let kommoCustomFields: KommoCustomFieldExistence[] = [];
         let requiredCustomFields: string[] = [];
+
         if (dto.botConfigType === BotConfigType.ChatBot) {
           requiredCustomFields = CHAT_BOT_CUSTOM_FIELDS;
         } else if (dto.botConfigType === BotConfigType.NotificationBot) {
           requiredCustomFields = NOTIFICATION_BOT_CUSTOM_FIELDS;
         }
+
         if (hasKommoCreds) {
           try {
             const gateway = new KommoApiGateway({
-              longLivedToken: dto.kommo.longLivedToken,
-              subdomain: dto.kommo.subdomain,
+              longLivedToken: dto.kommo!.longLivedToken,
+              subdomain: dto.kommo!.subdomain,
             });
             const kommoRepo = new KommoRepository(gateway);
-            const allFields = (await kommoRepo.fetchCustomFields('leads')) as KommoLeadCustomFieldDefinition[];
-            kommoCustomFields = mapKommoCustomFields(requiredCustomFields, allFields);
+            const allFields = (await kommoRepo.fetchCustomFields(
+              "leads"
+            )) as KommoLeadCustomFieldDefinition[];
+            kommoCustomFields = mapKommoCustomFields(
+              requiredCustomFields,
+              allFields
+            );
           } catch {
-            kommoCustomFields = requiredCustomFields.map(name => ({
+            kommoCustomFields = requiredCustomFields.map((name) => ({
               field_name: name,
               field_type: "",
               exists: false,
             }));
           }
+        } else {
+          kommoCustomFields = requiredCustomFields.map((name) => ({
+            field_name: name,
+            field_type: "",
+            exists: false,
+          }));
         }
+
         return BotConfigEnricher.enrich(dto, kommoCustomFields);
       })
     );
+
     return { items: enrichedItems, nextCursor };
   }
 
+  // ▶️ Patch/Update parcial
   async patchBotConfig(
     botConfigType: BotConfigType,
     botConfigId: string,
@@ -199,6 +237,7 @@ export class BotConfigService {
     );
   }
 
+  // ▶️ Delete
   async deleteBotConfig(
     botConfigType: BotConfigType,
     botConfigId: string,
@@ -213,41 +252,58 @@ export class BotConfigService {
     );
   }
 
+  // ▶️ Listado global enriquecido
   async listGlobal(
     limit = 100,
     cursor?: string
   ): Promise<{ items: BotConfigEnrichedDTO[]; nextCursor?: string }> {
     const { items, nextCursor } = await this.repo.listGlobal(limit, cursor);
+
     const enrichedItems = await Promise.all(
-      items.map(async dto => {
-        const hasKommoCreds = dto.kommo?.subdomain && dto.kommo?.longLivedToken;
-        let kommoCustomFields: KommoCustomFieldExistence[] = [{ field_name: "", field_type: "", exists: false }];
+      items.map(async (dto) => {
+        const hasKommoCreds = !!(dto.kommo?.subdomain && dto.kommo?.longLivedToken);
+        let kommoCustomFields: KommoCustomFieldExistence[] = [];
         let requiredCustomFields: string[] = [];
+
         if (dto.botConfigType === BotConfigType.ChatBot) {
           requiredCustomFields = CHAT_BOT_CUSTOM_FIELDS;
         } else if (dto.botConfigType === BotConfigType.NotificationBot) {
           requiredCustomFields = NOTIFICATION_BOT_CUSTOM_FIELDS;
         }
+
         if (hasKommoCreds) {
           try {
             const gateway = new KommoApiGateway({
-              longLivedToken: dto.kommo.longLivedToken,
-              subdomain: dto.kommo.subdomain,
+              longLivedToken: dto.kommo!.longLivedToken,
+              subdomain: dto.kommo!.subdomain,
             });
             const kommoRepo = new KommoRepository(gateway);
-            const allFields = (await kommoRepo.fetchCustomFields('leads')) as KommoLeadCustomFieldDefinition[];
-            kommoCustomFields = mapKommoCustomFields(requiredCustomFields, allFields);
+            const allFields = (await kommoRepo.fetchCustomFields("leads")) as KommoLeadCustomFieldDefinition[];
+            kommoCustomFields = mapKommoCustomFields(
+              requiredCustomFields,
+              allFields
+            );
           } catch {
-            kommoCustomFields = requiredCustomFields.map(name => ({
+            kommoCustomFields = requiredCustomFields.map((name) => ({
               field_name: name,
               field_type: "",
               exists: false,
             }));
           }
+        } else {
+          kommoCustomFields = requiredCustomFields.map((name) => ({
+            field_name: name,
+            field_type: "",
+            exists: false,
+          }));
         }
+
         return BotConfigEnricher.enrich(dto, kommoCustomFields);
       })
     );
+
     return { items: enrichedItems, nextCursor };
   }
 }
+
+export default BotConfigService;
