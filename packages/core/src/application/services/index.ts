@@ -9,7 +9,6 @@ export * from "./BotConfigService";
 export * from "./PackBonoService";
 export * from "./PatientService";
 export * from "./OpenAIService";
-export * from "./OpenAIService";
 export * from "./ClinicService";
 export * from "./KommoService";
 export * from "./types";

@@ -1,1 +1,1 @@
-export * from "./OpenAIAssistantRepository";
+export * from "./OpenAIResponseRepository";

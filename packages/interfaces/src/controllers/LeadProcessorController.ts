@@ -29,9 +29,10 @@ import {
 } from "@clinickeys-agents/core/application/services";
 
 import { KommoApiGateway } from "@clinickeys-agents/core/infrastructure/integrations/kommo";
-import { OpenAIGateway } from "@clinickeys-agents/core/infrastructure/integrations/openai";
+import { OpenAIResponseGateway } from "@clinickeys-agents/core/infrastructure/integrations/openai";
 
 import { KommoRepository } from "@clinickeys-agents/core/infrastructure/kommo";
+import { OpenAIResponseRepository } from "@clinickeys-agents/core/infrastructure/openai";
 import { MedicoRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/medico";
 import { TratamientoRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/tratamiento";
 import { PackBonoRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/packBono";
@@ -96,8 +97,9 @@ export class LeadProcessorController {
     const kommoService = new KommoService(kommoRepository, patientRepo);
     const updatePatientMessageUC = new UpdatePatientMessageUseCase(kommoService);
 
-    const openAIGateway = new OpenAIGateway({ apiKey: (botConfig as any).openai.apiKey });
-    const openAIService = new OpenAIService(openAIGateway, this.logger);
+    const openAIResponseGateway = new OpenAIResponseGateway({ apiKey: (botConfig as any).openai.apiKey });
+    const openAIResponseRepository = new OpenAIResponseRepository(openAIResponseGateway);
+    const openAIService = new OpenAIService(openAIResponseRepository);
 
     const patientService = new PatientService({
       patientRepo,

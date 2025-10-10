@@ -1,37 +1,73 @@
 // packages/core/src/domain/openai/IOpenAIAssistantRepository.ts
 
 import {
-  Assistant,
-  CreateAssistantPayload,
-  UpdateAssistantPayload,
-  Thread,
-  Run,
-  OpenAIMessageResponse,
-  SubmitToolOutputsPayload,
+  ResponseResult,
+  ToolOutputPayload,
 } from "@clinickeys-agents/core/infrastructure/integrations/openai/models";
 
+/**
+ * ⚠️ Refactor: Esta interfaz ahora modela el repositorio basado en
+ * Responses API (SDK v5). El nombre del archivo se conserva por compatibilidad,
+ * pero ya NO expone métodos de Assistants/Threads/Runs.
+ */
 export interface IOpenAIAssistantRepository {
-  // =========================== Assistants ===========================
-  listAssistants(): Promise<Assistant[]>;
-  getAssistant(assistantId: string): Promise<Assistant>;
-  createAssistant(payload: CreateAssistantPayload): Promise<Assistant>;
-  updateAssistant(assistantId: string, payload: UpdateAssistantPayload): Promise<Assistant>;
-  deleteAssistant(assistantId: string): Promise<void>;
+  /**
+   * Crea una respuesta. Si `useTools` es true, el modelo puede emitir tool calls.
+   */
+  createResponse(
+    systemPrompt: string,
+    userMessage: string,
+    useTools?: boolean,
+    model?: string
+  ): Promise<ResponseResult>;
 
-  // =========================== Threads & Runs ===========================
-  createThread(): Promise<Thread>;
-  listRuns(threadId: string, limit?: number): Promise<Run[]>;
-  retrieveRun(threadId: string, runId: string): Promise<Run>;
-  cancelRun(threadId: string, runId: string): Promise<Run>;
-  createRun(threadId: string, assistantId: string, message: string): Promise<Run>;
+  /**
+   * Atajo: crea una respuesta con tools habilitados.
+   */
+  createResponseWithTools(
+    systemPrompt: string,
+    userMessage: string,
+    model?: string
+  ): Promise<ResponseResult>;
 
-  // =========================== Messages ===========================
-  listMessages(threadId: string): Promise<OpenAIMessageResponse[]>;
+  /**
+   * Continúa una conversación enlazándose a una response previa (sin tool outputs).
+   * Útil para seguir el diálogo textual conservando contexto de la response chain.
+   */
+  continueResponse(
+    previousResponseId: string,
+    userMessage: string,
+    useTools?: boolean,
+    model?: string
+  ): Promise<ResponseResult>;
 
-  // =========================== Tool Outputs ===========================
-  submitToolOutputs(payload: SubmitToolOutputsPayload): Promise<void>;
+  /**
+   * Continúa una response previa aportando resultados de tool calls anteriores.
+   * El modelo puede solicitar nuevas tools en el mismo turno.
+   */
+  continueResponseWithToolOutputs(
+    responseId: string,
+    toolOutputs: ToolOutputPayload[],
+    model?: string
+  ): Promise<ResponseResult>;
 
-  // =========================== Responses ===========================
-  createResponse(systemPrompt: string, userMessage: string, type: "json_object" | "text"): Promise<any>;
-  parseResponse(systemPrompt: string, userMessage: string, format: any, model?: string): Promise<any>;
+  /**
+   * Devuelve un objeto tipado según formato (e.g., zodTextFormat) sin function calling.
+   */
+  parseResponse(
+    systemPrompt: string,
+    userMessage: string,
+    format: any,
+    model?: string
+  ): Promise<any>;
+
+  /**
+   * Devuelve un JSON estructurado (no tool calling) usando `text.format.type = "json_object"`.
+   */
+  getJsonStructuredResponse(
+    systemPrompt: string,
+    userMessage: string
+  ): Promise<any>;
 }
+
+export default IOpenAIAssistantRepository;

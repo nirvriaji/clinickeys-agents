@@ -1,1 +1,1 @@
-export * from "./OpenaiApiGateway";
+export * from "./OpenaiResponsesGateway";

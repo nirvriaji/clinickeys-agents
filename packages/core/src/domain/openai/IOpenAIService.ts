@@ -1,44 +1,57 @@
+// packages/core/src/domain/openai/IOpenAIService.ts
+
 import { ZodType } from "zod";
 import {
-  Assistant,
-  CreateAssistantPayload,
-  UpdateAssistantPayload,
-  Run,
   ResponseResult,
+  ToolOutputPayload,
 } from "@clinickeys-agents/core/infrastructure/integrations/openai/models";
 
+/**
+ * ⚠️ Refactor: Interfaz alineada con OpenAI Responses API (SDK v5).
+ * Elimina por completo Assistants/Threads/Runs y expone utilidades
+ * para encadenar responses con tool calls y structured outputs.
+ */
 export interface IOpenAIService {
-  // =========================== Assistants ===========================
-  listAssistants(): Promise<Assistant[]>;
-  getAssistant(assistantId: string): Promise<Assistant>;
-  createAssistants(instructions: Record<string, string>): Promise<Record<string, string>>;
-  createAssistant(payload: CreateAssistantPayload): Promise<Assistant>;
-  deleteAssistants(assistantIds: Record<string, string>): Promise<void>;
-  syncAssistants(
-    instructions: Record<string, string>,
-    currentIds: Record<string, string>
-  ): Promise<Record<string, string>>;
-  updateAssistant(assistantId: string, payload: UpdateAssistantPayload): Promise<Assistant>;
-
-  // =========================== Messaging ===========================
-  getResponseFromAssistant(
-    assistantId: string,
-    message: string,
-    threadId?: string
+  /**
+   * Ejecuta una respuesta con tools habilitados. Puede devolver llamadas a funciones.
+   */
+  getResponseWithTools(
+    systemPrompt: string,
+    userMessage: string,
+    model?: string
   ): Promise<ResponseResult>;
 
   /**
-   * Envía en un solo submit todos los tool_outputs preparados por el orquestador
-   * y espera hasta que el run cambie de estado (requires_action o completed).
+   * Continúa una response previa aportando outputs de tools. Puede devolver nuevas tool calls.
    */
-  submitToolOutputsAndPoll(params: {
-    threadId: string;
-    runId: string;
-    outputs: Array<{ tool_call_id: string; output: string }>;
-  }): Promise<ResponseResult>;
+  continueResponseWithToolOutputs(
+    responseId: string,
+    toolOutputs: ToolOutputPayload[],
+    model?: string
+  ): Promise<ResponseResult>;
 
-  // =========================== Structured Responses ===========================
-  getJsonStructuredResponse(systemPrompt: string, userMessage: string): Promise<any>;
+  /**
+   * Orquesta el loop completo: genera response, ejecuta tools vía `executor` y
+   * reinyecta los resultados hasta obtener el mensaje final o que no haya más tool calls.
+   */
+  resolveToolFlow(
+    systemPrompt: string,
+    userMessage: string,
+    executor: (name: string, args: Record<string, any>) => Promise<any>,
+    model?: string
+  ): Promise<ResponseResult>;
+
+  /**
+   * Estructurado: solicita salida JSON (no function calling).
+   */
+  getJsonStructuredResponse(
+    systemPrompt: string,
+    userMessage: string
+  ): Promise<any>;
+
+  /**
+   * Estructurado: usa zodTextFormat para parsear según esquema Zod.
+   */
   getSchemaStructuredResponse(
     systemPrompt: string,
     userMessage: string,
@@ -47,8 +60,14 @@ export interface IOpenAIService {
     model?: string
   ): Promise<any>;
 
-  // =========================== Helpers ===========================
-  pollUntilResolved(threadId: string, runId: string, timeoutMs?: number): Promise<Run>;
+  /**
+   * Texto plano: respuesta sin tools ni parsing.
+   */
+  getTextResponse(
+    systemPrompt: string,
+    userMessage: string,
+    model?: string
+  ): Promise<string | null>;
 }
 
 export type { ResponseResult } from "@clinickeys-agents/core/infrastructure/integrations/openai/models";
