@@ -1,12 +1,6 @@
-// packages/core/src/application/services/AppointmentService.ts
-
-import { AvailabilityError } from '@clinickeys-agents/core/domain/errors';
-
-import {
-  IAppointmentRepository,
-  CreateAppointmentInput,
-  UpdateAppointmentInput
-} from "@clinickeys-agents/core/domain/appointment";
+import { IAppointmentRepository, CreateAppointmentInput, UpdateAppointmentInput } from "@clinickeys-agents/core/domain/appointment";
+import { AvailabilityEventCatalog } from "@clinickeys-agents/core/domain/availability/events";
+import { AvailabilityEventLogger } from "@clinickeys-agents/core/infrastructure/logging/AvailabilityEventLogger";
 
 export class AppointmentService {
   private appointmentRepository: IAppointmentRepository;
@@ -34,11 +28,9 @@ export class AppointmentService {
   async confirmAppointment(appointmentId: number, summary: string): Promise<any | undefined> {
     const appointment = await this.getAppointmentById(appointmentId);
     if (!appointment) {
-      throw new AvailabilityError({
-        code: 'ERR_APPOINTMENT_NOT_FOUND',
-        humanMessage: `No se encontró la cita con id ${appointmentId}`,
-        context: { appointmentId }
-      });
+      const event = AvailabilityEventCatalog.CLINICA_NO_ENCONTRADA(appointmentId);
+      AvailabilityEventLogger.log(event);
+      return undefined;
     }
 
     const CONFIRMED_STATUS_IN = 36;
@@ -46,7 +38,7 @@ export class AppointmentService {
     await this.updateAppointment({
       id_cita: appointmentId,
       id_estados_cita_in: CONFIRMED_STATUS_IN,
-      comentario_ia: summary
+      comentario_ia: summary,
     });
 
     return await this.getAppointmentById(appointmentId);
@@ -55,11 +47,9 @@ export class AppointmentService {
   async unconfirmAppointment(appointmentId: number, summary: string): Promise<any | undefined> {
     const appointment = await this.getAppointmentById(appointmentId);
     if (!appointment) {
-      throw new AvailabilityError({
-        code: 'ERR_APPOINTMENT_NOT_FOUND',
-        humanMessage: `No se encontró la cita con id ${appointmentId}`,
-        context: { appointmentId }
-      });
+      const event = AvailabilityEventCatalog.CLINICA_NO_ENCONTRADA(appointmentId);
+      AvailabilityEventLogger.log(event);
+      return undefined;
     }
 
     const UNCONFIRMED_STATUS_IN = null;
@@ -67,7 +57,7 @@ export class AppointmentService {
     await this.updateAppointment({
       id_cita: appointmentId,
       id_estados_cita_in: UNCONFIRMED_STATUS_IN,
-      comentario_ia: summary
+      comentario_ia: summary,
     });
 
     return await this.getAppointmentById(appointmentId);
@@ -76,29 +66,28 @@ export class AppointmentService {
   async cancelAppointment(appointmentId: number, summary: string): Promise<any | undefined> {
     const appointment = await this.getAppointmentById(appointmentId);
     if (!appointment) {
-      throw new AvailabilityError({
-        code: 'ERR_APPOINTMENT_NOT_FOUND',
-        humanMessage: `No se encontró la cita con id ${appointmentId}`,
-        context: { appointmentId }
-      });
+      const event = AvailabilityEventCatalog.CLINICA_NO_ENCONTRADA(appointmentId);
+      AvailabilityEventLogger.log(event);
+      return undefined;
     }
+
     const CANCELED_STATUS = 2;
+
     await this.updateAppointment({
       id_cita: appointmentId,
       id_estado_cita: CANCELED_STATUS,
       comentario_ia: summary,
     });
+
     return await this.getAppointmentById(appointmentId);
   }
 
   async markOnTheWay(appointmentId: number, summary: string): Promise<any | undefined> {
     const appointment = await this.getAppointmentById(appointmentId);
     if (!appointment) {
-      throw new AvailabilityError({
-        code: 'ERR_APPOINTMENT_NOT_FOUND',
-        humanMessage: `No se encontró la cita con id ${appointmentId}`,
-        context: { appointmentId }
-      });
+      const event = AvailabilityEventCatalog.CLINICA_NO_ENCONTRADA(appointmentId);
+      AvailabilityEventLogger.log(event);
+      return undefined;
     }
 
     const ON_THE_WAY_STATUS_IN = 10;
@@ -106,25 +95,25 @@ export class AppointmentService {
     await this.updateAppointment({
       id_cita: appointmentId,
       id_estados_cita_in: ON_THE_WAY_STATUS_IN,
-      comentario_ia: summary
+      comentario_ia: summary,
     });
 
     return await this.getAppointmentById(appointmentId);
   }
 
   async insertarCitaPackBonos(params: {
-    p_id_clinica: number,
-    p_id_super_clinica: number,
-    p_id_paciente: number,
-    p_id_medico: number,
-    p_id_espacio: number,
-    p_id_tratamiento: number,
-    p_id_presupuesto: number,
-    p_id_pack_bono: number,
-    p_fecha_cita: string,
-    p_hora_inicio: string,
-    p_hora_fin: string,
-    p_comentario_ia: string,
+    p_id_clinica: number;
+    p_id_super_clinica: number;
+    p_id_paciente: number;
+    p_id_medico: number;
+    p_id_espacio: number;
+    p_id_tratamiento: number;
+    p_id_presupuesto: number;
+    p_id_pack_bono: number;
+    p_fecha_cita: string;
+    p_hora_inicio: string;
+    p_hora_fin: string;
+    p_comentario_ia: string;
   }): Promise<any> {
     return await this.appointmentRepository.insertarCitaPackBonos(params);
   }

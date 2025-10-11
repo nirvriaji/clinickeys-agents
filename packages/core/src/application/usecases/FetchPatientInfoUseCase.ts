@@ -53,6 +53,10 @@ export class FetchPatientInfoUseCase {
       botConfig,
       leadId
     });
+    if (!kommoData) {
+      Logger.warn('[FetchPatientInfo] No se pudo obtener datos de Kommo', { leadId });
+      return { patients: [] };
+    }
 
     Logger.debug('[FetchPatientInfo] Datos de Kommo obtenidos', {
       contactId: kommoData.contactId,

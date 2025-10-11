@@ -1,3 +1,5 @@
+
+
 import { SQSEvent, SQSRecord } from "aws-lambda";
 
 import {
@@ -49,7 +51,7 @@ export class LeadProcessorController {
   constructor(
     private readonly getBotConfigUC: GetBotConfigUseCase,
     private readonly logger: typeof Logger = Logger,
-  ) {}
+  ) { }
 
   async handle(event: SQSEvent): Promise<void> {
     for (const rec of event.Records) {
@@ -186,6 +188,13 @@ export class LeadProcessorController {
       botConfig,
       leadId: Number(msg.kommo.leads.add?.[0]?.id ?? 0),
     });
+
+    if (!kommoData) {
+      this.logger.warn("[LeadProcessorController] No se pudo obtener datos de Kommo", {
+        leadId: Number(msg.kommo.leads.add?.[0]?.id ?? 0),
+      });
+      return;
+    }
 
     const normalizedLeadCF = kommoData.normalizedLeadCF || [];
     const updateResult = await updatePatientMessageUC.execute({

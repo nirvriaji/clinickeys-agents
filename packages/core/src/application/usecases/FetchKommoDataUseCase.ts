@@ -1,11 +1,10 @@
-// packages/core/src/application/usecases/FetchKommoDataUseCase.ts
-
 import { KommoCustomFieldDefinitionBase, KommoContactResponse, KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { normalizeEntityCustomFields } from '@clinickeys-agents/core/utils';
 import { KommoService } from '@clinickeys-agents/core/application/services';
-import { AvailabilityError } from "@clinickeys-agents/core/domain/errors";
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
+import { AvailabilityEventCatalog } from '@clinickeys-agents/core/domain/availability/events';
+import { AvailabilityEventLogger } from '@clinickeys-agents/core/infrastructure/logging/AvailabilityEventLogger';
 
 export interface FetchKommoDataInput {
   botConfig: BotConfigDTO;
@@ -26,69 +25,56 @@ export class FetchKommoDataUseCase {
     private readonly kommoService: KommoService
   ) {}
 
-  async execute(input: FetchKommoDataInput): Promise<FetchKommoDataOutput> {
+  async execute(input: FetchKommoDataInput): Promise<FetchKommoDataOutput | undefined> {
     const { botConfig, leadId } = input;
 
-    // 1) Obtener configuración del bot
     if (!botConfig) {
-      Logger.error('[FetchKommoData] BotConfig no encontrado', { botConfig });
-      throw new AvailabilityError({
-        code: 'ERR_BOTCONFIG_NOT_FOUND',
-        humanMessage: 'Bot config not found',
-        context: { botConfig },
-      });
+      const event = AvailabilityEventCatalog.ERROR_INTERNO_SERVIDOR();
+      AvailabilityEventLogger.log(event);
+      return undefined;
     }
-    Logger.debug('[FetchKommoData] BotConfig obtenido correctamente');
 
-    // 2) Traer datos del lead desde Kommo
     Logger.debug('[FetchKommoData] Obteniendo lead por ID', { leadId });
     const leadData = await this.kommoService.getLeadById(leadId);
+
     if (!leadData) {
-      Logger.error('[FetchKommoData] Lead no encontrado', { leadId });
-      throw new AvailabilityError({
-        code: 'ERR_LEAD_NOT_FOUND',
-        humanMessage: `Lead not found for ID: ${leadId}`,
-        context: { leadId },
-      });
+      const event = AvailabilityEventCatalog.ERROR_DESCONOCIDO({ message: `Lead no encontrado: ${leadId}` });
+      AvailabilityEventLogger.log(event);
+      return undefined;
     }
-    Logger.debug('[FetchKommoData] Lead obtenido correctamente');
 
     const contacts = leadData?._embedded?.contacts || [];
-    Logger.debug('[FetchKommoData] Contactos asociados al lead', { totalContacts: contacts.length });
+
     if (!contacts.length) {
-      Logger.error('[FetchKommoData] Lead no tiene contactos', { leadId });
-      throw new AvailabilityError({
-        code: 'ERR_LEAD_NO_CONTACTS',
-        humanMessage: 'Lead has no contacts',
-        context: { leadId, leadData },
-      });
+      const event = AvailabilityEventCatalog.ERROR_DESCONOCIDO({ message: `Lead sin contactos: ${leadId}` });
+      AvailabilityEventLogger.log(event);
+      return undefined;
     }
 
     const contactId = Number(contacts[0].id);
     Logger.debug('[FetchKommoData] Obteniendo contacto por ID', { contactId });
+
     const contactData = await this.kommoService.getContactById(contactId);
     if (!contactData) {
-      Logger.error('[FetchKommoData] Contacto sin datos', { contactId });
-      throw new AvailabilityError({
-        code: 'ERR_NO_CONTACT_DATA',
-        humanMessage: 'Contact has no data',
-        context: { contactId },
-      });
+      const event = AvailabilityEventCatalog.ERROR_DESCONOCIDO({ message: `Contacto sin datos: ${contactId}` });
+      AvailabilityEventLogger.log(event);
+      return undefined;
     }
-    Logger.debug('[FetchKommoData] Contacto obtenido correctamente');
 
-    // 3) Obtener SOLO los campos personalizados de LEAD
-    Logger.debug('[FetchKommoData] Obteniendo definiciones de campos personalizados');
     const { leadMap, contactMap } = await this.kommoService.getCustomFieldMappings();
 
     const leadDefs = Object.values(leadMap.byName) as KommoCustomFieldDefinitionBase[];
     const contactDefs = Object.values(contactMap.byName) as KommoCustomFieldDefinitionBase[];
 
-    Logger.debug('[FetchKommoData] Normalizando campos personalizados del lead');
-    const normalizedLeadCF = normalizeEntityCustomFields(leadDefs, leadData?.custom_fields_values || []);
+    const normalizedLeadCF = normalizeEntityCustomFields(
+      leadDefs,
+      leadData?.custom_fields_values || []
+    );
 
-    Logger.debug('[FetchKommoData] Normalizando campos personalizados del contacto');
-    const normalizedContactCF = normalizeEntityCustomFields(contactDefs, contactData?.custom_fields_values || []);
+    const normalizedContactCF = normalizeEntityCustomFields(
+      contactDefs,
+      contactData?.custom_fields_values || []
+    );
 
     return {
       botConfig,
