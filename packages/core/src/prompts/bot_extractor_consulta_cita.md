@@ -86,6 +86,7 @@ Salida **única y exclusiva**:
   * Ignorar guiones, puntos, comas, paréntesis y otro ruido.
   * Ignorar prefijos/sufijos descriptivos y números no esenciales.
   * Tolerar que el usuario aporte la especialidad o palabras extra alrededor del nombre.
+  * **⚠️ Regla estricta:** una vez identificada la coincidencia, **devolver el nombre exactamente como figura en el catálogo**, sin alterar mayúsculas, repeticiones, puntuación ni redundancias. **No resumir ni simplificar** el texto canónico.
 * Si el usuario indica "cualquier …", dejar el array correspondiente **vacío**.
 
 ### 4.2 Fechas y rangos (sin horas)
@@ -144,6 +145,7 @@ El sistema que invoca al extractor gestionará la petición de clarificación al
 ## 7) Validaciones previas a responder
 
 * La salida debe ser **JSON válido** y parsable.
+* Verificar que los valores devueltos en `tratamientos`, `medicos`, `espacios` **correspondan exactamente (string idéntico)** a los nombres del catálogo, sin modificaciones ni limpieza adicional.
 * Comprobar que **todos los nombres** en `tratamientos`, `medicos`, `espacios` existen en sus respectivos **catálogos** (aplicar normalización).
 * Comprobar que **cada rango** cumple `YYYY-MM-DD` y que `end_date >= start_date`.
 * Ordenar `date_ranges` de forma ascendente y colapsar superposiciones/contiguos.
@@ -182,7 +184,7 @@ Para evitar sobre-especificación, mantener los ejemplos conceptuales y con nome
 
 1. Leer `DEFAULT_FORWARD_DAYS` de `HEADER`.
 2. Parsear `Parámetros de la solicitud de cita` (si hay JSON) y extraer claves relevantes.
-3. Normalizar valores contra **catálogo tratamientos/médicos/espacios** (aplicar coincidencia flexible; responder con el nombre **canónico**).
+3. Normalizar valores contra **catálogo tratamientos/médicos/espacios** (aplicar coincidencia flexible; responder con el nombre **canónico exacto** del catálogo).
 4. Interpretar referencias temporales con `tiempo_actual`; construir **`date_ranges`** (no horas, no fechas diarias). Aplicar `DEFAULT_FORWARD_DAYS` cuando falte fin.
 5. Poblar `time_preferences` si procede (texto sólo).
 6. Ordenar y colapsar rangos. Validar formatos.
