@@ -72,10 +72,7 @@ export class ConversationContextService {
 
     // 1) Pacientes y citas asociados al interlocutor
     const patientInfo = await this.fetchPatientInfoSafe({
-      botConfigType: botConfig.botConfigType,
-      botConfigId: botConfig.botConfigId,
-      clinicSource: botConfig.clinicSource,
-      clinicId: botConfig.clinicId,
+      botConfig,
       leadId,
       tiempoActualDT,
     });
@@ -136,10 +133,7 @@ export class ConversationContextService {
   // ---------------------------
 
   private async fetchPatientInfoSafe(args: {
-    botConfigType: BotConfigDTO["botConfigType"];
-    botConfigId: BotConfigDTO["botConfigId"];
-    clinicSource: BotConfigDTO["clinicSource"];
-    clinicId: number;
+    botConfig: BotConfigDTO;
     leadId: number;
     tiempoActualDT: any; // DateTime (Luxon) — se tipa suave para no acoplar aquí
   }): Promise<PatientInfo> {

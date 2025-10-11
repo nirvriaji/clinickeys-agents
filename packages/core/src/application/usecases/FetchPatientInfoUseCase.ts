@@ -3,7 +3,7 @@ import { PatientService } from '@clinickeys-agents/core/application/services';
 import { PackBonoConUsoDTO } from '@clinickeys-agents/core/domain/packBono';
 import { AppointmentDTO } from '@clinickeys-agents/core/domain/appointment';
 import { PresupuestoDTO } from '@clinickeys-agents/core/domain/presupuesto';
-import { BotConfigType } from '@clinickeys-agents/core/domain/botConfig';
+import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { PatientDTO } from '@clinickeys-agents/core/domain/patient';
 import { FetchKommoDataUseCase } from './FetchKommoDataUseCase';
@@ -11,10 +11,7 @@ import { DateTime } from 'luxon';
 import { PhoneNumber } from '@clinickeys-agents/core/domain/common';
 
 export interface FetchPatientInfoInput {
-  botConfigType: BotConfigType;
-  botConfigId: string;
-  clinicSource: string;
-  clinicId: number;
+  botConfig: BotConfigDTO;
   leadId: number;
   tiempoActualDT: DateTime;
 }
@@ -48,15 +45,12 @@ export class FetchPatientInfoUseCase {
   }
 
   async execute(input: FetchPatientInfoInput): Promise<FetchPatientInfoOutput> {
-    const { botConfigType, botConfigId, clinicSource, clinicId, leadId, tiempoActualDT } = input;
-    Logger.info('[FetchPatientInfo] Inicio', { botConfigType, botConfigId, clinicSource, clinicId, leadId });
+    const { botConfig, leadId, tiempoActualDT } = input;
+    Logger.info('[FetchPatientInfo] Inicio', { botConfig, leadId });
 
     Logger.debug('[FetchPatientInfo] Obteniendo datos de Kommo');
     const kommoData = await this.fetchKommoDataUseCase.execute({
-      botConfigType,
-      botConfigId,
-      clinicSource,
-      clinicId,
+      botConfig,
       leadId
     });
 
@@ -70,7 +64,6 @@ export class FetchPatientInfoUseCase {
     });
 
     const leadPhones = this.prepareLeadPhones(kommoData, kommoData.botConfig?.defaultCountry);
-    Logger.debug('[FetchPatientInfo] leadPhones preparado', { leadPhones });
 
     Logger.debug('[FetchPatientInfo] Obteniendo información del paciente desde PatientService');
     const patientInfo = await this.patientService.getPatientInfo(

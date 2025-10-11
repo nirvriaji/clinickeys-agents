@@ -90,8 +90,8 @@ export class LeadProcessorController {
     // ===============================
     // Kommo
     const kommoGateway = new KommoApiGateway({
-      longLivedToken: (botConfig as any).kommo.longLivedToken,
-      subdomain: (botConfig as any).kommo.subdomain,
+      longLivedToken: botConfig.kommo.longLivedToken,
+      subdomain: botConfig.kommo.subdomain,
     });
     const kommoRepository = new KommoRepository(kommoGateway);
     const kommoService = new KommoService(kommoRepository, new PatientRepositoryMySQL());
@@ -133,7 +133,7 @@ export class LeadProcessorController {
     // ===============================
     // 3) Use Cases (dependencias concretas)
     // ===============================
-    const fetchKommoDataUC = new FetchKommoDataUseCase(this.getBotConfigUC, kommoService);
+    const fetchKommoDataUC = new FetchKommoDataUseCase(kommoService);
     const fetchPatientInfoUC = new FetchPatientInfoUseCase(fetchKommoDataUC, patientService);
 
     const updatePatientMessageUC = new UpdatePatientMessageUseCase(kommoService);
@@ -183,16 +183,13 @@ export class LeadProcessorController {
     // ===============================
     this.logger.debug("[LeadProcessorController] Fetching Kommo data for lead");
     const kommoData = await fetchKommoDataUC.execute({
-      botConfigType: botConfigType as BotConfigType,
-      botConfigId,
-      clinicSource,
-      clinicId: Number(clinicId),
+      botConfig,
       leadId: Number(msg.kommo.leads.add?.[0]?.id ?? 0),
     });
 
     const normalizedLeadCF = kommoData.normalizedLeadCF || [];
     const updateResult = await updatePatientMessageUC.execute({
-      botConfig: botConfig as any,
+      botConfig,
       leadId: Number(msg.kommo.leads.add?.[0]?.id ?? 0),
       normalizedLeadCF,
     });
@@ -203,12 +200,12 @@ export class LeadProcessorController {
 
     this.logger.debug("[LeadProcessorController] Orchestrating conversation", {
       lead: Number(msg.kommo.leads.add?.[0]?.id ?? 0),
-      hasReminder: !!reminderMessage,
-      hasPrevResponseId: !!previousResponseId,
+      reminderMessage,
+      previousResponseId,
     });
 
     const result = await orchestrateUC.execute({
-      botConfig: botConfig as any,
+      botConfig: botConfig,
       leadId: Number(msg.kommo.leads.add?.[0]?.id ?? 0),
       normalizedLeadCF,
       userMessage,

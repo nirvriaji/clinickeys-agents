@@ -216,9 +216,6 @@ export class PatientService {
     );
 
     const out = { success: true, message: null, patients: patientsInfo };
-    Logger.info("[PatientService] getPatientInfo result", {
-      patients: patientsInfo.length,
-    });
     return out;
   }
 

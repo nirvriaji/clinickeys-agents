@@ -52,9 +52,7 @@ export class GetBotConfigUseCase {
       }
 
       this.logger.info("[GetBotConfigUseCase] BotConfig retrieved", {
-        botConfigType: cfg.botConfigType,
-        clinicId: cfg.clinicId,
-        clinicSource: cfg.clinicSource,
+        wasBotConfigFound: cfg !== null,
       });
 
       return cfg;

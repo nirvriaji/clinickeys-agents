@@ -163,7 +163,7 @@ export class OrchestrateConversationUseCase {
 
       // Executor local: mapea tool-calls → Use Cases (con retries por tool)
       const executor = async (name: string, args: Record<string, any>) => {
-        Logger.info("[OrchestrateConversation] Ejecutando tool", { name });
+        Logger.info("[OrchestrateConversation] Ejecutando tool", { name, args });
 
         for (let attempt = 1; attempt <= MAX_TOOL_RETRIES; attempt++) {
           try {

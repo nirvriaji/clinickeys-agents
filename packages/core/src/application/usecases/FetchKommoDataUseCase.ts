@@ -1,16 +1,14 @@
+// packages/core/src/application/usecases/FetchKommoDataUseCase.ts
+
 import { KommoCustomFieldDefinitionBase, KommoContactResponse, KommoCustomFieldValueBase } from '@clinickeys-agents/core/infrastructure/integrations/kommo';
-import { BotConfigType, BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
-import { GetBotConfigUseCase } from '@clinickeys-agents/core/application/usecases';
+import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
 import { normalizeEntityCustomFields } from '@clinickeys-agents/core/utils';
 import { KommoService } from '@clinickeys-agents/core/application/services';
 import { AvailabilityError } from "@clinickeys-agents/core/domain/errors";
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 
 export interface FetchKommoDataInput {
-  botConfigType: BotConfigType;
-  botConfigId: string;
-  clinicSource: string;
-  clinicId: number;
+  botConfig: BotConfigDTO;
   leadId: number;
 }
 
@@ -25,28 +23,19 @@ export interface FetchKommoDataOutput {
 
 export class FetchKommoDataUseCase {
   constructor(
-    private readonly getBotConfigUseCase: GetBotConfigUseCase,
     private readonly kommoService: KommoService
   ) {}
 
   async execute(input: FetchKommoDataInput): Promise<FetchKommoDataOutput> {
-    const { botConfigType, botConfigId, clinicSource, clinicId, leadId } = input;
+    const { botConfig, leadId } = input;
 
     // 1) Obtener configuración del bot
-    Logger.debug('[FetchKommoData] Obteniendo configuración del bot');
-    const botConfig = await this.getBotConfigUseCase.execute(
-      botConfigType,
-      botConfigId,
-      clinicSource,
-      clinicId
-    );
-
     if (!botConfig) {
-      Logger.error('[FetchKommoData] BotConfig no encontrado', { botConfigId, clinicSource, clinicId });
+      Logger.error('[FetchKommoData] BotConfig no encontrado', { botConfig });
       throw new AvailabilityError({
         code: 'ERR_BOTCONFIG_NOT_FOUND',
-        humanMessage: `Bot config not found for botConfigId: ${botConfigId}, clinicSource: ${clinicSource}, clinicId: ${clinicId}`,
-        context: { botConfigId, clinicSource, clinicId },
+        humanMessage: 'Bot config not found',
+        context: { botConfig },
       });
     }
     Logger.debug('[FetchKommoData] BotConfig obtenido correctamente');
