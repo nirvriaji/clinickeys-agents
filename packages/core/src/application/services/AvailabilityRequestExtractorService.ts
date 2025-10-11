@@ -53,7 +53,7 @@ export class AvailabilityRequestExtractorService {
 
     const promptsPath = path.resolve(
       __dirname,
-      "packages/core/src/.ia/instructions/prompts/bot_extractor_consulta_cita.md"
+      "packages/core/src/prompts/bot_extractor_consulta_cita.md"
     );
 
     try {

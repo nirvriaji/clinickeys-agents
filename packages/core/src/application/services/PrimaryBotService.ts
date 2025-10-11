@@ -47,7 +47,7 @@ export class PrimaryBotService {
 
     const promptsPath = path.resolve(
       __dirname,
-      "packages/core/src/.ia/instructions/prompts/bot_principal.md"
+      "packages/core/src/prompts/bot_principal.md"
     );
 
     try {

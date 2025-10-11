@@ -9,7 +9,7 @@ type PatientInfo = Awaited<ReturnType<FetchPatientInfoUseCase["execute"]>>;
 export interface ConversationContext {
   /**
    * Se deja vacío por defecto. PrimaryBotService cargará el prompt real
-   * desde packages/core/src/.ia/instructions/prompts/principal_bot.md
+   * desde packages/core/src/prompts/principal_bot.md
    */
   systemPrompt: string;
   /** Carga útil lista para enviar a OpenAI ( Responses v5 ) como input del usuario. */

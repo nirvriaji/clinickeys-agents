@@ -33,7 +33,7 @@ export async function AgendaConfigCompilerService(
   // 1) Cargar prompt del "compiler"
   const promptsPath = path.resolve(
     __dirname,
-    'packages/core/src/.ia/instructions/prompts/bot_compiler_agenda.md',
+    'packages/core/src/prompts/bot_compiler_agenda.md',
   );
 
   let systemPrompt = '';

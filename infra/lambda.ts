@@ -37,22 +37,22 @@ chatbotQueue.subscribe({
   },
   copyFiles: [
     {
-      from: "packages/core/src/.ia/instructions/prompts/bot_extractor_de_datos.md",
+      from: "packages/core/src/prompts/bot_extractor_de_datos.md",
     },
     {
-      from: "packages/core/src/.ia/instructions/prompts/bot_extractor_consulta_cita.md",
+      from: "packages/core/src/prompts/bot_extractor_consulta_cita.md",
     },
     {
-      from: "packages/core/src/.ia/instructions/prompts/bot_presentador_disponibilidades.md",
+      from: "packages/core/src/prompts/bot_presentador_disponibilidades.md",
     },
     {
-      from: "packages/core/src/.ia/instructions/prompts/bot_compiler_agenda.md",
+      from: "packages/core/src/prompts/bot_compiler_agenda.md",
     },
     {
-      from: "packages/core/src/.ia/instructions/prompts/bot_redactor_disponibilidades.md",
+      from: "packages/core/src/prompts/bot_redactor_disponibilidades.md",
     },
     {
-      from: "packages/core/src/.ia/instructions/prompts/bot_principal.md",
+      from: "packages/core/src/prompts/bot_principal.md",
     },
   ]
 });

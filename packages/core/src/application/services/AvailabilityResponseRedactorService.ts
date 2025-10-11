@@ -42,7 +42,7 @@ export async function AvailabilityResponseRedactorService(
 
   const promptsPath = path.resolve(
     __dirname,
-    'packages/core/src/.ia/instructions/prompts/bot_redactor_disponibilidades.md',
+    'packages/core/src/prompts/bot_redactor_disponibilidades.md',
   );
 
   let systemPrompt = '';
