@@ -1,3 +1,5 @@
+// packages/core/src/application/services/AvailabilityRequestExtractorService.ts
+
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
 import { readFile } from "fs/promises";
@@ -31,15 +33,6 @@ export interface ExtractorOptions {
 
 export type AvailabilityFilterResult = ExtractorResult["filters"][number];
 
-/**
- * Servicio principal para extraer filtros de disponibilidad a partir
- * del mensaje del usuario, catálogos y contexto temporal.
- *
- * - Lee y cachea el prompt de sistema desde `.md`.
- * - Construye un userPrompt con cabecera de control + catálogos completos.
- * - Llama a `openAIService.getSchemaStructuredResponse(...)` (Responses v5 + zod).
- * - Devuelve un arreglo de filtros (posiblemente vacío en caso de error o falta de señales).
- */
 export class AvailabilityRequestExtractorService {
   private static cachedSystemPrompt: string | null = null;
 
@@ -69,7 +62,7 @@ export class AvailabilityRequestExtractorService {
         "[AvailabilityRequestExtractorService] No se pudo leer el prompt; abortando",
         err
       );
-      // Preferimos fallar de forma explícita: el caller decidirá el mensaje al paciente
+      // No hay fallback textual aquí: preferimos fallar visiblemente
       throw new Error(
         "No se pudo cargar el prompt del extractor (bot_extractor_consulta_cita.md)"
       );
@@ -132,6 +125,7 @@ export class AvailabilityRequestExtractorService {
         tiempo_actual: contexto.tiempo_actual,
       },
       header: options?.header ?? {},
+      userPrompt
     });
 
     try {
@@ -140,7 +134,7 @@ export class AvailabilityRequestExtractorService {
         userPrompt,
         ExtractorResultSchema,
         "ExtractorResultSchema",
-        options?.model || "gpt-4o-mini"
+        options?.model || "gpt-4.1-mini"
       );
 
       const result = parsed as ExtractorResult;

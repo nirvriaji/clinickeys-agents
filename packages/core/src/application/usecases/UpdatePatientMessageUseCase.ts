@@ -9,6 +9,7 @@ import {
 } from "@clinickeys-agents/core/utils";
 import { KommoCustomFieldValueBase } from "@clinickeys-agents/core/infrastructure/integrations/kommo";
 import type { BotConfigDTO } from "@clinickeys-agents/core/domain/botConfig";
+import { diffArrays } from "diff";
 
 export interface UpdatePatientMessageInput {
   botConfig: BotConfigDTO;
@@ -24,8 +25,31 @@ export interface UpdatePatientMessageOutput {
 export class UpdatePatientMessageUseCase {
   constructor(private readonly kommoService: KommoService) {}
 
-  private normalize(text: string): string {
-    return (text || "").replace(/\s+/g, " ").trim();
+  private splitWords(text: string): string[] {
+    return (text || "").split(/\s+/).filter(Boolean);
+  }
+
+  /**
+   * Extrae la parte nueva en newText respecto a oldText usando diff de arrays (palabras).
+   * No normaliza ni usa regex; asume que uno está contenido en el otro.
+   */
+  private extractNewPart(oldText: string, newText: string): string {
+    const oldWords = this.splitWords(oldText);
+    const newWords = this.splitWords(newText);
+
+    if (oldWords.length === 0) return newText;
+    if (newWords.length === 0) return "";
+
+    const changes = diffArrays(oldWords, newWords);
+    const added: string[] = [];
+
+    for (const change of changes) {
+      if (change.added && Array.isArray(change.value)) {
+        added.push(...change.value);
+      }
+    }
+
+    return added.join(" ").trim();
   }
 
   public async execute(
@@ -40,8 +64,8 @@ export class UpdatePatientMessageUseCase {
         normalizedLeadCF.find((cf) => cf.field_name === PATIENT_MESSAGE)?.value ||
         "";
       const lastPatientMessage =
-        normalizedLeadCF.find((cf) => cf.field_name === LAST_PATIENT_MESSAGE)
-          ?.value || "";
+        normalizedLeadCF.find((cf) => cf.field_name === LAST_PATIENT_MESSAGE)?.value ||
+        "";
       const patientMessageProcessedChunk =
         normalizedLeadCF.find(
           (cf) => cf.field_name === PATIENT_MESSAGE_PROCESSED_CHUNK
@@ -53,34 +77,18 @@ export class UpdatePatientMessageUseCase {
         patientMessageProcessedChunk,
       });
 
-      // Normalizamos todo para evitar problemas con espacios, saltos de línea, etc.
-      let newPatientMessage: string = `${this.normalize(patientMessage)} ${this.normalize(
+      // Objetivo: extraer SOLO la parte nueva entre el chunk procesado y el último mensaje
+      const newPart = this.extractNewPart(
+        patientMessageProcessedChunk,
         lastPatientMessage
-      )}`.trim();
-
-      if (patientMessageProcessedChunk) {
-        const normalizedChunk = this.normalize(patientMessageProcessedChunk);
-        const normalizedMsg = this.normalize(newPatientMessage);
-
-        if (normalizedMsg.includes(normalizedChunk)) {
-          newPatientMessage = normalizedMsg.replace(normalizedChunk, "").trim();
-        } else {
-          Logger.warn(
-            "[UpdatePatientMessageUseCase] Chunk no encontrado exactamente para reemplazo",
-            {
-              normalizedChunk,
-              normalizedMsg,
-            }
-          );
-        }
-      }
-
-      Logger.debug(
-        "[UpdatePatientMessageUseCase] Nuevo patientMessage calculado",
-        {
-          newPatientMessage,
-        }
       );
+
+      // Si no hay parte nueva, usamos el último mensaje completo (fallback seguro)
+      const newPatientMessage = newPart || lastPatientMessage;
+
+      Logger.debug("[UpdatePatientMessageUseCase] Nuevo patientMessage calculado", {
+        newPatientMessage,
+      });
 
       await this.kommoService.updateLeadCustomFields({
         botConfig,
