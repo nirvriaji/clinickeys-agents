@@ -1,6 +1,6 @@
 import { IAppointmentRepository, CreateAppointmentInput, UpdateAppointmentInput } from "@clinickeys-agents/core/domain/appointment";
 import { AvailabilityEventCatalog } from "@clinickeys-agents/core/domain/availability/events";
-import { AvailabilityEventLogger } from "@clinickeys-agents/core/infrastructure/logging/AvailabilityEventLogger";
+import { AvailabilityEventLogger } from "@clinickeys-agents/core/infrastructure/logging";
 
 export class AppointmentService {
   private appointmentRepository: IAppointmentRepository;

@@ -4,7 +4,7 @@ import { normalizeEntityCustomFields } from '@clinickeys-agents/core/utils';
 import { KommoService } from '@clinickeys-agents/core/application/services';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { AvailabilityEventCatalog } from '@clinickeys-agents/core/domain/availability/events';
-import { AvailabilityEventLogger } from '@clinickeys-agents/core/infrastructure/logging/AvailabilityEventLogger';
+import { AvailabilityEventLogger } from '@clinickeys-agents/core/infrastructure/logging';
 
 export interface FetchKommoDataInput {
   botConfig: BotConfigDTO;

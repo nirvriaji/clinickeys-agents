@@ -1,30 +1,20 @@
-import { AvailabilityRequestExtractorService, AvailabilitySQLBuilder } from "@clinickeys-agents/core/application/services";
+// packages/core/src/application/services/AvailabilityService/AvailabilityDomainService.ts
+
+import { AvailabilitySQLBuilder } from "@clinickeys-agents/core/application/services";
 import { ITratamientoRepository, TratamientoSearchResultDTO } from "@clinickeys-agents/core/domain/tratamiento";
 import { AvailabilityCalculator, AvailabilityAdjuster } from "@clinickeys-agents/core/domain/availability";
 import { ejecutarConReintento } from "@clinickeys-agents/core/infrastructure/helpers";
-import { IEspacioRepository, EspacioBasicDTO } from "@clinickeys-agents/core/domain/espacio";
+import { IEspacioRepository } from "@clinickeys-agents/core/domain/espacio";
 import { IMedicoRepository } from "@clinickeys-agents/core/domain/medico";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
-import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
 import { AvailabilityEventCatalog } from "@clinickeys-agents/core/domain/availability/events";
-import { AvailabilityEventLogger } from "@clinickeys-agents/core/infrastructure/logging/AvailabilityEventLogger";
+import { AvailabilityEventLogger } from "@clinickeys-agents/core/infrastructure/logging";
 import type {
   TratamientoEntrada,
   MedicoEntrada,
   EspacioEntrada,
   SlotDisponibilidad,
 } from "@clinickeys-agents/core/domain/availability";
-
-interface GetAvailabilityInfoInput {
-  leadId?: number;
-  subdomain: string;
-  id_clinica: number;
-  tiempo_actual: string;
-  id_super_clinica: number;
-  parametrosSolicitudCita: string;
-  localTimeForPrompts: string;
-  contextoDisponibilidades: string;
-}
 
 export interface GetTreatmentsDataInput {
   clinicId: number;
@@ -50,21 +40,15 @@ export class AvailabilityDomainService {
   private treatmentRepo: ITratamientoRepository;
   private doctorRepo: IMedicoRepository;
   private spaceRepo: IEspacioRepository;
-  private readonly availabilityRequestExtractorService: AvailabilityRequestExtractorService;
-  private readonly openAIService: IOpenAIService;
 
   constructor(
     treatmentRepo: ITratamientoRepository,
     doctorRepo: IMedicoRepository,
     spaceRepo: IEspacioRepository,
-    availabilityRequestExtractorService: AvailabilityRequestExtractorService,
-    openAIService: IOpenAIService
   ) {
     this.treatmentRepo = treatmentRepo;
     this.doctorRepo = doctorRepo;
     this.spaceRepo = spaceRepo;
-    this.availabilityRequestExtractorService = availabilityRequestExtractorService;
-    this.openAIService = openAIService;
   }
 
   async fetchTreatmentsWithDoctorsAndSpaces({

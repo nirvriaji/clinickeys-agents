@@ -1,3 +1,5 @@
+// packages/core/src/application/services/AgendaConfigCompilerService.ts
+
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import path from 'path';
 import { readFile } from 'fs/promises';

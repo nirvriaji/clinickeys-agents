@@ -1,5 +1,5 @@
-import { Logger } from "@clinickeys-agents/core/infrastructure/external/Logger";
-import { AvailabilityEvent } from "@clinickeys-agents/core/domain/availability/events/AvailabilityEvent";
+import { Logger } from "@clinickeys-agents/core/infrastructure/external";
+import { AvailabilityEvent } from "@clinickeys-agents/core/domain/availability";
 
 /**
  * Servicio responsable de registrar los eventos de disponibilidad.

@@ -1,3 +1,5 @@
+// packages/core/src/application/usecases/CheckAvailabilityUseCase.ts
+
 import {
   AvailabilityRequestExtractorService,
   AvailabilityDomainService,
@@ -403,7 +405,7 @@ export class CheckAvailabilityUseCase {
     }
 
     // 6) Selección final ordenada y redacción
-    const presenterOpenAI = (this.availabilityRequestExtractorService as any)['openAIService'];
+    const presenterOpenAI = this.availabilityRequestExtractorService['openAIService'];
 
     const finalHorarios = this.orderHorarios(
       globalHorarios,
