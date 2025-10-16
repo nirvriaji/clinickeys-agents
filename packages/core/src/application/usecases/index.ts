@@ -15,6 +15,7 @@ export * from "./ClarifyPatientUseCase";
 export * from "./GetAllClinicsUseCase";
 export * from "./GetKommoUsersUseCase";
 export * from "./GetBotConfigUseCase";
+export * from "./SessionResetUseCase";
 export * from "./CreateTaskUseCase";
 export * from "./DeleteBotUseCase";
 export * from "./AddBotUseCase";

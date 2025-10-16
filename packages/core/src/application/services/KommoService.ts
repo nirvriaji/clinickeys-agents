@@ -1,5 +1,3 @@
-// packages/core/src/application/services/KommoService.ts
-
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import {
@@ -40,6 +38,10 @@ export class NotificationOmittedError extends Error {
   }
 }
 
+// Tipos auxiliares para payloads de PATCH
+type PatchValue = { value: string };
+interface PatchItem { field_id: number; values: PatchValue[] }
+
 export class KommoService {
   private kommoRepository: IKommoRepository;
   private patientRepository: IPatientRepository;
@@ -53,14 +55,9 @@ export class KommoService {
     this.patientRepository = patientRepository;
   }
 
-  async getContactById(contactId: number): Promise<KommoContactResponse | null> {
-    return this.kommoRepository.getContactById({ contactId });
-  }
-
-  async getLeadById(leadId: number): Promise<KommoGetLeadByIdResponse | null> {
-    return this.kommoRepository.getLeadById({ leadId });
-  }
-
+  // -----------------------------------------------------
+  // Catalog / mappings
+  // -----------------------------------------------------
   private async loadCustomFieldMappings() {
     if (this.customFieldMappingsCache) return this.customFieldMappingsCache;
     const [leadFields, contactFields] = await Promise.all([
@@ -77,10 +74,7 @@ export class KommoService {
     return this.customFieldMappingsCache;
   }
 
-  /**
-   * Método público para obtener los mapeos de custom fields (con cache interno).
-   * Útil para casos de uso que necesitan acceder a los catálogos completos.
-   */
+  /** Método público para otros casos de uso que requieran el mapeo completo */
   public async getCustomFieldMappings(): Promise<{
     leadMap: KommoCustomFieldMap;
     contactMap: KommoCustomFieldMap;
@@ -88,6 +82,47 @@ export class KommoService {
     return this.loadCustomFieldMappings();
   }
 
+  // -----------------------------------------------------
+  // Basic Kommo entities
+  // -----------------------------------------------------
+  async getContactById(contactId: number): Promise<KommoContactResponse | null> {
+    return this.kommoRepository.getContactById({ contactId });
+  }
+
+  /**
+   * Devuelve el lead bruto y agrega una vista conveniente
+   * `custom_fields: { field_id, field_name, value }[]` usando el catálogo cacheado.
+   */
+  async getLeadById(
+    leadId: number
+  ): Promise<
+    (KommoGetLeadByIdResponse & {
+      custom_fields?: Array<{ field_id: number; field_name: string; value: string }>;
+    }) | null
+  > {
+    const latest = await this.kommoRepository.getLeadById({ leadId });
+    if (!latest) return null;
+
+    try {
+      const { leadMap } = await this.loadCustomFieldMappings();
+      const items: Array<{ field_id: number; field_name: string; value: string }> = [];
+      const cfv: KommoCustomFieldValueBase[] = latest.custom_fields_values || [];
+      for (const entry of cfv) {
+        const fieldId = Number(entry.field_id);
+        const name = leadMap.byId[fieldId]?.name || String(fieldId);
+        const value = String(entry.values?.[0]?.value ?? '');
+        items.push({ field_id: fieldId, field_name: name, value });
+      }
+      return { ...latest, custom_fields: items };
+    } catch (e) {
+      Logger.warn('[KommoService.getLeadById] No se pudo construir custom_fields amigable', { leadId, e });
+      return latest;
+    }
+  }
+
+  // -----------------------------------------------------
+  // Lead / Contact ensure
+  // -----------------------------------------------------
   public async ensureLead(input: {
     botConfig: BotConfigDTO;
     patientId: number;
@@ -111,7 +146,7 @@ export class KommoService {
     let existingLeadId: string | undefined;
     try {
       existingLeadId = await this.patientRepository.getKommoLeadId(patientId);
-    } catch (e: any) {
+    } catch (e) {
       Logger.error('[KommoService.ensureLead] Error obteniendo leadId desde BD', e);
     }
 
@@ -137,7 +172,7 @@ export class KommoService {
 
     if (!contactId) {
       const contactFields: Record<string, string> = {
-        PHONE: normalizedPhone
+        PHONE: normalizedPhone,
       };
       const contactPayload = [{
         name: `${patientFirstName} ${patientLastName}`,
@@ -149,7 +184,7 @@ export class KommoService {
         cfSample: (contactPayload[0].custom_fields_values || []).slice(0, 3),
       });
       const res = await this.kommoRepository.createContact({ body: contactPayload });
-      contactId = Number(res._embedded?.contacts?.[0]?.id!);
+      contactId = Number(res._embedded?.contacts?.[0]?.id ?? 0);
       Logger.info('[KommoService.ensureLead] Contacto creado', { contactId });
     }
 
@@ -173,12 +208,14 @@ export class KommoService {
         cfSample: (leadPayload[0].custom_fields_values || []).slice(0, 3),
       });
       const res = await this.kommoRepository.createLead({ body: leadPayload });
-      leadId = res._embedded?.leads?.[0]?.id!;
+      leadId = res._embedded?.leads?.[0]?.id ?? undefined;
       Logger.info('[KommoService.ensureLead] Lead creado', { leadId });
       try {
-        await this.patientRepository.updateKommoLeadId(patientId, leadId);
-        Logger.info('[KommoService.ensureLead] LeadId actualizado en BD', { patientId, leadId });
-      } catch (e: any) {
+        if (leadId) {
+          await this.patientRepository.updateKommoLeadId(patientId, leadId);
+          Logger.info('[KommoService.ensureLead] LeadId actualizado en BD', { patientId, leadId });
+        }
+      } catch (e) {
         Logger.error('[KommoService.ensureLead] Error actualizando leadId en BD', e);
       }
     }
@@ -186,6 +223,9 @@ export class KommoService {
     return Number(leadId)!;
   }
 
+  // -----------------------------------------------------
+  // Patching helpers
+  // -----------------------------------------------------
   public async updateLeadCustomFields(input: {
     botConfig: BotConfigDTO;
     leadId: number;
@@ -203,7 +243,7 @@ export class KommoService {
   public async replyToLead(input: {
     leadId: number;
     customFields: Record<string, string>;
-    normalizedLeadCF: (KommoCustomFieldValueBase & { value: any })[];
+    normalizedLeadCF: (KommoCustomFieldValueBase & { value: unknown })[];
     salesbotId: number;
   }): Promise<{ success: boolean; aborted?: boolean }> {
     // --- Logs de diagnóstico previos ---
@@ -213,7 +253,9 @@ export class KommoService {
       salesbotId: input.salesbotId,
       customFieldsCount: customFieldKeys.length,
       mergedCFCount: input.normalizedLeadCF?.length || 0,
-      mergedCFSample: input.normalizedLeadCF?.filter(cf => CHAT_BOT_CUSTOM_FIELDS.includes(cf.field_name)).map(cf => ({ id: cf.field_id, name: cf.field_name })) || [],
+      mergedCFSample: input.normalizedLeadCF
+        ?.filter((cf) => CHAT_BOT_CUSTOM_FIELDS.includes(cf.field_name))
+        .map((cf) => ({ id: cf.field_id, name: cf.field_name })) || [],
     });
 
     const latest = await this.kommoRepository.getLeadById({ leadId: input.leadId });
@@ -226,9 +268,10 @@ export class KommoService {
       Logger.warn('[KommoService.replyToLead] Abortado por shouldLambdaContinue=false', { leadId: input.leadId });
       return { success: false, aborted: true };
     } else {
-      Logger.debug("[KommoService.replyToLead] La lambda continua")
+      Logger.debug('[KommoService.replyToLead] La lambda continua');
     }
 
+    // Intersección de claves con normalizedLeadCF
     // Intersección de claves (para detectar descalces de nombre)
     const mergedNames = new Set((input.normalizedLeadCF || []).map(cf => cf.field_name));
     const matches = customFieldKeys.filter(k => mergedNames.has(k));
@@ -238,15 +281,19 @@ export class KommoService {
     //   nonMatchedSample: customFieldKeys.filter(k => !mergedNames.has(k)).slice(0, 10),
     // });
 
-    const values = (input.normalizedLeadCF || [])
-      .map(cf => (cf.field_name in input.customFields)
-        ? { field_id: cf.field_id, values: [{ value: input.customFields[cf.field_name] }] }
-        : null)
-      .filter(Boolean as any);
+    const values: PatchItem[] = (input.normalizedLeadCF || [])
+      .map((cf) => {
+        if (cf.field_name in input.customFields) {
+          const v: PatchItem = { field_id: cf.field_id, values: [{ value: String(input.customFields[cf.field_name]) }] };
+          return v;
+        }
+        return undefined;
+      })
+      .filter((v): v is PatchItem => Boolean(v));
 
     Logger.info('[KommoService.replyToLead] Payload resultante', {
       items: values.length,
-      payload: values.map(v => ({ field_id: (v as any).field_id, value: (v as any).values?.[0]?.value })),
+      payload: values.map((v) => ({ field_id: v.field_id, value: v.values[0]?.value })),
     });
 
     if (!values.length) {
@@ -255,21 +302,11 @@ export class KommoService {
       });
     }
 
-    try {
-      await this.kommoRepository.patchLead({ leadId: input.leadId, payload: { custom_fields_values: values } });
-      Logger.info('[KommoService.replyToLead] PATCH enviado con éxito', { leadId: input.leadId, count: values.length });
-    } catch (e: any) {
-      Logger.error('[KommoService.replyToLead] Error en PATCH lead', { leadId: input.leadId, error: e });
-      throw e;
-    }
+    await this.kommoRepository.patchLead({ leadId: input.leadId, payload: { custom_fields_values: values } });
+    Logger.info('[KommoService.replyToLead] PATCH enviado con éxito', { leadId: input.leadId, count: values.length });
 
-    try {
-      await this.kommoRepository.runSalesbot({ leadId: input.leadId, botId: input.salesbotId });
-      Logger.info('[KommoService.replyToLead] Salesbot ejecutado', { leadId: input.leadId, salesbotId: input.salesbotId });
-    } catch (e: any) {
-      Logger.error('[KommoService.replyToLead] Error ejecutando Salesbot', { leadId: input.leadId, salesbotId: input.salesbotId, error: e });
-      throw e;
-    }
+    await this.kommoRepository.runSalesbot({ leadId: input.leadId, botId: input.salesbotId });
+    Logger.info('[KommoService.replyToLead] Salesbot ejecutado', { leadId: input.leadId, salesbotId: input.salesbotId });
 
     return { success: true };
   }
@@ -277,7 +314,7 @@ export class KommoService {
   public async sendBotInitialMessage(input: {
     salesbotId: number;
     leadId: number;
-    normalizedLeadCF: (KommoCustomFieldValueBase & { value: any })[];
+    normalizedLeadCF: (KommoCustomFieldValueBase & { value: unknown })[];
     message: string;
   }): Promise<void> {
     const extra: Record<string, string> = {};
@@ -292,6 +329,9 @@ export class KommoService {
     await this.replyToLead({ salesbotId: input.salesbotId, leadId: input.leadId, customFields, normalizedLeadCF: input.normalizedLeadCF });
   }
 
+  // -----------------------------------------------------
+  // Misc
+  // -----------------------------------------------------
   public async createTask(params: {
     leadId: number;
     message: string;

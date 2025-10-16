@@ -71,7 +71,7 @@ export const openaiTools: OpenAITool[] = [
         tratamiento: {
           type: "string",
           description:
-            "Tratamiento solicitado por el paciente (NO PUEDE ESTAR VACÍO; normalizar contra el catálogo si aplica)",
+            "Tratamiento solicitado por el paciente (NO PUEDE ESTAR VACÍO; normalizar contra el catálogo si aplica, se puede deducir dependiendo de lo que mencionó el paciente en anteriores turnos, llenar con la razón de por qué no se reconoce el tratamiento)",
         },
         medico: {
           type: ["string", "null"],
@@ -119,13 +119,14 @@ export const openaiTools: OpenAITool[] = [
           type: "object",
           properties: {
             fecha_cita: { type: "string", description: "Fecha de la cita en formato YYYY-MM-DD." },
+            fecha_legible: { type: "string", description: "Devuelve una representación legible en español tipo: [NOMBRE DÍA SEMANA], [NRO DÍA] de [NOMBRE MES]" },
             hora_inicio: { type: "string", description: "Hora de inicio en formato HH:MM (24h)." },
             hora_fin: { type: "string", description: "Hora de fin en formato HH:MM (24h)." },
             id_tratamiento: { type: "integer", description: "ID del tratamiento asociado." },
             id_medico: { type: "integer", description: "ID del médico asignado." },
             id_espacio: { type: "integer", description: "ID del espacio o sede." },
           },
-          required: ["fecha_cita", "hora_inicio", "hora_fin", "id_tratamiento", "id_medico", "id_espacio"],
+          required: ["fecha_cita", "fecha_legible", "hora_inicio", "hora_fin", "id_tratamiento", "id_medico", "id_espacio"],
           additionalProperties: false,
         },
       },

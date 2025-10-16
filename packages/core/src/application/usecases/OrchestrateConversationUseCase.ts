@@ -1,5 +1,3 @@
-// packages/core/src/application/usecases/OrchestrateConversationUseCase.ts
-
 import { z } from "zod";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 
@@ -35,6 +33,8 @@ import {
   THREAD_ID,
 } from "@clinickeys-agents/core/utils";
 
+import { SessionResetUseCase } from "@clinickeys-agents/core/application/usecases/SessionResetUseCase";
+
 // =============================
 // Zod Schemas (validación de tool-calls)
 // =============================
@@ -66,11 +66,6 @@ const ScheduleAppointmentSchema = z.object({
     id_tratamiento: z.number(),
     id_medico: z.number(),
     id_espacio: z.number(),
-    nombre_tratamiento: z.string().nullable().optional(),
-    nombre_medico: z.string().nullable().optional(),
-    nombre_espacio: z.string().nullable().optional(),
-    duracion_tratamiento: z.number().nullable().optional(),
-    especifica: z.boolean().nullable().optional(),
   }),
 });
 
@@ -148,6 +143,7 @@ export interface OrchestrateConversationUseCaseDeps {
   identifyPatientUC: IdentifyPatientUseCase;
   clarifyPatientUC: ClarifyPatientUseCase;
   regularConversationUC: RegularConversationUseCase;
+  sessionResetUC: SessionResetUseCase;
 }
 
 const MAX_TOOL_RETRIES = 3;
@@ -161,6 +157,18 @@ export class OrchestrateConversationUseCase {
     try {
       Logger.info("[OrchestrateConversation] Inicio", { leadId });
 
+      // =============================
+      // PRE-FLIGHT: limpieza condicional y apertura de sesión (sin Salesbot)
+      // =============================
+      const pre = await this.deps.sessionResetUC.preFlight({ botConfig, leadId, normalizedLeadCF });
+      if (!pre.success) {
+        Logger.warn("[OrchestrateConversation] preFlight no pasó barrera de sesión; se aborta limpio", { leadId });
+        return { success: false, message: "No fue posible procesar el mensaje en este momento." };
+      }
+
+      // Flag para postFlight
+      let usedCriticalTool = false;
+
       // Executor local: mapea tool-calls → Use Cases (con retries por tool)
       const executor = async (name: string, args: Record<string, any>) => {
         Logger.info("[OrchestrateConversation] Ejecutando tool", { name, args });
@@ -173,6 +181,12 @@ export class OrchestrateConversationUseCase {
               botConfig,
               leadId,
               normalizedLeadCF,
+              markCritical: () => {
+                const TOOLS_TO_RESET_SESSION = ["agendar_cita", "gestionar_estado_cita", "crear_tarea"];
+                if (TOOLS_TO_RESET_SESSION.includes(name)) {
+                  usedCriticalTool = true;
+                }
+              },
             });
             return toolOutput;
           } catch (err) {
@@ -239,6 +253,14 @@ export class OrchestrateConversationUseCase {
         normalizedLeadCF,
       });
 
+      // Fase RENDERING (sin Salesbot), útil para trazas
+      await this.deps.sessionResetUC.markRenderingPhase({ botConfig, leadId });
+
+      // =============================
+      // POST-FLIGHT: limpieza condicional y cierre de sesión (sin Salesbot)
+      // =============================
+      await this.deps.sessionResetUC.postFlight({ botConfig, leadId, usedCriticalTool });
+
       return { success: true, message: finalMessage };
     } catch (error) {
       Logger.error("[OrchestrateConversation] Error general", { error });
@@ -258,8 +280,9 @@ export class OrchestrateConversationUseCase {
     botConfig: BotConfigDTO;
     leadId: number;
     normalizedLeadCF: (KommoCustomFieldValueBase & { value: any })[];
+    markCritical: () => void;
   }): Promise<string> {
-    const { name, args, botConfig, leadId, normalizedLeadCF } = params;
+    const { name, args, botConfig, leadId, normalizedLeadCF, markCritical } = params;
 
     switch (name) {
       case "consulta_agendar": {
@@ -280,6 +303,7 @@ export class OrchestrateConversationUseCase {
 
       case "agendar_cita": {
         Logger.info("[Tool] agendar_cita");
+        markCritical();
         const parsed = ScheduleAppointmentSchema.parse(args);
 
         // Normalizar null → undefined para campos opcionales del horarioEscogido
@@ -288,11 +312,6 @@ export class OrchestrateConversationUseCase {
           ...parsed,
           horarioEscogido: {
             ...parsed.horarioEscogido,
-            nombre_tratamiento: norm(parsed.horarioEscogido.nombre_tratamiento),
-            nombre_medico: norm(parsed.horarioEscogido.nombre_medico),
-            nombre_espacio: norm(parsed.horarioEscogido.nombre_espacio),
-            duracion_tratamiento: norm(parsed.horarioEscogido.duracion_tratamiento) as number | undefined,
-            especifica: norm(parsed.horarioEscogido.especifica) as boolean | undefined,
           },
           id_pack_bono: norm(parsed.id_pack_bono) as number | undefined,
           id_presupuesto: norm(parsed.id_presupuesto) as number | undefined,
@@ -309,7 +328,7 @@ export class OrchestrateConversationUseCase {
         });
         if (!out.success) throw new Error("agendar_cita UC failed");
 
-        // Confirmación/desconfirmación automática (en código; el modelo no lo sabe)
+        // Confirmación/desconfirmación automática
         if (out.createdAppointmentId) {
           try {
             await this.deps.manageAppointmentStateUC.execute({
@@ -330,6 +349,7 @@ export class OrchestrateConversationUseCase {
 
       case "gestionar_estado_cita": {
         Logger.info("[Tool] gestionar_estado_cita");
+        markCritical();
         const parsed = ManageAppointmentStateSchema.parse(args);
         const out = await this.deps.manageAppointmentStateUC.execute({
           leadId,
@@ -341,6 +361,7 @@ export class OrchestrateConversationUseCase {
 
       case "crear_tarea": {
         Logger.info("[Tool] crear_tarea");
+        markCritical();
         const parsed = CreateTaskSchema.parse(args);
         const out = await this.deps.createTaskUC.execute({
           botConfig,

@@ -7,22 +7,27 @@ import {
 } from '@clinickeys-agents/core/infrastructure/integrations/kommo/models';
 
 /**
- * Construye un mapa de campos personalizados indexado por nombre y código.
+ * Construye un mapa de campos personalizados indexado por nombre, código **e id**.
  */
 export function getCustomFieldMap<T extends KommoCustomFieldDefinitionBase>(
   fields: T[]
 ): KommoCustomFieldMap<T> {
   const byName: Record<string, T> = {};
   const byCode: Record<string, T> = {};
+  const byId: Record<number, T> = {};
+
   for (const field of fields) {
+    if (field == null) continue;
+    byId[field.id] = field;
     if (field.name) {
-      byName[field.name] = field;
+      byName[field.name] = field as T;
     }
     if (field.code) {
-      byCode[field.code.toUpperCase()] = field;
+      byCode[field.code.toUpperCase()] = field as T;
     }
   }
-  return { byName, byCode };
+
+  return { byName, byCode, byId };
 }
 
 /**
@@ -62,10 +67,10 @@ export function buildCustomFieldsValuesFromMap(
   for (const key of Object.keys(customFields)) {
     const value = customFields[key];
     if (value === undefined) continue;
-    const def = fieldMap.byName[key] || fieldMap.byCode[key.toUpperCase()];
+    const def = fieldMap.byName[key] || fieldMap.byCode[key.toUpperCase?.() ?? ''];
     if (!def) continue;
 
-    const payloadValue: { value: any; } = { value };
+    const payloadValue: { value: any } = { value };
     result.push({
       field_id: def.id,
       values: [payloadValue],

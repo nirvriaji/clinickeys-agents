@@ -4,6 +4,7 @@ import { HttpClient } from "@clinickeys-agents/core/infrastructure/external";
 import type {
   KommoContactCustomFieldDefinition,
   KommoLeadCustomFieldDefinition,
+  KommoCustomFieldValueBase,
 } from "@clinickeys-agents/core/infrastructure/integrations/kommo/models";
 
 // ---------- TIPOS DE RESPUESTA KOMMO ----------
@@ -23,7 +24,7 @@ export interface KommoSearchContactResponse {
 
 export interface KommoGetLeadByIdResponse {
   id: string;
-  custom_fields_values: Array<any>; // Puedes tipar mejor si lo necesitas
+  custom_fields_values: KommoCustomFieldValueBase[]; // Tipado estricto
   _embedded?: {
     contacts?: Array<{ id: string }>;
   };
@@ -82,8 +83,8 @@ export interface KommoUsersResponse {
   _embedded: {
     users: Array<{
       id: number;
-			name: string;
-			email: string;
+      name: string;
+      email: string;
     }>;
   };
 }
@@ -121,9 +122,7 @@ export class KommoApiGateway {
 
   async runSalesbot({ botId, leadId }: { botId: number; leadId: number }) {
     const url = `https://${this.subdomain}.kommo.com/api/v2/salesbot/run`;
-    const body = [
-      { bot_id: botId, entity_id: leadId, entity_type: "2" },
-    ];
+    const body = [{ bot_id: botId, entity_id: leadId, entity_type: "2" }];
     const res = await this.http.request<any>(url, {
       method: "POST",
       body,
@@ -187,6 +186,8 @@ export class KommoApiGateway {
   }
 
   async createTask({ body }: { body: any }) {
+    // Log para diagnóstico: estructura del body
+    // eslint-disable-next-line no-console
     console.log("Creating task with body:", JSON.stringify(body, null, 2));
     const url = `${this.baseUrl}/tasks`;
     const res = await this.http.request<any>(url, {

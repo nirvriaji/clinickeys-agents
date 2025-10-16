@@ -15,6 +15,7 @@ import {
   CreateTaskUseCase,
   ClarifyPatientUseCase,
   GetBotConfigUseCase,
+  SessionResetUseCase,
 } from "@clinickeys-agents/core/application/usecases";
 
 import {
@@ -125,8 +126,6 @@ export class LeadProcessorController {
       tratamientoRepo,
       medicoRepo,
       espacioRepo,
-      getEstructuredAvailabilityRequestSvc,
-      openAIService
     );
 
     const appointmentService = new AppointmentService(appointmentRepo);
@@ -163,6 +162,7 @@ export class LeadProcessorController {
     const regularConversationUC = new RegularConversationUseCase();
     const identifyPatientUC = new IdentifyPatientUseCase(patientService);
     const clarifyPatientUC = new ClarifyPatientUseCase();
+    const sessionResetUC = new SessionResetUseCase(kommoService);
 
     // Servicios de orquestación (nuevo stack Responses v5)
     const contextService = new ConversationContextService({ fetchPatientInfoUC, logger: Logger });
@@ -178,6 +178,7 @@ export class LeadProcessorController {
       identifyPatientUC,
       clarifyPatientUC,
       regularConversationUC,
+      sessionResetUC
     });
 
     // ===============================

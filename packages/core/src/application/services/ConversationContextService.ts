@@ -1,3 +1,5 @@
+// packages/core/src/application/services/ConversationContextService.ts
+
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { FetchPatientInfoUseCase } from "@clinickeys-agents/core/application/usecases";
 import { localTime, getClinicLocalTimestamp, mergePlaceholdersIntoContext } from "@clinickeys-agents/core/utils";
@@ -80,6 +82,9 @@ export class ConversationContextService {
     const patients = patientInfo.patients ?? [];
     const appointmentsCount = patients.reduce((acc, p) => acc + (p.appointments?.length || 0), 0);
 
+    // Teléfono del interlocutor proveniente del CONTACT CF de Kommo (garantizado por flujo)
+    const interlocutorPhone = patientInfo.interlocutorPhone || "";
+
     // 2) Resolver mensaje efectivo del usuario (respuesta a recordatorio vs mensaje normal)
     let MENSAJE_USUARIO = (userMessage || "").trim();
     const hasReminderThread = !!reminderMessage && appointmentsCount > 0;
@@ -101,6 +106,7 @@ export class ConversationContextService {
       MENSAJE_USUARIO,
       TIMEZONE_SISTEMA: tz,
       TIEMPO_LOCAL: localTimeForPrompts,
+      TELEFONO_INTERLOCUTOR: interlocutorPhone,
       PACIENTES_ASOCIADOS_AL_INTERLOCUTOR: patients,
       CONTEXTO_PLACEHOLDERS,
       FULL_PLACEHOLDERS_TEXT,
@@ -112,6 +118,7 @@ export class ConversationContextService {
       patientsCount: patients.length,
       appointmentsCount,
       hasReminderThread,
+      hasInterlocutorPhone: !!interlocutorPhone,
       payloadBytes: Buffer.byteLength(userPayloadJSON, "utf8"),
     });
 
@@ -142,11 +149,11 @@ export class ConversationContextService {
       this.logger.info("[ConversationContextService] Pacientes/citas obtenidos", {
         patients: info.patients?.length || 0,
       });
-      return info;
+      return info as PatientInfo;
     } catch (err) {
       this.logger.error("[ConversationContextService] Error en FetchPatientInfoUseCase", err as Error);
-      // Fallback seguro: sin pacientes
-      return { patients: [] } as PatientInfo;
+      // Fallback seguro: sin pacientes y sin teléfono
+      return { patients: [], interlocutorPhone: "" } as unknown as PatientInfo;
     }
   }
 }

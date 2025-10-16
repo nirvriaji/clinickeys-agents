@@ -33,9 +33,15 @@ export interface KommoCustomFieldValueBase {
 }
 
 /**
- * Mapa de campos personalizados indexado por nombre y código.
+ * Mapa de campos personalizados indexado por nombre, código e id.
+ *\n * byName: acceso por nombre lógico (string exacto del nombre del CF en Kommo)
+ * byCode: acceso por code (uppercased) cuando el CF tiene code asignado
+ * byId:   acceso directo por id numérico del CF (lookup O(1))
  */
-export interface KommoCustomFieldMap<TDefinition extends KommoCustomFieldDefinitionBase = KommoCustomFieldDefinitionBase> {
+export interface KommoCustomFieldMap<
+  TDefinition extends KommoCustomFieldDefinitionBase = KommoCustomFieldDefinitionBase
+> {
   byName: Record<string, TDefinition>;
   byCode: Record<string, TDefinition>;
+  byId: Record<number, TDefinition>;
 }

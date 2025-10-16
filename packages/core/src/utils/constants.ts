@@ -32,6 +32,16 @@ export const SALESBOT_LOG = "salesbotLog";
 export const BOT_MESSAGE = "botMessage";
 export const THREAD_ID = "threadId";
 
+// --- Session Control CF (all TEXT in Kommo) --- //
+export const SESSION_ID = "sessionId"; // UUID string
+export const SESSION_SEQ = "sessionSeq"; // integer as string ("1", "2", ...)
+export const SESSION_PHASE = "sessionPhase"; // "IDLE" | "ACTIVE" | "RENDERING" | "CLEAN_PENDING"
+export const CONVERSATION_LAST_ACTIVE_MS = "conversationLastActiveMs"; // epoch ms as string
+
+// --- Session Phase Values (strings que se guardan en SESSION_PHASE) --- //
+export const PHASE_ACTIVE = "ACTIVE";
+export const PHASE_IDLE = "IDLE";
+
 // --- Profiles --- //
 export const profiles = {
   default_kommo_profile: {
@@ -72,6 +82,11 @@ export const profiles = {
         { field_name: BOT_MESSAGE },
         { field_name: CLINIC_NAME },
         { field_name: THREAD_ID },
+
+        { field_name: CONVERSATION_LAST_ACTIVE_MS },
+        { field_name: SESSION_PHASE },
+        { field_name: SESSION_SEQ },
+        { field_name: SESSION_ID },
       ]
     }
   },
@@ -84,11 +99,14 @@ export const profiles = {
 // --- Agrupaciones por tipo de Bot --- //
 export const CHAT_BOT_CUSTOM_FIELDS = [
   THREAD_ID,
+  SESSION_ID,
   BOT_MESSAGE,
-  RANDOM_STAMP, 
+  SESSION_SEQ,
+  RANDOM_STAMP,
   CONTROL_MODE,
   SALESBOT_LOG,
   PATIENT_PHONE,
+  SESSION_PHASE,
   PATIENT_MESSAGE,
   REMINDER_MESSAGE,
   PATIENT_LAST_NAME,
@@ -96,6 +114,7 @@ export const CHAT_BOT_CUSTOM_FIELDS = [
   PLEASE_WAIT_MESSAGE,
   TRIGGERED_BY_MACHINE,
   LAST_PATIENT_MESSAGE,
+  CONVERSATION_LAST_ACTIVE_MS,
   PATIENT_MESSAGE_PROCESSED_CHUNK,
 ];
 

@@ -1,3 +1,5 @@
+// // packages/core/src/application/usecases/FetchPatientInfoUseCase.ts
+
 import { CHAT_BOT_CUSTOM_FIELDS, PATIENT_PHONE } from '@clinickeys-agents/core/utils';
 import { PatientService } from '@clinickeys-agents/core/application/services';
 import { PackBonoConUsoDTO } from '@clinickeys-agents/core/domain/packBono';
@@ -23,6 +25,7 @@ export interface FetchPatientInfoOutput {
     packsBonos: PackBonoConUsoDTO[];
     budgets: PresupuestoDTO[];
   }>;
+  interlocutorPhone: string;
 }
 
 export type PatientFullInfo = {
@@ -53,9 +56,13 @@ export class FetchPatientInfoUseCase {
       botConfig,
       leadId
     });
+
+    // Valor por defecto (defensivo) si algo falla antes de normalizar
+    let interlocutorPhone = '';
+
     if (!kommoData) {
       Logger.warn('[FetchPatientInfo] No se pudo obtener datos de Kommo', { leadId });
-      return { patients: [] };
+      return { patients: [], interlocutorPhone };
     }
 
     Logger.debug('[FetchPatientInfo] Datos de Kommo obtenidos', {
@@ -63,11 +70,12 @@ export class FetchPatientInfoUseCase {
       normalizedLeadCFCount: kommoData.normalizedLeadCF?.length,
       normalizedContactCFCount: kommoData.normalizedContactCF?.length,
       normalizedLeadCFSample: kommoData.normalizedLeadCF
-        ?.filter((cf) => CHAT_BOT_CUSTOM_FIELDS.includes(cf.field_name as string))
-        .map((cf) => ({ name: cf.field_name, value: cf.value })) || [],
+        ?.filter((cf: any) => CHAT_BOT_CUSTOM_FIELDS.includes(cf.field_name as string))
+        .map((cf: any) => ({ name: cf.field_name, value: cf.value })) || [],
     });
 
     const leadPhones = this.prepareLeadPhones(kommoData, kommoData.botConfig?.defaultCountry);
+    interlocutorPhone = leadPhones.in_contact_cf || '';
 
     Logger.debug('[FetchPatientInfo] Obteniendo información del paciente desde PatientService');
     const patientInfo = await this.patientService.getPatientInfo(
@@ -78,12 +86,12 @@ export class FetchPatientInfoUseCase {
 
     if (!patientInfo || !patientInfo.patients) {
       Logger.warn('[FetchPatientInfo] No se encontró información del paciente', { leadId });
-      return { patients: [] };
+      return { patients: [], interlocutorPhone };
     }
 
     if (!patientInfo.patients.length) {
       Logger.warn('[FetchPatientInfo] Pacientes vacío', { leadId });
-      return { patients: [] };
+      return { patients: [], interlocutorPhone };
     }
 
     await this.syncKommoLeadId(patientInfo.patients, kommoData.leadData.id);
@@ -99,7 +107,7 @@ export class FetchPatientInfoUseCase {
       budgets: p.presupuestos
     }));
 
-    return { patients: outputPatients };
+    return { patients: outputPatients, interlocutorPhone };
   }
 
   /**
