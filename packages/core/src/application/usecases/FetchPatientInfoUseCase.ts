@@ -46,7 +46,7 @@ export class FetchPatientInfoUseCase {
 
   async execute(input: FetchPatientInfoInput): Promise<FetchPatientInfoOutput> {
     const { botConfig, leadId, tiempoActualDT } = input;
-    Logger.info('[FetchPatientInfo] Inicio', { botConfig, leadId });
+    Logger.info('[FetchPatientInfo] Inicio', { hasBotConfig: !!botConfig.botConfigId, leadId });
 
     Logger.debug('[FetchPatientInfo] Obteniendo datos de Kommo');
     const kommoData = await this.fetchKommoDataUseCase.execute({

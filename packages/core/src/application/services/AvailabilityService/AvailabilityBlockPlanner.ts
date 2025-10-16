@@ -1,5 +1,3 @@
-// packages/core/src/application/services/AvailabilityService/AvailabilityBlockPlanner.ts
-
 import { DateTime } from "luxon";
 
 export type ISODate = string; // YYYY-MM-DD
@@ -19,6 +17,8 @@ export type PlannerOptions = {
   blockDays?: number;
   /** Límite hacia adelante desde X en días (default 45) */
   forwardMaxDays?: number;
+  /** Si true, permite incluir hoy en el rango backward (por defecto sí) */
+  includeToday?: boolean;
 };
 
 export type FechasItem = { fecha: ISODate };
@@ -34,10 +34,6 @@ function iso(d: DateTime): ISODate {
   return d.toISODate() as ISODate; // YYYY-MM-DD
 }
 
-function daysDiff(a: ISODate, b: ISODate): number {
-  return Math.abs(dt(a).diff(dt(b), "days").days);
-}
-
 function cmpDatesAsc(a: ISODate, b: ISODate): number {
   const da = dt(a).toMillis();
   const db = dt(b).toMillis();
@@ -48,7 +44,7 @@ function addDays(d: ISODate, n: number): ISODate {
   return iso(dt(d).plus({ days: n }));
 }
 
-function clampRangeToToday(range: DateRange, today: ISODate): DateRange | null {
+function clampRangeToToday(range: DateRange, today: ISODate, includeToday = true): DateRange | null {
   const start = dt(range.start);
   const end = dt(range.end);
   const t = dt(today);
@@ -56,8 +52,8 @@ function clampRangeToToday(range: DateRange, today: ISODate): DateRange | null {
   // Si todo el rango termina antes de hoy, no hay nada que buscar
   if (end < t) return null;
 
-  const clampedStart = start < t ? t : start;
-  const clampedEnd = end < t ? t : end;
+  const clampedStart = start < t ? (includeToday ? t : t.plus({ days: 1 })) : start;
+  const clampedEnd = end < t ? (includeToday ? t : t.plus({ days: 1 })) : end;
 
   if (clampedStart > clampedEnd) return null;
   return { start: iso(clampedStart), end: iso(clampedEnd) };
@@ -108,8 +104,8 @@ export function pickAnchorsFromExtractorDates(fechas: FechasItem[]): ISODate[] {
 export function orderAnchorsByCloseness(anchors: ISODate[], nowISO: ISODate): ISODate[] {
   const arr = [...anchors];
   arr.sort((a, b) => {
-    const da = daysDiff(a, nowISO);
-    const db = daysDiff(b, nowISO);
+    const da = Math.abs(dt(a).diff(dt(nowISO), "days").days);
+    const db = Math.abs(dt(b).diff(dt(nowISO), "days").days);
     if (da !== db) return da - db;
     return cmpDatesAsc(a, b);
   });
@@ -131,6 +127,7 @@ export function planBlocksAroundAnchor(
 ): Block[] {
   const blockDays = Math.max(1, Math.floor(opts?.blockDays ?? 5));
   const forwardMaxDays = Math.max(blockDays, Math.floor(opts?.forwardMaxDays ?? 45));
+  const includeToday = opts?.includeToday ?? true;
 
   const blocks: Block[] = [];
   const today = nowISO; // hoy en local-UTC (ya normalizado por la app)
@@ -142,11 +139,11 @@ export function planBlocksAroundAnchor(
 
   while (dt(backEnd) >= dt(today)) {
     const rawRange: DateRange = { start: backStart, end: backEnd };
-    const clamped = clampRangeToToday(rawRange, today);
+    const clamped = clampRangeToToday(rawRange, today, includeToday);
     if (clamped) {
       blocks.push({ ...clamped, direction: "backward", anchor });
     }
-    // siguiente bloque atrás
+    // siguiente bloque atrás (no solapado)
     backEnd = iso(dt(backStart).minus({ days: 1 }));
     backStart = iso(dt(backEnd).minus({ days: blockDays - 1 }));
   }
@@ -159,7 +156,7 @@ export function planBlocksAroundAnchor(
   while (dt(fwdStart) <= dt(forwardLimit)) {
     const end = dt(fwdEnd) > dt(forwardLimit) ? forwardLimit : fwdEnd;
     blocks.push({ start: fwdStart, end, direction: "forward", anchor });
-    // siguiente bloque adelante
+    // siguiente bloque adelante (no solapado)
     fwdStart = iso(dt(end).plus({ days: 1 }));
     fwdEnd = iso(dt(fwdStart).plus({ days: blockDays - 1 }));
   }

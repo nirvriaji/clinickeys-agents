@@ -1,5 +1,3 @@
-// packages/core/src/application/services/AgendaConfigCompilerService.ts
-
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import path from 'path';
 import { readFile } from 'fs/promises';
@@ -10,14 +8,17 @@ import { AgendaPolicyResolvedSchema } from '@clinickeys-agents/core/application/
 /**
  * AgendaConfigCompilerService
  *
- * "Compila" una política de presentación de agenda a partir de:
+ * Compila una política de agenda (JSON) a partir de:
  * - Texto de configuración (asistente_agenda_config_text)
  * - Análisis local de agenda (analisis_agenda)
- * - Contexto de preferencias/overrides
+ * - Overrides de contexto (preferencias, presentación, límites)
  *
- * Emite un JSON válido que cumple con AgendaPolicyResolvedSchema.
+ * Devuelve un objeto que cumple el Zod `AgendaPolicyResolvedSchema`.
  *
- * Nota: usa Responses API v5 vía IOpenAIService.getSchemaStructuredResponse.
+ * Reglas clave (sin legacy):
+ * - No imponemos topes desde código; si el prompt los define, se respetan.
+ * - La normalización nunca fuerza `null` donde el tipo espera `undefined`.
+ * - Campos opcionales se agregan sólo cuando hay datos válidos.
  */
 export async function AgendaConfigCompilerService(
   openAIService: IOpenAIService,
@@ -27,12 +28,12 @@ export async function AgendaConfigCompilerService(
     sede_elegida?: string | null;
     lista_sedes_clinica?: string[];
     preferencias_usuario?: { horas_preferencia_usuario?: string[]; tipo_busqueda_final?: string };
-    limites_override?: { tope_global?: number; tope_por_dia?: number; tope_dias?: number };
-    presentacion_override?: { mostrar_medicos?: 'auto' | 'siempre' | 'nunca' };
+    limites_override?: { tope_global?: number | null; tope_por_dia?: number | null; tope_dias?: number | null };
+    presentacion_override?: { mostrar_medicos?: 'auto' | 'siempre' | 'nunca'; mostrar_sede?: boolean };
     model?: string;
   },
 ): Promise<AgendaPolicyResolved> {
-  // 1) Cargar prompt del "compiler"
+  // 1) Cargar prompt del compiler
   const promptsPath = path.resolve(
     __dirname,
     'packages/core/src/prompts/bot_compiler_agenda.md',
@@ -47,22 +48,22 @@ export async function AgendaConfigCompilerService(
       promptsPath,
       err,
     });
-    // Fallback mínimo — preferimos continuar con instrucciones claras y estrictas
-    systemPrompt = 'Eres un compilador de políticas de agenda. Responde SOLO con JSON válido que cumpla el esquema solicitado.';
+    // Fallback mínimo — continuar estrictamente en JSON
+    systemPrompt = 'Eres un compilador de políticas de agenda. Devuelve SOLO JSON válido que cumpla el esquema requerido.';
   }
 
-  // 2) Construir payload de usuario (stringificado)
+  // 2) Construir payload del usuario
   const userPayload = {
     asistente_agenda_config_text: asistente_agenda_config_text || '',
     analisis_agenda: Array.isArray(analisis_agenda) ? analisis_agenda : [],
     contexto: {
       sede_elegida: contexto?.sede_elegida ?? null,
       lista_sedes_clinica: Array.isArray(contexto?.lista_sedes_clinica)
-        ? contexto?.lista_sedes_clinica
+        ? contexto!.lista_sedes_clinica
         : [],
       preferencias_usuario: contexto?.preferencias_usuario || {},
-      limites_override: contexto?.limites_override || undefined,
-      presentacion_override: contexto?.presentacion_override || undefined,
+      limites_override: contexto?.limites_override ?? undefined,
+      presentacion_override: contexto?.presentacion_override ?? undefined,
     },
   } as const;
 
@@ -72,7 +73,7 @@ export async function AgendaConfigCompilerService(
     mostrar_medicos: userPayload.contexto.presentacion_override?.mostrar_medicos || 'auto',
   });
 
-  // 3) Llamar a OpenAI con esquema Zod real
+  // 3) Llamada a OpenAI con validación por esquema
   const schemaLabel = 'AgendaPolicyResolvedSchema';
   const model = contexto?.model || 'gpt-4o-mini';
 
@@ -84,7 +85,7 @@ export async function AgendaConfigCompilerService(
     model,
   );
 
-  // 4) Normalizar y asegurar defaults conservadores
+  // 4) Normalización conservadora compatible con tipos
   const normalized = normalizeAgendaPolicy(parsed);
   return normalized;
 }
@@ -97,11 +98,11 @@ export default AgendaConfigCompilerService;
 function twoDigits(mm: string | number): string {
   const n = typeof mm === 'number' ? mm : parseInt(String(mm), 10);
   if (Number.isNaN(n)) return '00';
-  const v = n % 60;
+  const v = ((n % 60) + 60) % 60; // asegurar rango 0..59
   return v < 10 ? `0${v}` : String(v);
 }
 
-function normalizeMinList(list: any): string[] | undefined {
+function normalizeMinList(list: unknown): string[] | undefined {
   if (!Array.isArray(list)) return undefined;
   const out = list
     .map((x) => (typeof x === 'string' ? x : String(x)))
@@ -112,84 +113,104 @@ function normalizeMinList(list: any): string[] | undefined {
   return uniq.length ? uniq : undefined;
 }
 
-function toNum(v: any): number | undefined {
+function toMaybeNumber(v: unknown): number | undefined {
+  if (v === null || v === undefined || v === '') return undefined;
   const n = typeof v === 'number' ? v : parseInt(String(v), 10);
   return Number.isFinite(n) ? n : undefined;
 }
 
+function toMaybeBoolean(v: unknown): boolean | undefined {
+  if (typeof v === 'boolean') return v;
+  if (v === 'true') return true;
+  if (v === 'false') return false;
+  return undefined;
+}
+
 function normalizeAgendaPolicy(raw: any): AgendaPolicyResolved {
-  const policy: AgendaPolicyResolved = {
+  // Empezamos con el mínimo requerido y solo añadimos campos opcionales cuando corresponda
+  const policy: Partial<AgendaPolicyResolved> = {
     version: '1.0',
     interpretacion_maximo: 'ultimo_inicio',
-  } as any;
+  };
 
   // minutos_globales
   const mg = normalizeMinList(raw?.minutos_globales);
-  if (mg && mg.length) (policy as any).minutos_globales = mg;
+  if (mg && mg.length) policy.minutos_globales = mg;
 
   // reglas específicas por tratamiento
   if (Array.isArray(raw?.reglas_minutos_por_tratamiento_resueltas)) {
     const reglas = raw.reglas_minutos_por_tratamiento_resueltas
-      .map((r: any) => ({
-        id_tratamiento: typeof r?.id_tratamiento === 'number' ? r.id_tratamiento : undefined,
-        nombre_tratamiento_bd: typeof r?.nombre_tratamiento_bd === 'string'
-          ? r.nombre_tratamiento_bd
-          : undefined,
-        minutos_permitidos: normalizeMinList(r?.minutos_permitidos) || [],
-      }))
-      .filter((r: any) =>
-        (typeof r.nombre_tratamiento_bd === 'string' && r.nombre_tratamiento_bd.length > 0) ||
-        typeof r.id_tratamiento === 'number',
-      )
+      .map((r: any) => {
+        const id = toMaybeNumber(r?.id_tratamiento);
+        const nombre = typeof r?.nombre_tratamiento_bd === 'string' && r.nombre_tratamiento_bd.trim().length
+          ? String(r.nombre_tratamiento_bd)
+          : undefined;
+        const mins = normalizeMinList(r?.minutos_permitidos) || [];
+        return {
+          id_tratamiento: id,
+          nombre_tratamiento_bd: nombre,
+          minutos_permitidos: mins,
+        };
+      })
+      .filter((r: any) => (r.id_tratamiento !== undefined) || (typeof r.nombre_tratamiento_bd === 'string'))
       .filter((r: any) => Array.isArray(r.minutos_permitidos) && r.minutos_permitidos.length > 0);
 
-    if (reglas.length) (policy as any).reglas_minutos_por_tratamiento_resueltas = reglas;
+    if (reglas.length) policy.reglas_minutos_por_tratamiento_resueltas = reglas as any;
   }
 
   // priorizacion_rangos
   if (raw?.priorizacion_rangos && typeof raw.priorizacion_rangos === 'object') {
-    (policy as any).priorizacion_rangos = {
-      metodo: String(raw.priorizacion_rangos.metodo || 'primer_dia_luego_resto_por_rango'),
-      descripcion:
-        typeof raw.priorizacion_rangos.descripcion === 'string'
-          ? raw.priorizacion_rangos.descripcion
-          : undefined,
-    };
+    const metodo = String(raw.priorizacion_rangos.metodo || 'primer_dia_luego_resto_por_rango');
+    const descripcion = typeof raw.priorizacion_rangos.descripcion === 'string'
+      ? raw.priorizacion_rangos.descripcion
+      : undefined;
+    policy.priorizacion_rangos = { metodo, descripcion } as any;
   }
 
-  // limites
+  // límites (no imponemos defaults; sólo set si vienen válidos)
   if (raw?.limites && typeof raw.limites === 'object') {
-    const tg = toNum(raw.limites.tope_global);
-    const tpd = toNum(raw.limites.tope_por_dia);
-    const td = toNum(raw.limites.tope_dias);
-    (policy as any).limites = {
-      tope_global: tg ?? 10,
-      tope_por_dia: tpd ?? 3,
-      tope_dias: td ?? 3,
-    };
+    const tope_global = toMaybeNumber(raw.limites.tope_global);
+    const tope_por_dia = toMaybeNumber(raw.limites.tope_por_dia);
+    const tope_dias = toMaybeNumber(raw.limites.tope_dias);
+    if (
+      tope_global !== undefined ||
+      tope_por_dia !== undefined ||
+      tope_dias !== undefined
+    ) {
+      policy.limites = {
+        tope_global,
+        tope_por_dia,
+        tope_dias,
+      } as any;
+    }
   }
 
-  // presentacion
-  const mostrar_sede = !!raw?.presentacion?.mostrar_sede;
-  const mostrar_medicos =
-    raw?.presentacion?.mostrar_medicos === 'siempre' || raw?.presentacion?.mostrar_medicos === 'nunca'
-      ? raw.presentacion.mostrar_medicos
-      : 'auto';
-  (policy as any).presentacion = { mostrar_sede, mostrar_medicos };
+  // presentación
+  const mostrar_sede = toMaybeBoolean(raw?.presentacion?.mostrar_sede);
+  const mm = raw?.presentacion?.mostrar_medicos;
+  const mostrar_medicos: 'auto' | 'siempre' | 'nunca' | undefined =
+    mm === 'siempre' || mm === 'nunca' || mm === 'auto' ? mm : undefined;
 
-  // sedes (solo si mostrar_sede = true y lista no vacía)
-  if (mostrar_sede && Array.isArray(raw?.sedes?.lista_clinica) && raw.sedes.lista_clinica.length) {
-    (policy as any).sedes = { lista_clinica: raw.sedes.lista_clinica.map((s: any) => String(s)) };
+  if (mostrar_sede !== undefined || mostrar_medicos !== undefined) {
+    policy.presentacion = {
+      ...(mostrar_sede !== undefined ? { mostrar_sede } : {}),
+      ...(mostrar_medicos !== undefined ? { mostrar_medicos } : {}),
+    } as any;
   }
 
-  // metadata
+  // sedes (solo si lista no vacía)
+  if (Array.isArray(raw?.sedes?.lista_clinica) && raw.sedes.lista_clinica.length) {
+    policy.sedes = { lista_clinica: raw.sedes.lista_clinica.map((s: any) => String(s)) } as any;
+  }
+
+  // metadata (passthrough seguro)
   if (raw?.metadata && typeof raw.metadata === 'object') {
-    (policy as any).metadata = {
-      criterios: raw.metadata.criterios || undefined,
-      conteos: raw.metadata.conteos || undefined,
-      warnings: Array.isArray(raw.metadata.warnings) ? raw.metadata.warnings : undefined,
-    };
+    const meta: any = {};
+    if (raw.metadata.criterios && typeof raw.metadata.criterios === 'object') meta.criterios = raw.metadata.criterios;
+    if (raw.metadata.conteos && typeof raw.metadata.conteos === 'object') meta.conteos = raw.metadata.conteos;
+    if (Array.isArray(raw.metadata.warnings)) meta.warnings = raw.metadata.warnings;
+    if (Object.keys(meta).length) policy.metadata = meta;
   }
 
-  return policy;
+  return policy as AgendaPolicyResolved;
 }

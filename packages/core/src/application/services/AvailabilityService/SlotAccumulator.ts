@@ -1,5 +1,3 @@
-// packages/core/src/availability/SlotAccumulator.ts
-
 import type {
   AgendaPolicyResolved,
   SlotAccumulatorInput,
@@ -7,10 +5,10 @@ import type {
 } from '@clinickeys-agents/core/application/services';
 
 // =============================
-// Public API
+// Public API (Nueva estrategia)
 // =============================
 export async function SlotAccumulator(input: SlotAccumulatorInput): Promise<SlotAccumulatorOutput> {
-  const policy = input.policy || ({} as AgendaPolicyResolved);
+  const policy = (input.policy || ({} as AgendaPolicyResolved));
 
   // Defaults
   const minutosGlobales = toSet(
@@ -18,11 +16,6 @@ export async function SlotAccumulator(input: SlotAccumulatorInput): Promise<Slot
       ? policy.minutos_globales.map(twoDigits)
       : DEFAULT_MINUTES_WHITELIST,
   );
-  const limites = {
-    tope_global: policy?.limites?.tope_global ?? 10,
-    tope_por_dia: policy?.limites?.tope_por_dia ?? 3,
-    tope_dias: policy?.limites?.tope_dias ?? 3,
-  };
 
   // Reglas por tratamiento (por id y por nombre exacto BD)
   const reglasPorId = new Map<number, Set<string>>();
@@ -36,7 +29,7 @@ export async function SlotAccumulator(input: SlotAccumulatorInput): Promise<Slot
   }
 
   // 1) Generar todos los inicios válidos a partir de windows
-  const allSlots = [] as AnySlot[];
+  const allSlots: AnySlot[] = [];
   for (const w of input.windows || []) {
     const fecha = String((w as any).fecha_cita || (w as any).fecha || '');
     const minRaw = String((w as any).hora_inicio_minima || '');
@@ -58,7 +51,7 @@ export async function SlotAccumulator(input: SlotAccumulatorInput): Promise<Slot
     // Interpretación fija: max es último INICIO
     for (let t = min; ; t = addMinutesHHMM(t, dur)) {
       if (compareHHMM(t, max) > 0) break; // supera el último inicio
-      // Verificar que t cae en la progresión exacta (siempre, porque partimos de min y sumamos dur)
+      // Verificar que t cae en la progresión exacta (sumando duración)
       const mm = t.substring(3, 5);
       if (minutosPermitidos.has(mm)) {
         allSlots.push(asSlot(w, fecha, t));
@@ -72,83 +65,80 @@ export async function SlotAccumulator(input: SlotAccumulatorInput): Promise<Slot
   // 2) Orden base: fecha↑, hora↑, desempate por id_espacio asc/alfabético estable
   allSlots.sort(slotChronoCmp);
 
-  // 3) Priorización por rangos y selección por día
-  const dayOrder = buildDayPriorityOrder(input.filters || []);
-  const perDayMap = groupByDate(allSlots);
-
-  const diasSeleccionados: string[] = [];
-  const opciones: AnySlot[] = [];
-
-  for (const day of dayOrder) {
-    if (diasSeleccionados.length >= limites.tope_dias) break;
-    const list = perDayMap.get(day) || [];
-    if (!list.length) continue;
-
-    // Orden intra-día con preferencia de horas
-    const orderedIntra = orderIntraDia(list, input.contexto?.horas_preferencia_usuario || []);
-
-    const take = Math.min(limites.tope_por_dia, orderedIntra.length);
-    const picked = orderedIntra.slice(0, take);
-    if (picked.length) {
-      diasSeleccionados.push(day);
-      for (const s of picked) {
-        opciones.push(s);
-        if (opciones.length >= limites.tope_global) break;
-      }
-    }
-    if (opciones.length >= limites.tope_global) break;
-  }
-
-  // Si aún no llegamos al tope global, completar recorriendo el resto cronológico (sin romper días ya añadidos)
-  if (opciones.length < limites.tope_global) {
-    for (const s of allSlots) {
-      if (opciones.length >= limites.tope_global) break;
-      const d = s.fecha_cita;
-      if (
-        diasSeleccionados.includes(d) &&
-        opciones.filter((x) => x.fecha_cita === d).length >= limites.tope_por_dia
-      ) {
-        continue; // ya alcanzamos tope del día
-      }
-      if (!diasSeleccionados.includes(d)) {
-        if (diasSeleccionados.length >= limites.tope_dias) continue; // no agregar más días
-        diasSeleccionados.push(d);
-      }
-      // Evitar duplicados exactos por seguridad
-      const key = slotKey(s);
-      if (!opciones.some((x) => slotKey(x) === key)) opciones.push(s);
-    }
-  }
-
-  // Salida
-  const out: SlotAccumulatorOutput = {
-    universo_opciones: allSlots,
-    opciones_top10: opciones.slice(0, limites.tope_global),
-    dias_mostrados: diasSeleccionados,
-    disclaimer_fechas: input.contexto?.disclaimer_fechas,
-    tipo_busqueda_final: 'bloques',
-    metadata: {
-      reglas_aplicadas: {
+  // Si no hay slots, salida inmediata
+  if (!allSlots.length) {
+    return buildOutput({
+      universo: [],
+      seleccionadas: [],
+      dias: [],
+      contexto: input.contexto,
+      reglasAplicadas: {
         minutos_globales: Array.from(minutosGlobales),
         tratamientos_especificos: (policy.reglas_minutos_por_tratamiento_resueltas || []).length,
       },
-      conteos: {
-        total_original: (input.windows || []).length,
-        total_derivados: allSlots.length,
-        total_filtrados: opciones.length,
-        dias_presentados: diasSeleccionados.length,
-      },
-      criterios: {
-        orden: 'fecha↑, hora↑, id_espacio↑',
-        tope_dias: limites.tope_dias,
-        tope_por_dia: limites.tope_por_dia,
-        tope_global: limites.tope_global,
-      },
-      warnings: [],
-    },
-  } as any;
+      tipoBusqueda: 'bloques',
+      warnings: ['sin_slots_entrada'],
+    });
+  }
 
-  return out;
+  // 3) Priorización de días según filtros (si existen); fallback al orden natural de slots
+  const dayOrderFromFilters = buildDayPriorityOrder(input.filters || []);
+  const allDaysChrono = Array.from(new Set(allSlots.map(s => s.fecha_cita))).sort();
+  const dayOrder = dayOrderFromFilters.length
+    ? uniqPreserving([...dayOrderFromFilters, ...allDaysChrono])
+    : allDaysChrono;
+
+  // 4) Agrupar por día y ordenar intra‑día con preferencias
+  const perDayMap = groupByDate(allSlots);
+
+  const preferencias = input.contexto?.horas_preferencia_usuario || [];
+
+  // 5) Selección bajo la NUEVA estrategia:
+  //    - Tomar días completos (todas sus opciones válidas) siguiendo el ranking de días
+  //    - Parar cuando tengamos al menos 3 días completos
+  //    - Además, procurar cubrir divisiones horarias (mañana/mediodía/tarde/noche) en el universo seleccionado global
+  const MIN_DIAS_OBJETIVO = 3;
+  const selectedDays: string[] = [];
+  const selectedSlots: AnySlot[] = [];
+
+  // Seguimiento de cobertura por divisiones horarias globales
+  const divisionCoverage = new Map<string, number>();
+
+  for (const day of dayOrder) {
+    const list = perDayMap.get(day) || [];
+    if (!list.length) continue;
+
+    const orderedIntra = orderIntraDia(list, preferencias);
+
+    // Día completo: agregamos TODAS las opciones válidas del día (sin truncar)
+    for (const s of orderedIntra) {
+      selectedSlots.push(s);
+      const div = getDivisionId(s.hora_inicio);
+      divisionCoverage.set(div, (divisionCoverage.get(div) || 0) + 1);
+    }
+    selectedDays.push(day);
+
+    // Criterio de parada mínimo
+    if (selectedDays.length >= MIN_DIAS_OBJETIVO) {
+      // Si ya cubrimos al menos 1 opción en cada división principal, podemos cortar
+      if (hasGlobalDivisionVariety(divisionCoverage)) break;
+      // Si no, seguimos añadiendo días hasta cubrir variedad o agotar días
+    }
+  }
+
+  // 6) Resultado
+  return buildOutput({
+    universo: allSlots,
+    seleccionadas: selectedSlots,
+    dias: selectedDays,
+    contexto: input.contexto,
+    reglasAplicadas: {
+      minutos_globales: Array.from(minutosGlobales),
+      tratamientos_especificos: (policy.reglas_minutos_por_tratamiento_resueltas || []).length,
+    },
+    tipoBusqueda: 'bloques',
+    warnings: [],
+  });
 }
 
 export default SlotAccumulator;
@@ -200,8 +190,8 @@ function toHHMM(s: string): string | null {
 function addMinutesHHMM(hhmm: string, minutes: number): string {
   const [h, m] = hhmm.split(':').map((x) => parseInt(x, 10));
   const total = h * 60 + m + minutes;
-  const nh = Math.floor(total / 60);
-  const nm = total % 60;
+  const nh = Math.floor(total / 60) % 24;
+  const nm = ((total % 60) + 60) % 60;
   return `${twoDigits(nh)}:${twoDigits(nm)}`;
 }
 
@@ -258,7 +248,7 @@ function resolveMinutosPermitidos(
 }
 
 // =============================
-// Priorización por rangos y orden intra-día
+// Priorización por rangos y orden intra‑día
 // =============================
 function buildDayPriorityOrder(filters: any[]): string[] {
   const seen = new Set<string>();
@@ -285,8 +275,16 @@ function buildDayPriorityOrder(filters: any[]): string[] {
     }
   }
 
-  // Como respaldo, si no hubo rangos, orden natural de los slots
-  return out.length ? out : [];
+  return out;
+}
+
+function uniqPreserving<T>(arr: T[]): T[] {
+  const res: T[] = [];
+  const seen = new Set<any>();
+  for (const x of arr) {
+    if (!seen.has(x as any)) { seen.add(x as any); res.push(x); }
+  }
+  return res;
 }
 
 function isISODate(s: any): s is string { return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s); }
@@ -312,8 +310,8 @@ function groupByDate(slots: AnySlot[]): Map<string, AnySlot[]> {
 }
 
 function orderIntraDia(slots: AnySlot[], preferencias: string[] = []): AnySlot[] {
-  const prefTargets = buildPreferenceTargets(preferencias);
-  return [...slots].sort((a, b) => intraCmp(a, b, prefTargets));
+  const targets = buildPreferenceTargets(preferencias);
+  return [...slots].sort((a, b) => intraCmp(a, b, targets));
 }
 
 function intraCmp(a: AnySlot, b: AnySlot, targets: string[]): number {
@@ -337,6 +335,7 @@ function buildPreferenceTargets(prefs: string[]): string[] {
     if (!s) continue;
     if (/^\d{2}:\d{2}$/.test(s)) { targets.push(s); continue; }
     if (s === 'mañana' || s === 'manana') { targets.push('09:00', '10:00', '11:00'); continue; }
+    if (s === 'mediodia' || s === 'mediodía') { targets.push('12:00', '13:00', '14:00'); continue; }
     if (s === 'tarde') { targets.push('15:00', '16:00', '17:00'); continue; }
     if (s === 'noche') { targets.push('18:00', '19:00', '20:00'); continue; }
   }
@@ -358,6 +357,58 @@ function scorePreference(hhmm: string, targets: string[]): number {
   return best; // menor es mejor
 }
 
-function slotKey(s: AnySlot): string {
-  return `${s.fecha_cita}T${s.hora_inicio}|${s.id_medico || ''}|${s.id_espacio || ''}`;
+function getDivisionId(hhmm: string): string {
+  // Divisiones simples y estables
+  // madrugada: 00:00-05:59 (no exigida), mañana: 06:00-11:59, mediodía: 12:00-14:59, tarde: 15:00-17:59, noche: 18:00-21:59, tardía: 22:00-23:59
+  const [h, m] = hhmm.split(':').map(n => parseInt(n, 10));
+  const mins = h * 60 + m;
+  if (mins >= 360 && mins <= 719) return 'mañana';
+  if (mins >= 720 && mins <= 899) return 'mediodía';
+  if (mins >= 900 && mins <= 1079) return 'tarde';
+  if (mins >= 1080 && mins <= 1319) return 'noche';
+  if (mins < 360) return 'madrugada';
+  return 'tardía';
+}
+
+function hasGlobalDivisionVariety(coverage: Map<string, number>): boolean {
+  // Requerimos al menos 1 en cada una de las divisiones principales
+  const main = ['mañana', 'mediodía', 'tarde', 'noche'];
+  return main.every(id => (coverage.get(id) || 0) > 0);
+}
+
+// =============================
+// Builder de salida
+// =============================
+function buildOutput(args: {
+  universo: AnySlot[];
+  seleccionadas: AnySlot[];
+  dias: string[];
+  contexto?: SlotAccumulatorInput['contexto'];
+  reglasAplicadas: Record<string, unknown>;
+  tipoBusqueda: string;
+  warnings: string[];
+}): SlotAccumulatorOutput {
+  return {
+    universo_opciones: args.universo,
+    opciones_top10: args.seleccionadas, // ahora sin corte: todas las del/los días completos
+    dias_mostrados: args.dias,
+    disclaimer_fechas: args.contexto?.disclaimer_fechas,
+    tipo_busqueda_final: args.tipoBusqueda,
+    metadata: {
+      reglas_aplicadas: args.reglasAplicadas,
+      criterios: {
+        orden: 'fecha↑, hora↑, id_espacio↑',
+        estrategia: 'dias_completos_sin_topes',
+        min_dias_objetivo: 3,
+        divisiones: 'mañana/mediodía/tarde/noche',
+      },
+      conteos: {
+        total_original: args.universo.length,
+        total_derivados: args.universo.length, // ya derivado arriba
+        total_filtrados: args.seleccionadas.length,
+        dias_presentados: args.dias.length,
+      },
+      warnings: args.warnings,
+    },
+  } as any;
 }

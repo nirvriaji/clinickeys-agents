@@ -8,6 +8,8 @@
 
 Convertir una solicitud de cita (texto libre o JSON) en un **objeto estructurado** que describa alternativas de búsqueda de disponibilidad. **Cada elemento de `filters` representa una alternativa (OR)**; dentro de cada alternativa, los campos son condiciones combinadas por **AND**, y los valores listados en cada campo constituyen un **OR interno**.
 
+> **Nota de alcance:** El extractor **no** decide estrategias de ranking, expansión adicional > `DEFAULT_FORWARD_DAYS`, ni segmentaciones por días de la semana. Esas decisiones ocurren fuera del extractor.
+
 ---
 
 ## 2) Formato de entrada (prompt real)
@@ -38,7 +40,7 @@ Contexto:
 
 ---
 
-## 3) Esquema de salida requerido (v2)
+## 3) Esquema de salida requerido
 
 Salida **única y exclusiva**:
 
@@ -54,15 +56,14 @@ Salida **única y exclusiva**:
       "date_ranges": [
         { "start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD" }
       ],
-      "time_preferences": "…"  
+      "time_preferences": "…"
     }
   ]
 }
 ```
 
 * `filters`: array de alternativas **OR**.
-* Dentro de cada alternativa, los campos son **AND**;
-  los valores listados en cada campo implican **OR interno**.
+* Dentro de cada alternativa, los campos son **AND**; los valores listados en cada campo implican **OR interno**.
 * `date_ranges`: **siempre** rangos (para un día suelto, usar `start_date == end_date`).
 * `time_preferences`: **opcional** y **textual** (p. ej. "mañana", "tarde", "noche", "cualquier hora"). **No** se devuelven horas exactas.
 
@@ -77,9 +78,11 @@ Salida **única y exclusiva**:
   * Si `Parámetros de la solicitud de cita` incluye `medico` o `medicos` **no nulo**, poblar `medicos` **exclusivamente** con ese valor (normalizado a array) y mapear contra **catálogo médicos**.
   * Si no viene o es `null`/vacío → `medicos: []`.
   * **No** inferir médicos desde narrativas, resúmenes o logs.
+
 * **Tratamientos / espacios**:
 
   * Extraer primero del bloque de **Parámetros** (texto/JSON) y **mapear contra sus catálogos**.
+
 * **Coincidencia flexible** para el mapeo a catálogo (devolver **siempre el nombre canónico** tal cual figura en catálogo):
 
   * Insensible a mayúsculas/minúsculas, tildes y errores tipográficos leves.
@@ -87,6 +90,7 @@ Salida **única y exclusiva**:
   * Ignorar prefijos/sufijos descriptivos y números no esenciales.
   * Tolerar que el usuario aporte la especialidad o palabras extra alrededor del nombre.
   * **⚠️ Regla estricta:** una vez identificada la coincidencia, **devolver el nombre exactamente como figura en el catálogo**, sin alterar mayúsculas, repeticiones, puntuación ni redundancias. **No resumir ni simplificar** el texto canónico.
+
 * Si el usuario indica "cualquier …", dejar el array correspondiente **vacío**.
 
 ### 4.2 Fechas y rangos (sin horas)
@@ -97,8 +101,12 @@ Salida **única y exclusiva**:
 * **Regla `DEFAULT_FORWARD_DAYS`** (de la cabecera `HEADER`):
 
   * Si el usuario **no** aporta fin del rango, fijar `end_date = start_date + DEFAULT_FORWARD_DAYS` (incluye extremos).
-  * Si el usuario pide explícitamente fechas más lejanas, **respetarlas** (no recortar a `DEFAULT_FORWARD_DAYS`).
-* Mapeo de expresiones típicas a **rangos** (ejemplos normativos):
+  * Si el usuario pide explícitamente un fin de rango (fecha máxima) **respetarlo** tal cual; **no** añadir días extra aquí. La posible extensión (> `DEFAULT_FORWARD_DAYS`) se decide fuera del extractor.
+* **Días de la semana (p. ej. "jueves y viernes")**:
+
+  * Representar la intención mediante **rangos** que cubran el horizonte pertinente (p. ej. `start_date = hoy` y `end_date = hoy + DEFAULT_FORWARD_DAYS` si no hay fin explícito).
+  * **No** expandir por días concretos ni codificar los días de la semana en la salida; esta preferencia se maneja aguas abajo por el planificador/rankeador.
+* Mapeos típicos a **rangos** (ejemplos normativos):
 
   * "hoy" → `{ start_date: hoy, end_date: hoy }`
   * "mañana" → `{ start_date: mañana, end_date: mañana }`
@@ -185,7 +193,8 @@ Para evitar sobre-especificación, mantener los ejemplos conceptuales y con nome
 1. Leer `DEFAULT_FORWARD_DAYS` de `HEADER`.
 2. Parsear `Parámetros de la solicitud de cita` (si hay JSON) y extraer claves relevantes.
 3. Normalizar valores contra **catálogo tratamientos/médicos/espacios** (aplicar coincidencia flexible; responder con el nombre **canónico exacto** del catálogo).
-4. Interpretar referencias temporales con `tiempo_actual`; construir **`date_ranges`** (no horas, no fechas diarias). Aplicar `DEFAULT_FORWARD_DAYS` cuando falte fin.
-5. Poblar `time_preferences` si procede (texto sólo).
-6. Ordenar y colapsar rangos. Validar formatos.
-7. Responder **únicamente** con `{ "filters": [ … ] }` o `{ "filters": [] }` si es ambiguo.
+4. Interpretar referencias temporales con `tiempo_actual`; construir **`date_ranges`** (no horas, no fechas diarias). Aplicar `DEFAULT_FORWARD_DAYS` cuando falte fin. **Respetar** los topes explícitos del usuario (no extender aquí).
+5. Para indicaciones de días de semana ("jueves y viernes"), devolver rangos que cubran el horizonte; **no** expandir a días individuales.
+6. Poblar `time_preferences` si procede (texto sólo).
+7. Ordenar y colapsar rangos. Validar formatos.
+8. Responder **únicamente** con `{ "filters": [ … ] }` o `{ "filters": [] }` si es ambiguo.
