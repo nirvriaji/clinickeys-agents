@@ -107,7 +107,7 @@ export class PatientRepositoryMySQL implements IPatientRepository {
        FROM pacientes
        WHERE REGEXP_REPLACE(telefono, '[^0-9]', '') LIKE CONCAT('%', ?, '%')
          AND id_clinica = ?
-         AND id_estado_registro = 1`,
+         AND id_estado_registro IN (1, 2)`,
       [telefonoNacional, id_clinica]
     );
     if (!rows || !rows.length) return [];
