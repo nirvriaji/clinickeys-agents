@@ -9,7 +9,7 @@ import {
   PLEASE_WAIT_MESSAGE,
   PATIENT_MESSAGE,
   BOT_MESSAGE,
-  THREAD_ID,
+  RESP_ID,
   // New control CFs (TEXT)
   SESSION_ID,
   SESSION_SEQ,
@@ -35,7 +35,7 @@ export const EPHEMERAL_FIELDS: readonly string[] = [
   LAST_PATIENT_MESSAGE,
   PATIENT_MESSAGE,
   BOT_MESSAGE,
-  THREAD_ID,
+  RESP_ID,
 ];
 
 /**

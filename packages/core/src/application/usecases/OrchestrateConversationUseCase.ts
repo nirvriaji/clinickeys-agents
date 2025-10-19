@@ -30,7 +30,7 @@ import {
   TREATMENT_NAME,
   SPACE_NAME,
   BOT_MESSAGE,
-  THREAD_ID,
+  RESP_ID,
 } from "@clinickeys-agents/core/utils";
 
 import { SessionResetUseCase } from "@clinickeys-agents/core/application/usecases/SessionResetUseCase";
@@ -216,7 +216,7 @@ export class OrchestrateConversationUseCase {
       });
 
       const finalMessage = result.message || "";
-      const responseId = result.responseId || ""; // correlación → THREAD_ID
+      const responseId = result.responseId || ""; // correlación → RESP_ID
 
       Logger.info("[OrchestrateConversation] Resultado final", {
         hasMessage: !!finalMessage,
@@ -235,7 +235,7 @@ export class OrchestrateConversationUseCase {
         [TREATMENT_NAME]: "",
         [CLINIC_NAME]: "",
         [SPACE_NAME]: "",
-        [THREAD_ID]: responseId,
+        [RESP_ID]: responseId,
         [BOT_MESSAGE]: finalMessage,
         [PLEASE_WAIT_MESSAGE]: "false",
         [PATIENT_MESSAGE_PROCESSED_CHUNK]: userMessage,

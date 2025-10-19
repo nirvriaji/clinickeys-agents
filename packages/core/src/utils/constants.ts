@@ -30,7 +30,7 @@ export const CONTROL_MODE = "controlMode";
 export const RANDOM_STAMP = "randomStamp";
 export const SALESBOT_LOG = "salesbotLog";
 export const BOT_MESSAGE = "botMessage";
-export const THREAD_ID = "threadId";
+export const RESP_ID = "respId";
 
 // --- Session Control CF (all TEXT in Kommo) --- //
 export const SESSION_ID = "sessionId"; // UUID string
@@ -81,7 +81,7 @@ export const profiles = {
         { field_name: CONTROL_MODE },
         { field_name: BOT_MESSAGE },
         { field_name: CLINIC_NAME },
-        { field_name: THREAD_ID },
+        { field_name: RESP_ID },
 
         { field_name: CONVERSATION_LAST_ACTIVE_MS },
         { field_name: SESSION_PHASE },
@@ -98,7 +98,7 @@ export const profiles = {
 
 // --- Agrupaciones por tipo de Bot --- //
 export const CHAT_BOT_CUSTOM_FIELDS = [
-  THREAD_ID,
+  RESP_ID,
   SESSION_ID,
   BOT_MESSAGE,
   SESSION_SEQ,

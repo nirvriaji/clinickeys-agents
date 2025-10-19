@@ -46,7 +46,7 @@ import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 
 import { LeadQueueMessageDTO } from "@clinickeys-agents/core/domain/kommo";
 import { BotConfigType } from "@clinickeys-agents/core/domain/botConfig";
-import { THREAD_ID, REMINDER_MESSAGE } from "@clinickeys-agents/core/utils";
+import { RESP_ID, REMINDER_MESSAGE } from "@clinickeys-agents/core/utils";
 
 export class LeadProcessorController {
   constructor(
@@ -206,7 +206,7 @@ export class LeadProcessorController {
 
     const userMessage = updateResult.newPatientMessage;
     const reminderMessage = normalizedLeadCF.find((cf) => cf.field_name === REMINDER_MESSAGE)?.value || undefined;
-    const previousResponseId = normalizedLeadCF.find((cf) => cf.field_name === THREAD_ID)?.value || undefined; // mantenido por compatibilidad; Responses v5 usa previousResponseId
+    const previousResponseId = normalizedLeadCF.find((cf) => cf.field_name === RESP_ID)?.value || undefined; // mantenido por compatibilidad; Responses v5 usa previousResponseId
 
     this.logger.debug("[LeadProcessorController] Orchestrating conversation", {
       lead: Number(msg.kommo.leads.add?.[0]?.id ?? 0),
