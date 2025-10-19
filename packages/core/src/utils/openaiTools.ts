@@ -86,7 +86,7 @@ export const openaiTools: OpenAITool[] = [
         },
         summary: {
           type: "string",
-          description: "Resumen breve (80–150 caracteres) con la intención y rango de fechas/horas.",
+          description: "Resumen breve (80–150 caracteres) con la intención y rango de fechas/horas. No mencionar el nombre del paciente",
         },
       },
       required: ["tratamiento", "medico", "espacio", "fechas", "horas", "summary"],
@@ -110,7 +110,7 @@ export const openaiTools: OpenAITool[] = [
         id_presupuesto: { type: ["integer", "null"], description: "Id del presupuesto si aplica." },
         summary: {
           type: "string",
-          description: "Resumen breve (80–150 caracteres), sin identificadores internos.",
+          description: "Resumen breve (80–150 caracteres), sin identificadores internos, ni mencionar el nombre del paciente.",
         },
         id_paciente: { type: ["integer", "null"], description: "ID del paciente si ya existe; null si debe crearse." },
         shouldCreatePatient: { type: "boolean", description: "true si se debe crear un nuevo paciente." },
@@ -161,7 +161,7 @@ export const openaiTools: OpenAITool[] = [
           enum: ["PROGRAMADA", "CANCELADA", "CONFIRMADA", "EN_CAMINO"],
           description: "Nuevo estado de la cita.",
         },
-        summary: { type: "string", description: "Resumen breve (80–150 caracteres)." },
+        summary: { type: "string", description: "Resumen breve (80–150 caracteres). No mencionar el nombre del paciente" },
       },
       required: ["id_cita", "estado", "summary"],
       additionalProperties: false,
