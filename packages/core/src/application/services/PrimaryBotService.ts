@@ -149,6 +149,7 @@ export class PrimaryBotService {
 
       this.logger.info("[PrimaryBotService] Iteración tools", {
         cycle,
+        calls,
         hasCalls,
         count: calls.length,
         responseId: current.responseId,

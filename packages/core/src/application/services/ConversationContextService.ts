@@ -119,7 +119,7 @@ export class ConversationContextService {
       appointmentsCount,
       hasReminderThread,
       hasInterlocutorPhone: !!interlocutorPhone,
-      payloadBytes: Buffer.byteLength(userPayloadJSON, "utf8"),
+      payloadBytes: userPayloadJSON // Buffer.byteLength(userPayloadJSON, "utf8"),
     });
 
     return {
