@@ -10,20 +10,26 @@ import { KommoService, NotificationOmittedError } from '@clinickeys-agents/core/
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 
 import {
+  RESP_ID,
   SPACE_NAME,
   CLINIC_NAME,
+  BOT_MESSAGE,
   PATIENT_PHONE,
   TREATMENT_NAME,
+  PATIENT_MESSAGE,
   NOTIFICATION_ID,
   REMINDER_MESSAGE,
   DOCTOR_FULL_NAME,
   APPOINTMENT_DATE,
   PATIENT_LAST_NAME,
   PATIENT_FIRST_NAME,
-  TRIGGERED_BY_MACHINE,
+  PLEASE_WAIT_MESSAGE,
+  LAST_PATIENT_MESSAGE,
   APPOINTMENT_END_TIME,
+  TRIGGERED_BY_MACHINE,
   APPOINTMENT_START_TIME,
   APPOINTMENT_WEEKDAY_NAME,
+  PATIENT_MESSAGE_PROCESSED_CHUNK,
 } from '@clinickeys-agents/core/utils';
 
 export interface SendRemindersJobProps {
@@ -163,6 +169,12 @@ export class SendRemindersJob {
                 [DOCTOR_FULL_NAME]: n.payload?.medic_full_name || '',
                 [TREATMENT_NAME]: n.payload?.treatment_name || '',
                 [SPACE_NAME]: n.payload?.visit_space_name || '',
+                [PATIENT_MESSAGE_PROCESSED_CHUNK]: '',
+                [LAST_PATIENT_MESSAGE]: '',
+                [PLEASE_WAIT_MESSAGE]: '',
+                [PATIENT_MESSAGE]: '',
+                [BOT_MESSAGE]: '',
+                [RESP_ID]: '',
               };
               Logger.debug('[SendRemindersJob] Actualizando campos personalizados en el lead', { leadId });
               await kommoService.updateLeadCustomFields({ botConfig: cfg, leadId, customFields });
