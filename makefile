@@ -33,10 +33,10 @@ _guard_deploy:
 
 # ---------- Desarrollo local ----------
 local:
-	@$(AWS_ARGS) $(SST) dev --stage local
+	@$(AWS_ARGS) $(SST) dev --stage dev
 
 remove-local:
-	@$(AWS_ARGS) $(SST) remove --stage local
+	@$(AWS_ARGS) $(SST) remove --stage dev
 
 # ---------- Deploy / Remove con guard ----------
 deploy: _guard_deploy

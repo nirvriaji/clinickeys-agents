@@ -1,119 +1,57 @@
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS generar_notificacion_por_cita$$
 CREATE PROCEDURE generar_notificacion_por_cita(IN p_id_cita BIGINT)
 BEGIN
-  DECLARE v_id_paciente        BIGINT;
-  DECLARE v_id_clinica         BIGINT;
-  DECLARE v_id_super_clinica   BIGINT;
-  DECLARE v_fecha_cita         DATE;
-  DECLARE v_hora_inicio        TIME;
-  DECLARE v_hora_fin           TIME;
-  DECLARE v_id_estado_cita     INT;
-  DECLARE v_id_tratamiento     BIGINT;
-  DECLARE v_id_medico          BIGINT;
-  DECLARE v_id_espacio         BIGINT;
+  /* ===== Declaraciones ===== */
+  DECLARE v_id_paciente, v_id_clinica, v_id_super_clinica, v_id_tratamiento,
+          v_id_medico, v_id_espacio BIGINT;
+  DECLARE v_fecha_cita DATE;
+  DECLARE v_hora_inicio, v_hora_fin TIME;
+  DECLARE v_id_estado_cita INT;
 
-  DECLARE v_nombre_paciente    VARCHAR(100);
-  DECLARE v_apellido_paciente  VARCHAR(100);
-  DECLARE v_nombre_tratamiento VARCHAR(255);
-  DECLARE v_nombre_medico      VARCHAR(255);
-  DECLARE v_nombre_clinica     VARCHAR(255);
-  DECLARE v_nombre_espacio     VARCHAR(255);
+  DECLARE v_nombre_paciente, v_apellido_paciente VARCHAR(100);
+  DECLARE v_nombre_tratamiento, v_nombre_medico, v_nombre_clinica, v_nombre_espacio VARCHAR(255);
 
-  DECLARE v_mensaje            TEXT;
-  DECLARE v_fecha_envio        DATE;
-  DECLARE v_hora_envio         TIME;
-  DECLARE v_estado             VARCHAR(20);
-  DECLARE v_creado_el          DATETIME;
-  DECLARE v_dia_semana         VARCHAR(20);
-  DECLARE v_ts_envio           DATETIME;
-  DECLARE v_payload            JSON;
+  DECLARE v_mensaje TEXT;
+  DECLARE v_payload JSON;
+  DECLARE v_fecha_envio DATE;
+  DECLARE v_hora_envio TIME;
+  DECLARE v_ts_envio DATETIME;
+  DECLARE v_dia_semana VARCHAR(20);
+  DECLARE v_estado VARCHAR(20);
+  DECLARE v_creado_el DATETIME;
 
-  -- Para decidir la más temprana del día
-  DECLARE v_min_hora           TIME;
-  DECLARE v_min_cita           BIGINT;
-  DECLARE v_es_mas_temprana    TINYINT(1) DEFAULT 0;
+  DECLARE v_min_hora TIME;
+  DECLARE v_min_cita BIGINT;
 
-  -- Variables para la cita MÁS TEMPRANA (puede ser distinta a p_id_cita)
-  DECLARE e_id_cita            BIGINT;
-  DECLARE e_id_paciente        BIGINT;
-  DECLARE e_id_clinica         BIGINT;
-  DECLARE e_id_super_clinica   BIGINT;
-  DECLARE e_fecha_cita         DATE;
-  DECLARE e_hora_inicio        TIME;
-  DECLARE e_hora_fin           TIME;
-  DECLARE e_id_estado_cita     INT;
-  DECLARE e_id_tratamiento     BIGINT;
-  DECLARE e_id_medico          BIGINT;
-  DECLARE e_id_espacio         BIGINT;
-
-  DECLARE e_nombre_paciente    VARCHAR(100);
-  DECLARE e_apellido_paciente  VARCHAR(100);
-  DECLARE e_nombre_tratamiento VARCHAR(255);
-  DECLARE e_nombre_medico      VARCHAR(255);
-  DECLARE e_nombre_clinica     VARCHAR(255);
-  DECLARE e_nombre_espacio     VARCHAR(255);
-
-  DECLARE e_mensaje            TEXT;
-  DECLARE e_fecha_envio        DATE;
-  DECLARE e_hora_envio         TIME;
-  DECLARE e_estado             VARCHAR(20);
-  DECLARE e_dia_semana         VARCHAR(20);
-  DECLARE e_ts_envio           DATETIME;
-  DECLARE e_payload            JSON;
-
-  SELECT id_paciente,
-         id_clinica,
-         id_super_clinica,
-         fecha_cita,
-         hora_inicio,
-         hora_fin,
-         id_estado_cita,
-         id_tratamiento,
-         id_medico,
-         id_espacio
-    INTO v_id_paciente,
-         v_id_clinica,
-         v_id_super_clinica,
-         v_fecha_cita,
-         v_hora_inicio,
-         v_hora_fin,
-         v_id_estado_cita,
-         v_id_tratamiento,
-         v_id_medico,
-         v_id_espacio
+  /* ===== Obtener datos de la cita ===== */
+  SELECT id_paciente, id_clinica, id_super_clinica, fecha_cita, hora_inicio, hora_fin,
+         id_estado_cita, id_tratamiento, id_medico, id_espacio
+    INTO v_id_paciente, v_id_clinica, v_id_super_clinica, v_fecha_cita, v_hora_inicio,
+         v_hora_fin, v_id_estado_cita, v_id_tratamiento, v_id_medico, v_id_espacio
     FROM citas
    WHERE id_cita = p_id_cita;
 
   SET v_creado_el = CURRENT_TIMESTAMP;
 
+  /* ===== Guard clause: si faltan datos mínimos, no hacer nada (NO-OP) ===== */
   IF v_id_paciente IS NOT NULL
      AND v_fecha_cita IS NOT NULL
      AND v_hora_inicio IS NOT NULL THEN
 
-    SELECT nombre, apellido
-      INTO v_nombre_paciente, v_apellido_paciente
-      FROM pacientes
-     WHERE id_paciente = v_id_paciente
-     LIMIT 1;
+    /* ===== 1) Datos descriptivos ===== */
+    SELECT nombre, apellido INTO v_nombre_paciente, v_apellido_paciente
+      FROM pacientes WHERE id_paciente = v_id_paciente LIMIT 1;
 
-    SELECT nombre_tratamiento
-      INTO v_nombre_tratamiento
-      FROM tratamientos
-     WHERE id_tratamiento = v_id_tratamiento
-     LIMIT 1;
+    SELECT nombre_tratamiento INTO v_nombre_tratamiento
+      FROM tratamientos WHERE id_tratamiento = v_id_tratamiento LIMIT 1;
 
-    SELECT nombre_medico
-      INTO v_nombre_medico
-      FROM medicos
-     WHERE id_medico = v_id_medico
-     LIMIT 1;
+    SELECT nombre_medico INTO v_nombre_medico
+      FROM medicos WHERE id_medico = v_id_medico LIMIT 1;
 
-    SELECT nombre_clinica
-      INTO v_nombre_clinica
-      FROM clinicas
-     WHERE id_clinica = v_id_clinica
-     LIMIT 1;
+    SELECT nombre_clinica INTO v_nombre_clinica
+      FROM clinicas WHERE id_clinica = v_id_clinica LIMIT 1;
 
     IF v_id_espacio IS NOT NULL THEN
       SELECT nombre INTO v_nombre_espacio FROM espacios WHERE id_espacio = v_id_espacio LIMIT 1;
@@ -121,7 +59,7 @@ BEGIN
       SET v_nombre_espacio = NULL;
     END IF;
 
-    -- Programación de envío (misma lógica original)
+    /* ===== 2) Programar envío ===== */
     IF v_id_clinica = 64 AND DAYOFWEEK(v_fecha_cita) = 2 THEN
       SET v_fecha_envio = DATE(v_fecha_cita - INTERVAL 3 DAY);
       SET v_hora_envio  = v_hora_inicio;
@@ -131,48 +69,7 @@ BEGIN
       SET v_hora_envio  = TIME(v_ts_envio);
     END IF;
 
-    -- Determinar la más temprana del día (entre estados 1,7,8,9)
-    SELECT MIN(hora_inicio)
-      INTO v_min_hora
-      FROM citas
-     WHERE id_paciente = v_id_paciente
-       AND fecha_cita = v_fecha_cita
-       AND id_estado_cita IN (1,7,8,9);
-
-    IF v_min_hora IS NOT NULL THEN
-      SELECT MIN(id_cita)
-        INTO v_min_cita
-        FROM citas
-       WHERE id_paciente = v_id_paciente
-         AND fecha_cita = v_fecha_cita
-         AND id_estado_cita IN (1,7,8,9)
-         AND hora_inicio = v_min_hora;
-
-      IF v_hora_inicio = v_min_hora AND p_id_cita = v_min_cita THEN
-        SET v_es_mas_temprana = 1;
-      ELSE
-        SET v_es_mas_temprana = 0;
-      END IF;
-    ELSE
-      SET v_es_mas_temprana = 0;
-    END IF;
-
-    -- Estado para la cita actual: si no es la más temprana, va cancelado.
-    IF v_es_mas_temprana = 0 THEN
-      SET v_estado = 'cancelado';
-    ELSE
-      IF v_id_estado_cita IN (1,7,8,9) THEN
-        SET v_estado = CASE
-          WHEN DATEDIFF(v_fecha_cita, CURDATE()) = 1 THEN 'cancelado'
-          WHEN DATEDIFF(v_fecha_cita, CURDATE()) > 1 THEN 'pendiente'
-          ELSE 'cancelado'
-        END;
-      ELSE
-        SET v_estado = 'cancelado';
-      END IF;
-    END IF;
-
-    -- Día de semana (actual)
+    /* ===== 3) Día semana ===== */
     CASE DAYOFWEEK(v_fecha_cita)
       WHEN 1 THEN SET v_dia_semana = 'DOMINGO';
       WHEN 2 THEN SET v_dia_semana = 'LUNES';
@@ -183,429 +80,108 @@ BEGIN
       WHEN 7 THEN SET v_dia_semana = 'SÁBADO';
     END CASE;
 
-    -- Mensaje (actual)
-    SET v_mensaje = '';
-    IF v_id_clinica = 66 THEN
-      SET v_mensaje = CONCAT(
-        '* * * * * * * * * * * * * * * * *', '\n',
-        'RECORDATORIO', '\n', '\n',
-        '*Rogamos CONFIRME esta cita. RESPONDER MEDIANTE ESTE WHATSAPP*', '\n', '\n',
-        '*Clínicas Love Madrid le recuerda su cita del ',
-        DATE_FORMAT(v_fecha_cita, '%d/%m/%Y'), ' a las ',
-        TIME_FORMAT(v_hora_inicio, '%H:%i'), ' horas*', '\n', '\n',
-        'Calle Edgar Neville 16', '\n', '\n',
-        '*Si no puede acudir, por favor, comuníquelo. RESPONDER MEDIANTE ESTE WHATSAPP*', '\n', '\n',
-        '919 99 35 15 - 649 63 81 98', '\n', '\n',
-        'Gracias', '\n', '\n',
-        'Horario laboral:', '\n',
-        'Lunes a viernes: 10:00 a 20:00', '\n',
-        'Sabados, Domingos y festivos: No disponible.', '\n', '\n',
-        'Muchas gracias', '\n', '\n',
-        '* * * * * * * * * * * * * * * * *'
-      );
-    ELSEIF v_id_clinica = 67 THEN
-      SET v_mensaje = CONCAT(
-        '* * * * * * * * * * * * * * *', '\n',
-        'RECORDATORIO', '\n', '\n',
-        'Rogamos CONFIRME esta cita. RESPONDER MEDIANTE ESTE WHATSAPP', '\n', '\n',
-        'Clínicas Love Barcelona le recuerda su cita del ',
-        DATE_FORMAT(v_fecha_cita, '%d/%m/%Y'), ' a las ',
-        TIME_FORMAT(v_hora_inicio, '%H:%i'), ' horas', '\n', '\n',
-        'C/ DIPUTACIÓ 327', '\n', '\n',
-        'Si no puede acudir, por favor, comuníquelo. RESPONDER MEDIANTE ESTE WHATSAPP', '\n', '\n',
-        '681 31 81 61', '\n', '\n',
-        'Gracias', '\n', '\n',
-        'Horario laboral:', '\n',
-        'Lunes a jueves: 11:00 a 20:00', '\n',
-        'Viernes: 10 a 19', '\n',
-        'Sabados, Domingos y festivos: No disponible.', '\n', '\n',
-        'Muchas gracias', '\n', '\n',
-        '* * * * * * * * * * * * * * *'
-      );
-    ELSEIF v_id_clinica = 62 THEN
-      SET v_mensaje = CONCAT(
-        '¡Hola! Te contactamos desde la Clínica PODOSOL para recordarte tu cita de ',
-        IFNULL(v_nombre_tratamiento, 'tu tratamiento agendado'), ' el día ',
-        DATE_FORMAT(v_fecha_cita, '%d/%m/%Y'), ' a las ',
-        TIME_FORMAT(v_hora_inicio, '%H:%i'), '.', '\n', '\n',
-        '*Es importante que tengas en cuenta que solo se realizan pagos en efectivo o Bizum. No se admite el pago con ningún tipo de tarjeta. Gracias por tu comprensión.*', '\n', '\n',
-        'Te esperamos en PODOSOL. Calle Ánimas, 9, Local, 28802 Alcalá de Henares, Madrid. ',
-        'Puedes confiar en que recibirás el mejor tratamiento, respaldado por años de experiencia y las técnicas más avanzadas.', '\n', '\n',
-        '*Brindamos 15 minutos de cortesía. Si llegas después de ese tiempo, ten en cuenta que es posible que no podamos atenderte inmediatamente.*', '\n', '\n',
-        '¡Muchas gracias!'
-      );
-    ELSEIF v_id_clinica = 64 THEN
-      SET v_mensaje = CONCAT(
-        'Estimado/a ', v_nombre_paciente, ' ', v_apellido_paciente, ',', '\n', '\n',
-        'Le recordamos su cita el próximo ', LOWER(v_dia_semana), ' ',
-        DATE_FORMAT(v_fecha_cita, '%d/%m/%Y'), ' a las ',
-        TIME_FORMAT(v_hora_inicio, '%H:%i'),
-        ' h en nuestra clínica de Málaga, para la realización de ',
-        IFNULL(v_nombre_tratamiento, 'el tratamiento agendado'), '.', '\n', '\n',
-        'Dirección: Calle Trinidad Grund 23, 29001 Málaga', '\n',
-        'Puede consultar más información sobre nuestros servicios en www.clinicapoyatos.com', '\n',
-        'También disponemos de clínica en Marbella, por si le resultara más conveniente.', '\n', '\n',
-        'Le rogamos que, por favor, confirme su asistencia respondiendo a este mensaje.', '\n',
-        'Si no pudiera acudir, le agradeceríamos que nos avisara con antelación para poder ofrecer su cita a otro paciente que lo necesite.', '\n', '\n',
-        'Muchas gracias por su confianza.', '\n',
-        'Clínica Poyatos'
-      );
-    ELSEIF v_id_clinica = 58 THEN
-      SET v_mensaje = CONCAT(
-        'Hola ', v_nombre_paciente, ',', '\n',
-        'Te recuerdo tu cita de mañana a las ',
-        TIME_FORMAT(v_hora_inicio, '%H:%i'),
-        ' en Clínica Lorents', '\n', '\n',
-        'Av. Francisco Jiménez Ruiz, 9, 30007 El Puntal, Murcia', '\n', '\n',
-        '¿Me puedes confirmar si podrás acudir?', '\n', '\n',
-        'Muchas gracias'
-      );
-    ELSEIF v_id_clinica = 37 THEN
-      SET v_mensaje = CONCAT(
-        '¡Hola ', v_nombre_paciente, '!', '\n', '\n',
-        'Le recordamos su cita del ', LOWER(v_dia_semana), ' ',
-        DATE_FORMAT(v_fecha_cita, '%d/%m/%Y'),
-        ' para el tratamiento de ',
-        IFNULL(v_nombre_tratamiento, 'su tratamiento agendado'), '.', '\n', '\n',
-        'Por favor, confirme su asistencia respondiendo a este mensaje.', '\n',
-        '¡Gracias por confiar en nosotros!'
-      );
-    END IF;
-
-    SET v_payload = JSON_OBJECT(
-      'patient_firstname', v_nombre_paciente,
-      'patient_lastname', v_apellido_paciente,
-      'clinic_name', v_nombre_clinica,
-      'visit_week_day_name', v_dia_semana,
-      'medic_full_name', v_nombre_medico,
-      'treatment_name', v_nombre_tratamiento,
-      'visit_date', DATE_FORMAT(v_fecha_cita, '%d/%m'),
-      'visit_init_time', TIME_FORMAT(v_hora_inicio, '%H:%i'),
-      'visit_end_time', TIME_FORMAT(v_hora_fin, '%H:%i'),
-      'visit_space_name', v_nombre_espacio
+    /* ===== 4) Mensaje único ===== */
+    SET v_mensaje = CONCAT(
+      'Le recordamos su cita el ', v_dia_semana, ' ',
+      DATE_FORMAT(v_fecha_cita, '%d/%m/%Y'),
+      ' a las ', TIME_FORMAT(v_hora_inicio, '%H:%i'),
+      IF(v_hora_fin IS NOT NULL, CONCAT('–', TIME_FORMAT(v_hora_fin, '%H:%i')), ''),
+      ' en ', IFNULL(v_nombre_clinica, 'la clínica'),
+      IFNULL(CONCAT(' para ', v_nombre_tratamiento), ''), '.'
     );
 
-    /* =========================
-       BLOQUE: CITa MÁS TEMPRANA
-       ========================= */
-    SET e_id_cita = NULL;
+    /* ===== 5) Payload ===== */
+    SET v_payload = JSON_OBJECT(
+      'clinicName', v_nombre_clinica,
+      'treatmentName', v_nombre_tratamiento,
+      'visit_date', DATE_FORMAT(v_fecha_cita, '%Y-%m-%d'),
+      'visit_init_time', TIME_FORMAT(v_hora_inicio, '%H:%i:%s'),
+      'visit_end_time', IFNULL(TIME_FORMAT(v_hora_fin, '%H:%i:%s'), NULL),
+      'visit_space_name', v_nombre_espacio,
+      'patient_firstname', v_nombre_paciente,
+      'patient_lastname', v_apellido_paciente,
+      'medic_full_name', v_nombre_medico,
+      'visit_week_day_name', v_dia_semana
+    );
 
-    IF v_min_cita IS NOT NULL THEN
-      SET e_id_cita = v_min_cita;
-      -- Cargar datos completos de la cita más temprana
-      SELECT id_paciente,
-             id_clinica,
-             id_super_clinica,
-             fecha_cita,
-             hora_inicio,
-             hora_fin,
-             id_estado_cita,
-             id_tratamiento,
-             id_medico,
-             id_espacio
-        INTO e_id_paciente,
-             e_id_clinica,
-             e_id_super_clinica,
-             e_fecha_cita,
-             e_hora_inicio,
-             e_hora_fin,
-             e_id_estado_cita,
-             e_id_tratamiento,
-             e_id_medico,
-             e_id_espacio
-        FROM citas
-       WHERE id_cita = e_id_cita;
+    /* ===== 6) Determinar la más temprana ===== */
+    SELECT MIN(hora_inicio)
+      INTO v_min_hora
+      FROM citas
+     WHERE id_paciente = v_id_paciente
+       AND fecha_cita = v_fecha_cita
+       AND id_estado_cita IN (1,7,8,9);
 
-      SELECT nombre, apellido
-        INTO e_nombre_paciente, e_apellido_paciente
-        FROM pacientes
-       WHERE id_paciente = e_id_paciente
-       LIMIT 1;
+    SELECT MIN(id_cita)
+      INTO v_min_cita
+      FROM citas
+     WHERE id_paciente = v_id_paciente
+       AND fecha_cita = v_fecha_cita
+       AND id_estado_cita IN (1,7,8,9)
+       AND hora_inicio = v_min_hora;
 
-      SELECT nombre_tratamiento
-        INTO e_nombre_tratamiento
-        FROM tratamientos
-       WHERE id_tratamiento = e_id_tratamiento
-       LIMIT 1;
-
-      SELECT nombre_medico
-        INTO e_nombre_medico
-        FROM medicos
-       WHERE id_medico = e_id_medico
-       LIMIT 1;
-
-      SELECT nombre_clinica
-        INTO e_nombre_clinica
-        FROM clinicas
-       WHERE id_clinica = e_id_clinica
-       LIMIT 1;
-
-      IF e_id_espacio IS NOT NULL THEN
-        SELECT nombre INTO e_nombre_espacio FROM espacios WHERE id_espacio = e_id_espacio LIMIT 1;
-      ELSE
-        SET e_nombre_espacio = NULL;
-      END IF;
-
-      -- Programación de envío para la más temprana (misma regla)
-      IF e_id_clinica = 64 AND DAYOFWEEK(e_fecha_cita) = 2 THEN
-        SET e_fecha_envio = DATE(e_fecha_cita - INTERVAL 3 DAY);
-        SET e_hora_envio  = e_hora_inicio;
-      ELSE
-        SET e_ts_envio    = TIMESTAMP(e_fecha_cita, e_hora_inicio) - INTERVAL 24 HOUR;
-        SET e_fecha_envio = DATE(e_ts_envio);
-        SET e_hora_envio  = TIME(e_ts_envio);
-      END IF;
-
-      CASE DAYOFWEEK(e_fecha_cita)
-        WHEN 1 THEN SET e_dia_semana = 'DOMINGO';
-        WHEN 2 THEN SET e_dia_semana = 'LUNES';
-        WHEN 3 THEN SET e_dia_semana = 'MARTES';
-        WHEN 4 THEN SET e_dia_semana = 'MIÉRCOLES';
-        WHEN 5 THEN SET e_dia_semana = 'JUEVES';
-        WHEN 6 THEN SET e_dia_semana = 'VIERNES';
-        WHEN 7 THEN SET e_dia_semana = 'SÁBADO';
-      END CASE;
-
-      SET e_mensaje = '';
-      IF e_id_clinica = 66 THEN
-        SET e_mensaje = CONCAT(
-          '* * * * * * * * * * * * * * * * *', '\n',
-          'RECORDATORIO', '\n', '\n',
-          '*Rogamos CONFIRME esta cita. RESPONDER MEDIANTE ESTE WHATSAPP*', '\n', '\n',
-          '*Clínicas Love Madrid le recuerda su cita del ',
-          DATE_FORMAT(e_fecha_cita, '%d/%m/%Y'), ' a las ',
-          TIME_FORMAT(e_hora_inicio, '%H:%i'), ' horas*', '\n', '\n',
-          'Calle Edgar Neville 16', '\n', '\n',
-          '*Si no puede acudir, por favor, comuníquelo. RESPONDER MEDIANTE ESTE WHATSAPP*', '\n', '\n',
-          '919 99 35 15 - 649 63 81 98', '\n', '\n',
-          'Gracias', '\n', '\n',
-          'Horario laboral:', '\n',
-          'Lunes a viernes: 10:00 a 20:00', '\n',
-          'Sabados, Domingos y festivos: No disponible.', '\n', '\n',
-          'Muchas gracias', '\n', '\n',
-          '* * * * * * * * * * * * * * * * *'
-        );
-      ELSEIF e_id_clinica = 67 THEN
-        SET e_mensaje = CONCAT(
-          '* * * * * * * * * * * * * * *', '\n',
-          'RECORDATORIO', '\n', '\n',
-          'Rogamos CONFIRME esta cita. RESPONDER MEDIANTE ESTE WHATSAPP', '\n', '\n',
-          'Clínicas Love Barcelona le recuerda su cita del ',
-          DATE_FORMAT(e_fecha_cita, '%d/%m/%Y'), ' a las ',
-          TIME_FORMAT(e_hora_inicio, '%H:%i'), ' horas', '\n', '\n',
-          'C/ DIPUTACIÓ 327', '\n', '\n',
-          'Si no puede acudir, por favor, comuníquelo. RESPONDER MEDIANTE ESTE WHATSAPP', '\n', '\n',
-          '681 31 81 61', '\n', '\n',
-          'Gracias', '\n', '\n',
-          'Horario laboral:', '\n',
-          'Lunes a jueves: 11:00 a 20:00', '\n',
-          'Viernes: 10 a 19', '\n',
-          'Sabados, Domingos y festivos: No disponible.', '\n', '\n',
-          'Muchas gracias', '\n', '\n',
-          '* * * * * * * * * * * * * * *'
-        );
-      ELSEIF e_id_clinica = 62 THEN
-        SET e_mensaje = CONCAT(
-          '¡Hola! Te contactamos desde la Clínica PODOSOL para recordarte tu cita de ',
-          IFNULL(e_nombre_tratamiento, 'tu tratamiento agendado'), ' el día ',
-          DATE_FORMAT(e_fecha_cita, '%d/%m/%Y'), ' a las ',
-          TIME_FORMAT(e_hora_inicio, '%H:%i'), '.', '\n', '\n',
-          '*Es importante que tengas en cuenta que solo se realizan pagos en efectivo o Bizum. No se admite el pago con ningún tipo de tarjeta. Gracias por tu comprensión.*', '\n', '\n',
-          'Te esperamos en PODOSOL. Calle Ánimas, 9, Local, 28802 Alcalá de Henares, Madrid. ',
-          'Puedes confiar en que recibirás el mejor tratamiento, respaldado por años de experiencia y las técnicas más avanzadas.', '\n', '\n',
-          '*Brindamos 15 minutos de cortesía. Si llegas después de ese tiempo, ten en cuenta que es posible que no podamos atenderte inmediatamente.*', '\n', '\n',
-          '¡Muchas gracias!'
-        );
-      ELSEIF e_id_clinica = 64 THEN
-        SET e_mensaje = CONCAT(
-          'Estimado/a ', e_nombre_paciente, ' ', e_apellido_paciente, ',', '\n', '\n',
-          'Le recordamos su cita el próximo ', LOWER(e_dia_semana), ' ',
-          DATE_FORMAT(e_fecha_cita, '%d/%m/%Y'), ' a las ',
-          TIME_FORMAT(e_hora_inicio, '%H:%i'),
-          ' h en nuestra clínica de Málaga, para la realización de ',
-          IFNULL(e_nombre_tratamiento, 'el tratamiento agendado'), '.', '\n', '\n',
-          'Dirección: Calle Trinidad Grund 23, 29001 Málaga', '\n',
-          'Puede consultar más información sobre nuestros servicios en www.clinicapoyatos.com', '\n',
-          'También disponemos de clínica en Marbella, por si le resultara más conveniente.', '\n', '\n',
-          'Le rogamos que, por favor, confirme su asistencia respondiendo a este mensaje.', '\n',
-          'Si no pudiera acudir, le agradeceríamos que nos avisara con antelación para poder ofrecer su cita a otro paciente que lo necesite.', '\n', '\n',
-          'Muchas gracias por su confianza.', '\n',
-          'Clínica Poyatos'
-        );
-      ELSEIF e_id_clinica = 58 THEN
-        SET e_mensaje = CONCAT(
-          'Hola ', e_nombre_paciente, ',', '\n',
-          'Te recuerdo tu cita de mañana a las ',
-          TIME_FORMAT(e_hora_inicio, '%H:%i'),
-          ' en Clínica Lorents', '\n', '\n',
-          'Av. Francisco Jiménez Ruiz, 9, 30007 El Puntal, Murcia', '\n', '\n',
-          '¿Me puedes confirmar si podrás acudir?', '\n', '\n',
-          'Muchas gracias'
-        );
-      ELSEIF e_id_clinica = 37 THEN
-        SET e_mensaje = CONCAT(
-          '¡Hola ', e_nombre_paciente, '!', '\n', '\n',
-          'Le recordamos su cita del ', LOWER(e_dia_semana), ' ',
-          DATE_FORMAT(e_fecha_cita, '%d/%m/%Y'),
-          ' para el tratamiento de ',
-          IFNULL(e_nombre_tratamiento, 'su tratamiento agendado'), '.', '\n', '\n',
-          'Por favor, confirme su asistencia respondiendo a este mensaje.', '\n',
-          '¡Gracias por confiar en nosotros!'
-        );
-      END IF;
-
-      SET e_payload = JSON_OBJECT(
-        'patient_firstname', e_nombre_paciente,
-        'patient_lastname', e_apellido_paciente,
-        'clinic_name', e_nombre_clinica,
-        'visit_week_day_name', e_dia_semana,
-        'medic_full_name', e_nombre_medico,
-        'treatment_name', e_nombre_tratamiento,
-        'visit_date', DATE_FORMAT(e_fecha_cita, '%d/%m'),
-        'visit_init_time', TIME_FORMAT(e_hora_inicio, '%H:%i'),
-        'visit_end_time', TIME_FORMAT(e_hora_fin, '%H:%i'),
-        'visit_space_name', e_nombre_espacio
-      );
-
-      -- Estado para la más temprana (aplica tu misma lógica)
-      IF e_id_estado_cita IN (1,7,8,9) THEN
-        SET e_estado = CASE
-          WHEN DATEDIFF(e_fecha_cita, CURDATE()) = 1 THEN 'cancelado'
-          WHEN DATEDIFF(e_fecha_cita, CURDATE()) > 1 THEN 'pendiente'
+    /* ===== 7) Estado de la notificación ===== */
+    IF p_id_cita = v_min_cita THEN
+      IF v_id_estado_cita IN (1,7,8,9) THEN
+        SET v_estado = CASE
+          WHEN DATEDIFF(v_fecha_cita, CURDATE()) > 1 THEN 'pendiente'
           ELSE 'cancelado'
         END;
       ELSE
-        SET e_estado = 'cancelado';
+        SET v_estado = 'cancelado';
       END IF;
+    ELSE
+      SET v_estado = 'cancelado';
+    END IF;
 
-      -- Si la más temprana califica para "pendiente", cancelar cualquier otra pendiente del día
-      IF e_estado = 'pendiente' THEN
-        UPDATE notificaciones
-           SET estado = 'cancelado'
-         WHERE id_entidad_destino = e_id_paciente
-           AND entidad_destino = 'paciente'
-           AND tipo_notificacion = 'recordatorio_cita'
-           AND fecha_envio_programada = e_fecha_envio
-           AND estado = 'pendiente'
-           AND (id_entidad_desencadenadora IS NULL OR id_entidad_desencadenadora <> e_id_cita);
-      END IF;
+    /* ===== 8) Cancelar duplicadas ===== */
+    IF v_estado = 'pendiente' THEN
+      UPDATE notificaciones
+         SET estado = 'cancelado',
+             actualizado_el = CURRENT_TIMESTAMP
+       WHERE id_entidad_destino = v_id_paciente
+         AND entidad_destino = 'paciente'
+         AND tipo_notificacion = 'recordatorio_cita'
+         AND fecha_envio_programada = v_fecha_envio
+         AND estado = 'pendiente'
+         AND (id_entidad_desencadenadora IS NULL OR id_entidad_desencadenadora <> p_id_cita);
+    END IF;
 
-      -- Upsert de la notificación de la cita MÁS TEMPRANA
-      IF EXISTS (
-        SELECT 1
-          FROM notificaciones
-         WHERE entidad_desencadenadora = 'cita'
-           AND id_entidad_desencadenadora = e_id_cita
-      ) THEN
-        UPDATE notificaciones
-           SET tipo_notificacion       = 'recordatorio_cita',
-               id_entidad_destino      = e_id_paciente,
-               entidad_destino         = 'paciente',
-               mensaje                 = e_mensaje,
-               payload                 = e_payload,
-               fecha_envio_programada  = e_fecha_envio,
-               hora_envio_programada   = e_hora_envio,
-               id_clinica              = e_id_clinica,
-               id_super_clinica        = e_id_super_clinica,
-               estado                  = e_estado,
-               actualizado_el          = CURRENT_TIMESTAMP
-         WHERE entidad_desencadenadora = 'cita'
-           AND id_entidad_desencadenadora = e_id_cita;
-      ELSE
-        INSERT INTO notificaciones (
-          tipo_notificacion,
-          id_entidad_destino,
-          entidad_destino,
-          mensaje,
-          payload,
-          fecha_envio_programada,
-          hora_envio_programada,
-          entidad_desencadenadora,
-          id_entidad_desencadenadora,
-          id_clinica,
-          id_super_clinica,
-          estado,
-          creado_el
-        ) VALUES (
-          'recordatorio_cita',
-          e_id_paciente,
-          'paciente',
-          e_mensaje,
-          e_payload,
-          e_fecha_envio,
-          e_hora_envio,
-          'cita',
-          e_id_cita,
-          e_id_clinica,
-          e_id_super_clinica,
-          e_estado,
-          v_creado_el
-        );
-      END IF;
-
-    END IF; -- fin bloque más temprana
-
-    /* =========================
-       BLOQUE: CITa ACTUAL (p_id_cita)
-       ========================= */
-
-    -- Si ya existe notificación de esta cita, actualizar; si no, insertar
+    /* ===== 9) Upsert notificación ===== */
     IF EXISTS (
-      SELECT 1
-        FROM notificaciones
+      SELECT 1 FROM notificaciones
        WHERE entidad_desencadenadora = 'cita'
          AND id_entidad_desencadenadora = p_id_cita
     ) THEN
       UPDATE notificaciones
-         SET tipo_notificacion       = 'recordatorio_cita',
-             id_entidad_destino      = v_id_paciente,
-             entidad_destino         = 'paciente',
-             mensaje                 = v_mensaje,
-             payload                 = v_payload,
-             fecha_envio_programada  = v_fecha_envio,
-             hora_envio_programada   = v_hora_envio,
-             id_clinica              = v_id_clinica,
-             id_super_clinica        = v_id_super_clinica,
-             estado                  = v_estado,
-             actualizado_el          = CURRENT_TIMESTAMP
+         SET tipo_notificacion      = 'recordatorio_cita',
+             id_entidad_destino     = v_id_paciente,
+             entidad_destino        = 'paciente',
+             mensaje                = v_mensaje,
+             payload                = v_payload,
+             fecha_envio_programada = v_fecha_envio,
+             hora_envio_programada  = v_hora_envio,
+             id_clinica             = v_id_clinica,
+             id_super_clinica       = v_id_super_clinica,
+             estado                 = v_estado,
+             actualizado_el         = CURRENT_TIMESTAMP
        WHERE entidad_desencadenadora = 'cita'
          AND id_entidad_desencadenadora = p_id_cita;
     ELSE
       INSERT INTO notificaciones (
-        tipo_notificacion,
-        id_entidad_destino,
-        entidad_destino,
-        mensaje,
-        payload,
-        fecha_envio_programada,
-        hora_envio_programada,
-        entidad_desencadenadora,
-        id_entidad_desencadenadora,
-        id_clinica,
-        id_super_clinica,
-        estado,
-        creado_el
-      ) VALUES (
-        'recordatorio_cita',
-        v_id_paciente,
-        'paciente',
-        v_mensaje,
-        v_payload,
-        v_fecha_envio,
-        v_hora_envio,
-        'cita',
-        p_id_cita,
-        v_id_clinica,
-        v_id_super_clinica,
-        v_estado,
-        v_creado_el
+        tipo_notificacion, id_entidad_destino, entidad_destino, mensaje, payload,
+        fecha_envio_programada, hora_envio_programada, entidad_desencadenadora, id_entidad_desencadenadora,
+        id_clinica, id_super_clinica, estado, creado_el
+      )
+      VALUES (
+        'recordatorio_cita', v_id_paciente, 'paciente', v_mensaje, v_payload,
+        v_fecha_envio, v_hora_envio, 'cita', p_id_cita,
+        v_id_clinica, v_id_super_clinica, v_estado, v_creado_el
       );
     END IF;
 
-  ELSE
-    SIGNAL SQLSTATE '45000'
-      SET MESSAGE_TEXT = 'Datos insuficientes para crear la notificación de cita';
-  END IF;
+  END IF; /* fin guard clause datos mínimos */
+
 END$$
 
 DELIMITER ;
