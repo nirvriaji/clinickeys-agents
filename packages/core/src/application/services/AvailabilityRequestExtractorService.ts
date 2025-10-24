@@ -1,4 +1,4 @@
-// packages/core/src/application/services/AvailabilityRequestExtractorService.ts
+// packages/core/src/application/services/AvailabilityService/AvailabilityRequestExtractorService.ts
 
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { IOpenAIService } from "@clinickeys-agents/core/domain/openai";
@@ -15,11 +15,11 @@ import {
 export interface ExtractorContext {
   id_clinica: number;
   id_super_clinica: number;
-  tiempo_actual: string; // ISO local de la clínica
-  localTimeForPrompts: string; // string legible ya usado en otros prompts
-  tratamientosDisponibles: string[];
-  medicosDisponibles: string[];
-  espaciosDisponibles: string[];
+  tiempo_actual: string;
+  localTimeForPrompts: string;
+  tratamientosDisponibles: { id: number; nombre: string }[];
+  medicosDisponibles: { id: number; nombre: string }[];
+  espaciosDisponibles: { id: number; nombre: string }[];
 }
 
 export interface ExtractorOptions {
@@ -44,28 +44,47 @@ export class AvailabilityRequestExtractorService {
       return AvailabilityRequestExtractorService.cachedSystemPrompt;
     }
 
-    const promptsPath = path.resolve(
+    // Ruta principal (build) y fallback (ejecución local)
+    const mainPath = path.resolve(
       __dirname,
-      "packages/core/src/prompts/bot_extractor_consulta_cita.md"
+      "packages/core/src/prompts/bot_extractor_consulta_cita.md",
+    );
+    const fallbackPath = path.resolve(
+      process.cwd(),
+      "packages/core/src/prompts/bot_extractor_consulta_cita.md",
     );
 
-    try {
-      const content = await readFile(promptsPath, "utf8");
-      AvailabilityRequestExtractorService.cachedSystemPrompt = content;
+    const tryRead = async (p: string) => {
+      const content = await readFile(p, "utf8");
       Logger.info(
         "[AvailabilityRequestExtractorService] Prompt cargado desde archivo .md",
-        { promptsPath }
+        { promptsPath: p },
       );
       return content;
-    } catch (err) {
-      Logger.error(
-        "[AvailabilityRequestExtractorService] No se pudo leer el prompt; abortando",
-        err
+    };
+
+    try {
+      const content = await tryRead(mainPath);
+      AvailabilityRequestExtractorService.cachedSystemPrompt = content;
+      return content;
+    } catch (errMain) {
+      Logger.warn(
+        "[AvailabilityRequestExtractorService] No se encontró prompt en ruta principal; intentando fallback",
+        { mainPath },
       );
-      // No hay fallback textual aquí: preferimos fallar visiblemente
-      throw new Error(
-        "No se pudo cargar el prompt del extractor (bot_extractor_consulta_cita.md)"
-      );
+      try {
+        const content = await tryRead(fallbackPath);
+        AvailabilityRequestExtractorService.cachedSystemPrompt = content;
+        return content;
+      } catch (errFallback) {
+        Logger.error(
+          "[AvailabilityRequestExtractorService] No se pudo leer el prompt; abortando",
+          { errMain, errFallback },
+        );
+        throw new Error(
+          "No se pudo cargar el prompt del extractor (bot_extractor_consulta_cita.md)",
+        );
+      }
     }
   }
 
@@ -73,13 +92,11 @@ export class AvailabilityRequestExtractorService {
   private buildUserPrompt(
     parametrosSolicitudCita: string,
     contexto: ExtractorContext,
-    options?: ExtractorOptions
+    options?: ExtractorOptions,
   ): string {
-    const DEFAULT_FORWARD_DAYS = Number(
-      options?.header?.DEFAULT_FORWARD_DAYS ?? 45
-    );
+    const DEFAULT_FORWARD_DAYS = Number(options?.header?.DEFAULT_FORWARD_DAYS ?? 45);
 
-    // Catálogos en crudo, SIN recortes
+    // Catálogos en crudo (strings). El prompt system es el responsable de mapear a IDs de BD
     const tratamientosJSON = JSON.stringify(contexto.tratamientosDisponibles);
     const medicosJSON = JSON.stringify(contexto.medicosDisponibles);
     const espaciosJSON = JSON.stringify(contexto.espaciosDisponibles);
@@ -112,7 +129,7 @@ export class AvailabilityRequestExtractorService {
   public async extract(
     parametrosSolicitudCita: string,
     contexto: ExtractorContext,
-    options?: ExtractorOptions
+    options?: ExtractorOptions,
   ): Promise<ExtractorResult["filters"]> {
     const systemPrompt = await this.loadSystemPrompt();
     const userPrompt = this.buildUserPrompt(parametrosSolicitudCita, contexto, options);
@@ -125,7 +142,7 @@ export class AvailabilityRequestExtractorService {
         tiempo_actual: contexto.tiempo_actual,
       },
       header: options?.header ?? {},
-      userPrompt
+      userPrompt,
     });
 
     try {
@@ -134,7 +151,7 @@ export class AvailabilityRequestExtractorService {
         userPrompt,
         ExtractorResultSchema,
         "ExtractorResultSchema",
-        options?.model || "gpt-4.1-mini"
+        options?.model || "gpt-4.1-mini",
       );
 
       const result = parsed as ExtractorResult;
@@ -148,7 +165,7 @@ export class AvailabilityRequestExtractorService {
     } catch (error) {
       Logger.error(
         "[AvailabilityRequestExtractorService] Error al extraer filtros",
-        error
+        error,
       );
       // Sin retries acá. El caller decidirá el mensaje al paciente si corresponde
       return [];

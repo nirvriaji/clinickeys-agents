@@ -1,3 +1,5 @@
+// packages/core/src/domain/availability/events/AvailabilityEventsCatalog.ts
+
 import { AvailabilityEvent, AvailabilityEventFactory } from "./AvailabilityEvent";
 
 /**

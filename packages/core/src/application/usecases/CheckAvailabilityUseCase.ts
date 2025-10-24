@@ -1,3 +1,5 @@
+// packages/core/src/application/usecases/CheckAvailabilityUseCase.ts
+
 import { z } from "zod";
 import { DateTime } from "luxon";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
@@ -10,9 +12,7 @@ import {
   SlotAccumulator,
 } from "@clinickeys-agents/core/application/services";
 
-import type {
-  SlotDisponibilidad,
-} from "@clinickeys-agents/core/domain/availability";
+import type { SlotDisponibilidad } from "@clinickeys-agents/core/domain/availability";
 
 import type { ITratamientoRepository } from "@clinickeys-agents/core/domain/tratamiento";
 import type { IMedicoRepository } from "@clinickeys-agents/core/domain/medico";
@@ -24,19 +24,30 @@ import { getClinicLocalTimestamp } from "@clinickeys-agents/core/utils";
 
 // Nueva estrategia (servicios utilitarios)
 import { AvailabilityDateRankingService } from "@clinickeys-agents/core/application/services/AvailabilityService/AvailabilityDateRankingService";
-import {
-  AvailabilityTimeDivisionsService,
-} from "@clinickeys-agents/core/application/services/AvailabilityService/AvailabilityTimeDivisionsService";
-import {
-  AvailabilitySearchCache,
-} from "@clinickeys-agents/core/application/services/AvailabilityService/AvailabilitySearchCache";
+import { AvailabilityTimeDivisionsService } from "@clinickeys-agents/core/application/services/AvailabilityService/AvailabilityTimeDivisionsService";
+import { AvailabilitySearchCache } from "@clinickeys-agents/core/application/services/AvailabilityService/AvailabilitySearchCache";
 
 import type {
   ISODate,
   DateRange,
   MinimalSlot,
-  TimeDivision,
 } from "@clinickeys-agents/core/application/services/AvailabilityService/AvailabilitySearch";
+
+import type { AvailabilitySearchInputKey } from "@clinickeys-agents/core/application/services/AvailabilityService/AvailabilitySearchCache";
+
+// Helpers centralizados (ID-first ready)
+import {
+  buildAvailabilitySteps,
+  executeAvailabilitySteps,
+} from "@clinickeys-agents/core/application/services/AvailabilityService/AvailabilityStepStrategy";
+
+import type { BuildStepsInput } from "@clinickeys-agents/core/application/services/AvailabilityService/AvailabilityStepStrategy";
+
+// Tipos del servicio de divisiones
+import type {
+  DivisionConfig,
+  DaySlot,
+} from "@clinickeys-agents/core/application/services/AvailabilityService/AvailabilityTimeDivisionsService";
 
 // =============================
 // Zod Schemas (firma de tool-calls)
@@ -57,7 +68,7 @@ const CheckAvailabilitySchema = z.object({
 interface CheckAvailabilityInput {
   botConfig: BotConfigDTO;
   leadId: number;
-  normalizedLeadCF: (KommoCustomFieldValueBase & { value: any })[];
+  normalizedLeadCF: (KommoCustomFieldValueBase & { value: unknown })[];
   params: z.infer<typeof CheckAvailabilitySchema>;
   timezone: string;
   tiempoActualDT: DateTime;
@@ -70,7 +81,7 @@ interface CheckAvailabilityOutput {
 }
 
 // =============================
-// Implementación
+// Implementación (ID-first)
 // =============================
 export class CheckAvailabilityUseCase {
   private cache: AvailabilitySearchCache;
@@ -96,13 +107,14 @@ export class CheckAvailabilityUseCase {
         leadId,
         normalizedLeadCF,
         salesbotId: botConfig.kommo.salesbotId,
-        message: "Muy bien, voy a mirar la agenda para ver las citas disponibles. Un momento, por favor.",
+        message:
+          "Muy bien, voy a mirar la agenda para ver las citas disponibles. Un momento, por favor.",
       });
     } catch (err) {
       Logger.warn("[CheckAvailability] No se pudo enviar el mensaje inicial (continuando)", { err });
     }
 
-    Logger.info("[CheckAvailability] Inicio (nueva estrategia)", {
+    Logger.info("[CheckAvailability] Inicio (ID-first)", {
       clinicId: botConfig.clinicId,
       tratamiento: params.tratamiento,
       medico: params.medico,
@@ -113,7 +125,7 @@ export class CheckAvailabilityUseCase {
       localTimeForPrompts,
     });
 
-    // 2) Catálogos para extractor
+    // 2) Catálogos (solo para contextualizar extractor; el flujo es ID-first)
     const tratamientos = await this.tratamientoRepo.getActiveTreatmentsForClinic(
       botConfig.clinicId,
       botConfig.superClinicId,
@@ -121,12 +133,14 @@ export class CheckAvailabilityUseCase {
     const medicos = await this.medicoRepo.getMedicos(botConfig.clinicId, botConfig.superClinicId);
     const espacios = await this.espacioRepo.findByClinica(botConfig.clinicId);
 
-    const nombresTratamientos = tratamientos.map((t) => t.nombre_tratamiento);
-    const nombresMedicos = medicos.map((m) => m.nombre_completo);
-    const nombresEspacios = espacios.map((e) => e.nombre);
+    const catalogos = {
+      tratamientosDisponibles: tratamientos.map(t => ({ id: t.id_tratamiento, nombre: t.nombre_tratamiento })),
+      medicosDisponibles: medicos.map(m => ({ id: m.id_medico, nombre: m.nombre_completo })),
+      espaciosDisponibles: espacios.map(e => ({ id: e.id_espacio, nombre: e.nombre })),
+    };
 
-    // 3) Extraer filtros (tratamiento/medico/espacio/fechas)
-    const filters = await this.extractor.extract(
+    // 3) Extraer filtros (el extractor puede devolver { filters: [...] } o directamente un array)
+    const extracted = await this.extractor.extract(
       JSON.stringify({
         tratamiento: params.tratamiento,
         medico: params.medico ?? undefined,
@@ -138,14 +152,21 @@ export class CheckAvailabilityUseCase {
         id_super_clinica: botConfig.superClinicId,
         tiempo_actual: tiempoActualDT.toISO() as string,
         localTimeForPrompts,
-        tratamientosDisponibles: nombresTratamientos,
-        medicosDisponibles: nombresMedicos,
-        espaciosDisponibles: nombresEspacios,
+        tratamientosDisponibles: catalogos.tratamientosDisponibles,
+        medicosDisponibles: catalogos.medicosDisponibles,
+        espaciosDisponibles: catalogos.espaciosDisponibles,
       },
       { header: { DEFAULT_FORWARD_DAYS: 45 } },
     );
 
-    if (!filters.length) {
+    // Admitimos ambos contratos: { filters: [...] } o [...] directo
+    const filtersIds: BuildStepsInput["filter0"][] = extracted as BuildStepsInput["filter0"][];
+
+    const filter0: BuildStepsInput["filter0"] | undefined = Array.isArray(filtersIds) && filtersIds.length
+      ? filtersIds[0]
+      : undefined;
+
+    if (!filter0 || !Array.isArray(filter0.date_ranges) || filter0.date_ranges.length === 0) {
       const aclaracion =
         "No he podido interpretar bien su solicitud para buscar horarios. ¿Podría reenviar su mensaje indicando el tratamiento y fechas aproximadas que prefiere?";
 
@@ -157,24 +178,30 @@ export class CheckAvailabilityUseCase {
         + `    MENSAJE_USUARIO: ${JSON.stringify(params)}\n`
         + `    `;
 
-      Logger.warn("[CheckAvailability] Extractor sin filtros; devolviendo aclaración");
+      Logger.warn("[CheckAvailability] Extractor sin filtros o sin date_ranges; devolviendo aclaración");
       return { success: true, toolOutput };
     }
 
-    // 4) Ranking de fechas (única lista ordenada)
-    const nowISO: ISODate = tiempoActualDT.toISODate() as ISODate;
-    const forwardExtensionDays = Math.max(1, Math.floor(45 + (params.rango_dias_extra ?? 0)));
-
-    const ranking = AvailabilityDateRankingService.fromExtractorFilters({
-      filters: filters as any,
-      nowISODate: nowISO,
-      weekdaysPreferred: [],
-      forwardExtensionDays,
+    // 4) Plan de pasos (planner) – SOLO IDs
+    const baseForward = Math.max(1, Math.floor(45 + (params.rango_dias_extra ?? 0)));
+    const stepPlan = buildAvailabilitySteps({
+      filter0,
+      params,
+      baseForwardDays: 45,
     });
 
-    const orderedDatesISO: ISODate[] = (ranking.orderedDates || []).map((r) => r.fecha);
+    // 5) Ranking de fechas (usar el mismo filtro por IDs)
+    const nowISO: ISODate = tiempoActualDT.toISODate() as ISODate;
+    const globalRanking = AvailabilityDateRankingService.fromExtractorFilters({
+      filters: [filter0],
+      nowISODate: nowISO,
+      weekdaysPreferred: [],
+      forwardExtensionDays: baseForward,
+    });
 
-    if (!orderedDatesISO.length) {
+    const rankedDatesAll: ISODate[] = (globalRanking.orderedDates || []).map((r) => (typeof r === "string" ? r : (r as any).fecha));
+
+    if (!rankedDatesAll.length) {
       const aclaracion =
         "No encontré días válidos para buscar. ¿Podemos intentar con un rango o fechas aproximadas (por ejemplo: este jueves o la semana del 10)?";
 
@@ -190,57 +217,90 @@ export class CheckAvailabilityUseCase {
       return { success: true, toolOutput };
     }
 
-    // 5) Divisiones horarias canónicas
-    const divisions: TimeDivision[] = AvailabilityTimeDivisionsService.defaultConfig() as any;
+    // 6) Divisiones horarias canónicas (DivisionConfig)
+    const divisions: DivisionConfig[] = AvailabilityTimeDivisionsService.defaultConfig();
 
-    // 6) Buscar disponibilidad por lotes (agrupando fechas contiguas)
+    // 7) Ejecutar STEPS (runner con caché + recorte de horizonte por step) – SOLO IDs
     const fechasConsultadas = new Set<ISODate>();
     const fechasConResultados = new Set<ISODate>();
 
-    const daySlotsMap = new Map<ISODate, MinimalSlot[]>();
+    const presenterOpenAI = (this.extractor as any)["openAIService"]; // cliente ya inicializado
 
-    const ranges = groupContiguousDates(orderedDatesISO);
+    const stepExec = await executeAvailabilitySteps(rankedDatesAll, stepPlan, async ({ step, fechasISO }) => {
+      // Recortar por horizonte del step
+      const maxDate = tiempoActualDT.plus({ days: step.forwardExtensionDays }).toISODate() as ISODate;
+      const fechasFiltradas = (fechasISO || []).filter((d) => d <= maxDate);
 
-    for (const r of ranges) {
-      const fechasBloque = expandRangeToFechas(r);
-      for (const f of fechasBloque) fechasConsultadas.add(f.fecha);
+      // Guardar para disclaimer
+      for (const f of fechasFiltradas) fechasConsultadas.add(f);
 
-      const cacheInput = {
-        id_clinica: botConfig.clinicId,
-        tratamientos: [(filters[0] as any)?.tratamientos?.[0] ?? params.tratamiento],
-        medicos: ((filters[0] as any)?.medicos as string[]) || (params.medico ? [params.medico] : []),
-        espacios: ((filters[0] as any)?.espacios as string[]) || (params.espacio ? [params.espacio] : []),
-        fechas: fechasBloque,
-      };
+      // Agrupar fechas contiguas y consultar por bloques
+      const ranges = groupContiguousDates(fechasFiltradas);
+      const analisis_acumulado: SlotDisponibilidad[] = [];
 
-      const { value, status } = await this.cache.getOrSet(cacheInput, async () => {
-        const availabilityRequest = {
-          tratamientos: (filters[0] as any)?.tratamientos ?? [params.tratamiento],
-          medicos: (filters[0] as any)?.medicos ?? (params.medico ? [params.medico] : []),
-          espacios: (filters[0] as any)?.espacios ?? (params.espacio ? [params.espacio] : []),
-          fechas: fechasBloque,
-          id_clinica: botConfig.clinicId,
-          tiempo_actual: tiempoActualDT.toISO() as string,
-        };
-        const baseResult = await this.availabilityService.getAppointmentAvailability(availabilityRequest);
-        const analisis_agenda = baseResult.success && Array.isArray(baseResult.analisis_agenda)
-          ? (baseResult.analisis_agenda as SlotDisponibilidad[])
+      for (const r of ranges) {
+        const fechasBloque = expandRangeToFechas(r);
+
+        // IDs del step
+        const stepMedicoIds: number[] = Array.isArray((step as unknown as { medico_ids?: number[] }).medico_ids)
+          ? ((step as unknown as { medico_ids: number[] }).medico_ids)
           : [];
-        Logger.info("[CheckAvailability] Dominio consultado", { range: r, count: analisis_agenda.length });
-        return { analisis_agenda, fetchedAtISO: new Date().toISOString(), ttlMs: 5 * 60 * 1000 };
-      });
+        const stepEspacioIds: number[] = Array.isArray((step as unknown as { espacio_ids?: number[] }).espacio_ids)
+          ? ((step as unknown as { espacio_ids: number[] }).espacio_ids)
+          : [];
 
-      if (status === "hit") Logger.info("[CheckAvailability] Cache HIT", { range: r, count: value.analisis_agenda.length });
+        // Clave de caché por IDs
+        const cacheKey: AvailabilitySearchInputKey = {
+          id_clinica: botConfig.clinicId,
+          tratamiento_ids: filter0.tratamiento_ids,
+          medico_ids: stepMedicoIds,
+          espacio_ids: stepEspacioIds,
+          fechas: fechasBloque.map((f) => f.fecha),
+        };
 
-      const analisis_local = value.analisis_agenda as SlotDisponibilidad[];
-      if (!analisis_local.length) continue;
+        const { value, status } = await this.cache.getOrSet(cacheKey, async () => {
+          const availabilityRequest = {
+            tratamiento_ids: filter0.tratamiento_ids,
+            medico_ids: stepMedicoIds,
+            espacio_ids: stepEspacioIds,
+            fechas: fechasBloque,
+            id_clinica: botConfig.clinicId,
+            tiempo_actual: tiempoActualDT.toISO() as string,
+          };
 
-      // Compilar policy temporal para expansión completa (sin topes)
-      const presenterOpenAI = (this.extractor as any)["openAIService"];
-      const policyForBlock = await AgendaConfigCompilerService(
+          const baseResult = await this.availabilityService.getAppointmentAvailability(availabilityRequest);
+          const analisis_agenda: SlotDisponibilidad[] = baseResult.success && Array.isArray(baseResult.analisis_agenda)
+            ? baseResult.analisis_agenda
+            : [];
+          Logger.info("[CheckAvailability] Dominio consultado", { range: r, count: analisis_agenda.length });
+          return { analisis_agenda, fetchedAtISO: new Date().toISOString(), ttlMs: 5 * 60 * 1000 };
+        });
+
+        if (status === "hit") Logger.info("[CheckAvailability] Cache HIT", { range: r, count: value.analisis_agenda.length });
+
+        const analisis_local = value.analisis_agenda as SlotDisponibilidad[];
+        if (!analisis_local.length) continue;
+
+        analisis_acumulado.push(...analisis_local);
+        for (const it of analisis_local) {
+          const d = String(it?.fecha_cita || "").slice(0, 10) as ISODate;
+          if (d) fechasConResultados.add(d);
+        }
+      }
+
+      return { analisis_agenda: analisis_acumulado };
+    });
+
+    const analisisTotal = stepExec.analisis_agenda as SlotDisponibilidad[];
+
+    // 8) Si no hubo resultados en ningún step → respuesta sin disponibilidad
+    if (!analisisTotal.length) {
+      const disclaimerRanges = collapseDatesToRanges(Array.from(fechasConsultadas)).map((r) => ({ start: r.start, end: r.end }));
+
+      const policyEmpty = await AgendaConfigCompilerService(
         presenterOpenAI,
         botConfig?.placeholders?.ASISTENTE_AGENDA_CONFIG || "",
-        analisis_local,
+        [],
         {
           preferencias_usuario: { horas_preferencia_usuario: params.horas ? [params.horas] : [] },
           presentacion_override: { mostrar_medicos: "auto" },
@@ -248,52 +308,84 @@ export class CheckAvailabilityUseCase {
         },
       );
 
-      // Expandir ventanas a *todos* los inicios (sin recortes)
-      const accOut = await SlotAccumulator({
-        policy: policyForBlock,
-        filters: filters as any,
-        windows: analisis_local as any,
-        contexto: {
-          horas_preferencia_usuario: params.horas ? [params.horas] : [],
+      const redactorVacio = await AvailabilityResponseRedactorService(
+        presenterOpenAI,
+        [],
+        { policy: policyEmpty },
+        {
           ahoraISO: tiempoActualDT.toISO() as string,
           timezone,
+          contextoRedactor: {
+            tipo_busqueda: "fechas_rankeadas",
+            disclaimer_fechas: disclaimerRanges,
+            dias_mostrados: [],
+            horas_preferencia_usuario: params.horas || "",
+          },
         },
+      );
+
+      const toolOutput = `#consultaAgendar\n`
+        + `    TIEMPO_LOCAL: ${localTimeForPrompts}\n`
+        + `    DISCLAIMER_FECHAS_BUSCADAS: ${JSON.stringify(disclaimerRanges)}\n`
+        + `    HORARIOS_DISPONIBLES: ${JSON.stringify({ tipo_busqueda: "fechas_rankeadas", horarios_escogidos: [] })}\n`
+        + `    HORARIOS_TEXTO: ${JSON.stringify(redactorVacio.mensaje)}\n`
+        + `    MENSAJE_USUARIO: ${JSON.stringify(params)}\n`
+        + `    `;
+
+      Logger.info("[CheckAvailability] Sin disponibilidad en todos los steps", {
+        telemetry: stepExec.telemetry,
+        consultedDates: fechasConsultadas.size,
       });
 
-      const slots = ((accOut?.universo_opciones || []) as any) as MinimalSlot[];
-
-      // Indexar por día
-      for (const s of slots) {
-        const d = (s as any).fecha_cita as ISODate;
-        const list = daySlotsMap.get(d) || [];
-        list.push({
-          fecha_cita: d,
-          fecha_legible: (s as any).fecha_legible ?? null,
-          hora_inicio: (s as any).hora_inicio,
-          id_medico: (s as any).id_medico ?? null,
-          nombre_medico: (s as any).nombre_medico ?? null,
-          id_espacio: (s as any).id_espacio ?? null,
-          nombre_espacio: (s as any).nombre_espacio ?? null,
-          id_tratamiento: (s as any).id_tratamiento ?? null,
-          nombre_tratamiento: (s as any).nombre_tratamiento ?? null,
-          duracion_tratamiento: (s as any).duracion_tratamiento ?? null,
-        } as MinimalSlot);
-        daySlotsMap.set(d, list);
-        fechasConResultados.add(d);
-      }
+      return { success: true, toolOutput };
     }
 
-    // 7) Seleccionar días en orden de ranking hasta completar 3 días "completos"
+    // 9) Política global para selección y redacción
+    const policyForAll = await AgendaConfigCompilerService(
+      presenterOpenAI,
+      botConfig?.placeholders?.ASISTENTE_AGENDA_CONFIG || "",
+      analisisTotal,
+      {
+        preferencias_usuario: { horas_preferencia_usuario: params.horas ? [params.horas] : [] },
+        presentacion_override: { mostrar_medicos: "auto" },
+        limites_override: { tope_global: 999, tope_por_dia: 999, tope_dias: 99 },
+      },
+    );
+
+    // 10) Acumulador/selector (no necesita filtros por nombre)
+    const accOut = await SlotAccumulator({
+      policy: policyForAll,
+      filters: [],
+      windows: analisisTotal,
+      contexto: {
+        horas_preferencia_usuario: params.horas ? [params.horas] : [],
+        ahoraISO: tiempoActualDT.toISO() as string,
+        timezone,
+      },
+    });
+
+    const universoSlots: MinimalSlot[] = (accOut?.universo_opciones || []) as MinimalSlot[];
+
+    // 11) Seleccionar días completos (todas las divisiones cubiertas) hasta 3 días, luego completar con parciales
+    const daySlotsMap = new Map<ISODate, MinimalSlot[]>();
+    for (const s of universoSlots) {
+      const d = s.fecha_cita as ISODate;
+      const list = daySlotsMap.get(d) || [];
+      list.push(s);
+      daySlotsMap.set(d, list);
+    }
+
+    const orderedDatesISO: ISODate[] = Array.from(new Set(universoSlots.map((s) => s.fecha_cita))).sort();
+
     const selectedDays: ISODate[] = [];
     const selectedSlots: MinimalSlot[] = [];
 
     for (const d of orderedDatesISO) {
       const slots = (daySlotsMap.get(d) || []).sort(slotChronoCmp);
       if (!slots.length) continue;
-
-      const assignment = AvailabilityTimeDivisionsService.assignDay(d, slots as any, divisions as any);
+      const daySlots: DaySlot[] = slots.map(toDaySlot);
+      const assignment = AvailabilityTimeDivisionsService.assignDay(d, daySlots, divisions);
       AvailabilityTimeDivisionsService.logCoverage(assignment);
-
       const isComplete = assignment.coverage.nonEmptyDivisions >= (divisions.length || 1);
       if (isComplete) {
         selectedDays.push(d);
@@ -302,7 +394,6 @@ export class CheckAvailabilityUseCase {
       if (selectedDays.length >= 3) break;
     }
 
-    // Si no llegamos a 3 días completos, incluir los mejores días parciales (manteniendo regla de no omitir)
     if (selectedDays.length < 3) {
       for (const d of orderedDatesISO) {
         if (selectedDays.length >= 3) break;
@@ -314,26 +405,13 @@ export class CheckAvailabilityUseCase {
       }
     }
 
-    // 8) Redacción (policy final sobre TODAS las ventanas acumuladas)
-    const allWindows: any[] = [];
-    for (const r of ranges) {
-      const fechasBloque = expandRangeToFechas(r);
-      const cacheInput = {
-        id_clinica: botConfig.clinicId,
-        tratamientos: [(filters[0] as any)?.tratamientos?.[0] ?? params.tratamiento],
-        medicos: ((filters[0] as any)?.medicos as string[]) || (params.medico ? [params.medico] : []),
-        espacios: ((filters[0] as any)?.espacios as string[]) || (params.espacio ? [params.espacio] : []),
-        fechas: fechasBloque,
-      };
-      const cached = this.cache.get(cacheInput);
-      if (cached?.analisis_agenda?.length) allWindows.push(...cached.analisis_agenda);
-    }
+    // 12) Redactor final
+    const disclaimerRanges = collapseDatesToRanges(Array.from(fechasConsultadas)).map((r) => ({ start: r.start, end: r.end }));
 
-    const presenterOpenAI = (this.extractor as any)["openAIService"];
     const finalPolicy = await AgendaConfigCompilerService(
       presenterOpenAI,
       botConfig?.placeholders?.ASISTENTE_AGENDA_CONFIG || "",
-      allWindows,
+      analisisTotal,
       {
         preferencias_usuario: { horas_preferencia_usuario: params.horas ? [params.horas] : [] },
         presentacion_override: { mostrar_medicos: "auto" },
@@ -341,30 +419,23 @@ export class CheckAvailabilityUseCase {
       },
     );
 
-    const diasMostrados = Array.from(new Set(selectedDays));
-
-    const disclaimerRanges = collapseDatesToRanges(Array.from(fechasConsultadas)).map((r) => ({
-      start: r.start,
-      end: r.end,
-    }));
-
     const redactor = await AvailabilityResponseRedactorService(
       presenterOpenAI,
       selectedSlots.sort(slotChronoCmp),
-      { policy: finalPolicy as any },
+      { policy: finalPolicy },
       {
         ahoraISO: tiempoActualDT.toISO() as string,
         timezone,
         contextoRedactor: {
           tipo_busqueda: "fechas_rankeadas",
           disclaimer_fechas: disclaimerRanges,
-          dias_mostrados: diasMostrados,
+          dias_mostrados: Array.from(new Set(selectedDays)),
           horas_preferencia_usuario: params.horas || "",
         },
       },
     );
 
-    // 9) toolOutput final (idempotente)
+    // 13) toolOutput final (idempotente)
     const toolOutput = `#consultaAgendar\n`
       + `    TIEMPO_LOCAL: ${localTimeForPrompts}\n`
       + `    DISCLAIMER_FECHAS_BUSCADAS: ${JSON.stringify(disclaimerRanges)}\n`
@@ -373,13 +444,14 @@ export class CheckAvailabilityUseCase {
       + `    MENSAJE_USUARIO: ${JSON.stringify(params)}\n`
       + `    `;
 
-    Logger.info("[CheckAvailability] Completado", {
+    Logger.info("[CheckAvailability] Completado (steps / ID-first)", {
       leadId,
-      diasMostrados: diasMostrados.length,
+      diasMostrados: Array.from(new Set(selectedDays)).length,
       slots: selectedSlots.length,
       consultedDates: fechasConsultadas.size,
       datesWithResults: fechasConResultados.size,
-      horizonEnd: ranking.horizonEnd,
+      horizonEnd: globalRanking.horizonEnd,
+      stepsTelemetry: stepExec.telemetry,
     });
 
     return { success: true, toolOutput };
@@ -387,7 +459,7 @@ export class CheckAvailabilityUseCase {
 }
 
 // =============================
-// Helpers locales
+// Helpers locales (idénticos en espíritu, ID-agnósticos)
 // =============================
 function groupContiguousDates(dates: ISODate[]): DateRange[] {
   if (!dates.length) return [];
@@ -427,7 +499,25 @@ function collapseDatesToRanges(dates: ISODate[]): DateRange[] {
   return groupContiguousDates(dates);
 }
 
-function slotChronoCmp(a: any, b: any): number {
+// Narrow de HH:mm a template literal `${string}:${string}`
+const HHMM_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+function asHHMM(s: string): `${string}:${string}` {
+  if (!HHMM_RE.test(s)) throw new Error(`Hora inválida: ${s}`);
+  return s as `${string}:${string}`;
+}
+
+function toDaySlot(s: MinimalSlot): DaySlot {
+  const idEspacio: string | number | undefined =
+    typeof s.id_espacio === "number" || typeof s.id_espacio === "string" ? s.id_espacio : undefined;
+
+  return {
+    fecha_cita: s.fecha_cita,
+    hora_inicio: asHHMM(s.hora_inicio),
+    id_espacio: idEspacio,
+  };
+}
+
+function slotChronoCmp(a: MinimalSlot, b: MinimalSlot): number {
   if (a.fecha_cita !== b.fecha_cita) return a.fecha_cita < b.fecha_cita ? -1 : 1;
   if (a.hora_inicio !== b.hora_inicio) return a.hora_inicio < b.hora_inicio ? -1 : 1;
   const ae = String(a.id_espacio ?? "");

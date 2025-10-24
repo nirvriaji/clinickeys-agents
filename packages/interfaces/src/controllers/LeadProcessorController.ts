@@ -10,12 +10,11 @@ import {
   FetchPatientInfoUseCase,
   FetchKommoDataUseCase,
   UpdatePatientMessageUseCase,
-  IdentifyPatientUseCase,
   ManageAppointmentStateUseCase,
   CreateTaskUseCase,
-  ClarifyPatientUseCase,
   GetBotConfigUseCase,
   SessionResetUseCase,
+  LoadPatientsByPhoneUseCase,
 } from "@clinickeys-agents/core/application/usecases";
 
 import {
@@ -160,9 +159,8 @@ export class LeadProcessorController {
     const manageAppointmentStateUC = new ManageAppointmentStateUseCase(appointmentService);
     const createTaskUC = new CreateTaskUseCase(kommoService);
     const regularConversationUC = new RegularConversationUseCase();
-    const identifyPatientUC = new IdentifyPatientUseCase(patientService);
-    const clarifyPatientUC = new ClarifyPatientUseCase();
     const sessionResetUC = new SessionResetUseCase(kommoService);
+    const loadPatientsByPhoneUC = new LoadPatientsByPhoneUseCase(patientService);
 
     // Servicios de orquestación (nuevo stack Responses v5)
     const contextService = new ConversationContextService({ fetchPatientInfoUC, logger: Logger });
@@ -175,10 +173,10 @@ export class LeadProcessorController {
       checkAvailabilityUC,
       manageAppointmentStateUC,
       createTaskUC,
-      identifyPatientUC,
-      clarifyPatientUC,
       regularConversationUC,
-      sessionResetUC
+      sessionResetUC,
+      loadPatientsByPhoneUC,
+      
     });
 
     // ===============================

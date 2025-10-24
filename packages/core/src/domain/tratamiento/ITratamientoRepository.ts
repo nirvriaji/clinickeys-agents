@@ -1,5 +1,3 @@
-// packages/core/src/domain/tratamiento/ITratamientoRepository.ts
-
 import {
   TratamientoDTO,
   TratamientoBasicDTO,
@@ -7,6 +5,12 @@ import {
   TratamientoSearchResultDTO,
 } from "./dtos";
 
+/**
+ * Contrato del repositorio de tratamientos.
+ *
+ * Nota: Mantiene compatibilidad con los métodos existentes y añade
+ * un método ID-first para resolver múltiples tratamientos por sus IDs.
+ */
 export interface ITratamientoRepository {
   /**
    * Obtiene todos los tratamientos activos de una clínica y super clínica.
@@ -39,4 +43,11 @@ export interface ITratamientoRepository {
     nombres: string[],
     id_clinica: number
   ): Promise<TratamientoSearchResultDTO[]>;
+
+  /**
+   * Obtiene tratamientos por un conjunto de IDs.
+   * \- ID-first: permite resolver canónicamente sin depender de nombres.
+   * \- No falla si algún ID no existe; simplemente no lo incluye en el resultado.
+   */
+  findTreatmentsByIds(ids: number[]): Promise<TratamientoDTO[]>;
 }

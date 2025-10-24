@@ -28,65 +28,44 @@ export type ToolName =
   | "agendar_cita"
   | "gestionar_estado_cita"
   | "crear_tarea"
-  | "identificar_paciente"
-  | "clarificar_paciente";
+  | "cargar_pacientes_por_telefono";
 
 // Colección tipada de herramientas compatibles con SDK v5 (Responses API)
 export const openaiTools: OpenAITool[] = [
   {
     type: "function",
-    name: "identificar_paciente",
-    description:
-      "Registra los datos básicos de identidad (nombre, apellido y teléfono) de un paciente cuando no existe ninguno asociado al interlocutor o cuando se gestiona en nombre de un tercero. " +
-      "Además de registrar identidad, esta función devuelve todas las citas asociadas al paciente identificado (≈400 días hacia atrás y sin límite hacia adelante). " +
-      "Es el mecanismo oficial para acceder a la agenda e historial de un paciente no vinculado directamente al canal y debe completarse antes de cualquier otra gestión. " +
-      "El teléfono debe ser válido para contacto (idealmente con código de país). Fechas y horas siempre se comunican en la zona horaria del sistema (24h).",
-    parameters: {
-      type: "object",
-      properties: {
-        nombre: { type: "string", description: "Nombre del paciente (NO PUEDE ESTAR VACÍO)" },
-        apellido: { type: "string", description: "Apellido del paciente (NO PUEDE ESTAR VACÍO)" },
-        telefono: {
-          type: "string",
-          description:
-            "Teléfono del paciente (NO PUEDE ESTAR VACÍO; incluir código de país si es posible)",
-        },
-      },
-      required: ["nombre", "apellido", "telefono"],
-      additionalProperties: false,
-    },
-    strict: true,
-  },
-  {
-    type: "function",
     name: "consulta_agendar",
     description:
-      "Busca y devuelve los bloques de horarios disponibles para que el paciente pueda agendar una cita futura. " +
-      "Invócala únicamente cuando ya se tenga definido el tratamiento y un rango de fechas y de horas en texto libre. " +
-      "Regla de sedes: si existe LISTA_DE_SEDES_DE_LA_CLINICA, el campo ‘espacio’ debe contener el NOMBRE EXACTO de la SEDE elegida por el interlocutor; " +
-      "el sistema resolverá internamente el id_espacio. Si no existe lista de sedes, envía ‘espacio: null’.",
+      "Busca y devuelve bloques de horarios disponibles para agendar una cita futura. " +
+      "Invócala únicamente cuando ya se tenga definido el tratamiento y un rango de fechas y de horas en TEXTO LIBRE. " +
+      "Reglas de sedes: si existe LISTA_DE_SEDES_DE_LA_CLINICA con contenido, el campo ‘espacio’ debe contener el NOMBRE EXACTO de la SEDE elegida por el interlocutor (nunca null); el sistema resolverá internamente el id_espacio. " +
+      "Si la lista de sedes está vacía, no se debe pedir sede y se envía ‘espacio: null’. " +
+      "Por defecto, ‘medico’ y ‘espacio’ son null salvo preferencia explícita o directriz de la configuración externa. " +
+      "Una llamada por TRATAMIENTO. Presentar disponibilidades exactamente como llegan (sin reordenar).",
     parameters: {
       type: "object",
       properties: {
         tratamiento: {
           type: "string",
           description:
-            "Tratamiento solicitado por el paciente (NO PUEDE ESTAR VACÍO; normalizar contra el catálogo si aplica, se puede deducir dependiendo de lo que mencionó el paciente en anteriores turnos, llenar con la razón de por qué no se reconoce el tratamiento)",
+            "Tratamiento solicitado por el interlocutor (NO PUEDE ESTAR VACÍO; normalizar contra el catálogo si aplica, se puede deducir dependiendo de lo que mencionó el paciente en anteriores turnos, llenar con la razón de por qué no se reconoce el tratamiento); si no se reconoce, indicar brevemente la razón).",
         },
         medico: {
           type: ["string", "null"],
           description:
             "Nombre del médico SOLO si el paciente lo eligió o la configuración externa lo exige; en caso contrario, usar null.",
         },
-        fechas: { type: "string", description: "Rango de fechas en TEXTO LIBRE." },
-        horas: { type: "string", description: "Rango de horas en TEXTO LIBRE (mañana, tarde, etc.)." },
+        fechas: { type: "string", description: "Rango de fechas en TEXTO LIBRE (p. ej., 'próxima semana')." },
+        horas: { type: "string", description: "Rango de horas en TEXTO LIBRE (p. ej., 'tardes', 'después de las 17')." },
         espacio: {
           type: ["string", "null"],
-          description: "SEDE elegida por el interlocutor (nombre exacto) o null si no aplica.",
+          description:
+            "SEDE elegida por el interlocutor (nombre exacto) cuando la clínica lista sedes; si la lista está vacía, enviar null.",
         },
         summary: {
           type: "string",
-          description: "Resumen breve (80–150 caracteres) con la intención y rango de fechas/horas. No mencionar el nombre del paciente",
+          description:
+            "Resumen breve (80–150 caracteres) con la intención y el rango de fechas/horas. No mencionar el nombre del paciente.",
         },
       },
       required: ["tratamiento", "medico", "espacio", "fechas", "horas", "summary"],
@@ -98,8 +77,10 @@ export const openaiTools: OpenAITool[] = [
     type: "function",
     name: "agendar_cita",
     description:
-      "Confirma y formaliza la reserva de un horario disponible para un paciente identificado. " +
-      "Se utiliza únicamente después de haber mostrado disponibilidades y cuando el paciente elige un horario específico.",
+      "Confirma y formaliza la reserva de un horario disponible para un paciente. " +
+      "Usar únicamente después de mostrar disponibilidades y cuando el paciente elige un horario específico (slot). " +
+      "Identidad: si `shouldCreatePatient` es true, se crea/busca por nombre+apellido+teléfono; si es false, se debe proporcionar `id_paciente`. " +
+      "Siempre existe un id_espacio resuelto internamente (sea sede o cabina/sala).",
     parameters: {
       type: "object",
       properties: {
@@ -110,7 +91,8 @@ export const openaiTools: OpenAITool[] = [
         id_presupuesto: { type: ["integer", "null"], description: "Id del presupuesto si aplica." },
         summary: {
           type: "string",
-          description: "Resumen breve (80–150 caracteres), sin identificadores internos, ni mencionar el nombre del paciente.",
+          description:
+            "Resumen breve (80–150 caracteres), sin identificadores internos ni mencionar el nombre del paciente.",
         },
         id_paciente: { type: ["integer", "null"], description: "ID del paciente si ya existe; null si debe crearse." },
         shouldCreatePatient: { type: "boolean", description: "true si se debe crear un nuevo paciente." },
@@ -119,14 +101,26 @@ export const openaiTools: OpenAITool[] = [
           type: "object",
           properties: {
             fecha_cita: { type: "string", description: "Fecha de la cita en formato YYYY-MM-DD." },
-            fecha_legible: { type: "string", description: "Devuelve una representación legible en español tipo: [NOMBRE DÍA SEMANA], [NRO DÍA] de [NOMBRE MES]" },
+            fecha_legible: {
+              type: "string",
+              description:
+                "Representación legible en español: [DÍA DE SEMANA], [DÍA] de [MES] (para copy de confirmación).",
+            },
             hora_inicio: { type: "string", description: "Hora de inicio en formato HH:MM (24h)." },
             hora_fin: { type: "string", description: "Hora de fin en formato HH:MM (24h)." },
             id_tratamiento: { type: "integer", description: "ID del tratamiento asociado." },
             id_medico: { type: "integer", description: "ID del médico asignado." },
             id_espacio: { type: "integer", description: "ID del espacio o sede." },
           },
-          required: ["fecha_cita", "fecha_legible", "hora_inicio", "hora_fin", "id_tratamiento", "id_medico", "id_espacio"],
+          required: [
+            "fecha_cita",
+            "fecha_legible",
+            "hora_inicio",
+            "hora_fin",
+            "id_tratamiento",
+            "id_medico",
+            "id_espacio",
+          ],
           additionalProperties: false,
         },
       },
@@ -150,7 +144,8 @@ export const openaiTools: OpenAITool[] = [
     type: "function",
     name: "gestionar_estado_cita",
     description:
-      "Actualiza el estado de una cita futura ya existente (confirmar, cancelar o 'en camino'). " +
+      "Actualiza el estado de una cita futura ya existente (CONFIRMADA, CANCELADA, EN_CAMINO). " +
+      "Operar directamente cuando el usuario se expresa de forma inequívoca (con o sin recordatorio). " +
       "Debe operar únicamente sobre citas futuras.",
     parameters: {
       type: "object",
@@ -161,9 +156,17 @@ export const openaiTools: OpenAITool[] = [
           enum: ["PROGRAMADA", "CANCELADA", "CONFIRMADA", "EN_CAMINO"],
           description: "Nuevo estado de la cita.",
         },
-        summary: { type: "string", description: "Resumen breve (80–150 caracteres). No mencionar el nombre del paciente" },
+        summary: {
+          type: "string",
+          description: "Resumen breve (80–150 caracteres). No mencionar el nombre del paciente.",
+        },
+        motivo_cambio: {
+          type: ["string", "null"],
+          description:
+            "Motivo del cambio en TEXTO LIBRE (p. ej., 'llegará tarde', 'tiene un imprevisto', 'desea reprogramar'). Puede ser null.",
+        },
       },
-      required: ["id_cita", "estado", "summary"],
+      required: ["id_cita", "estado", "summary", "motivo_cambio"],
       additionalProperties: false,
     },
     strict: true,
@@ -173,7 +176,7 @@ export const openaiTools: OpenAITool[] = [
     name: "crear_tarea",
     description:
       "Registra una tarea administrativa o de seguimiento para gestión humana. " +
-      "Úsala en urgencias, reclamos, consultas no resueltas o sustituciones configuradas externamente.",
+      "Úsala en urgencias, reclamos, consultas no resueltas, sustituciones configuradas externamente o hooks post‑acción.",
     parameters: {
       type: "object",
       properties: {
@@ -194,19 +197,19 @@ export const openaiTools: OpenAITool[] = [
   },
   {
     type: "function",
-    name: "clarificar_paciente",
+    name: "cargar_pacientes_por_telefono",
     description:
-      "Resuelve ambigüedades cuando existen varios pacientes candidatos con los mismos datos. " +
-      "Solicita al interlocutor seleccionar el paciente correcto antes de continuar.",
+      "Carga al contexto la información de todos los pacientes asociados a un teléfono dado (propio o de un tercero). " +
+      "No crea pacientes. Útil para actuar por terceros y para enriquecer el contexto antes de gestionar citas o agendar.",
     parameters: {
       type: "object",
       properties: {
-        candidatos: {
+        telefono_consulta: {
           type: "string",
-          description: "JSON serializado con los pacientes candidatos devuelto por backend.",
+          description: "Teléfono a consultar (idealmente con código de país).",
         },
       },
-      required: ["candidatos"],
+      required: ["telefono_consulta"],
       additionalProperties: false,
     },
     strict: true,

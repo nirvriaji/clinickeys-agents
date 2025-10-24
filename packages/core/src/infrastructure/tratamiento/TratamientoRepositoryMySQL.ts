@@ -1,5 +1,3 @@
-// packages/core/src/infrastructure/tratamiento/TratamientoRepositoryMySQL.ts
-
 import {
   ejecutarConReintento,
   ejecutarUnicoResultado,
@@ -130,4 +128,37 @@ export class TratamientoRepositoryMySQL implements ITratamientoRepository {
 
     return await ejecutarConReintento<TratamientoSearchResultDTO>(query, params);
   }
+
+  /**
+   * Obtiene tratamientos activos por un conjunto de IDs.
+   * Devuelve vacío si `ids` está vacío.
+   */
+  async findTreatmentsByIds(ids: number[]): Promise<TratamientoDTO[]> {
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+
+    // Construimos placeholders seguros
+    const placeholders = ids.map(() => "?").join(", ");
+
+    const query = `
+      SELECT
+        t.id_tratamiento,
+        t.nombre_tratamiento,
+        t.descripcion,
+        t.duracion,
+        t.precio,
+        t.id_estado_registro,
+        t.id_clinica,
+        t.id_super_clinica
+      FROM tratamientos t
+      WHERE t.id_estado_registro = 1
+        AND t.id_tratamiento IN (${placeholders})
+      ORDER BY FIELD(t.id_tratamiento, ${placeholders})
+    `;
+
+    // Pasamos los ids dos veces: para IN y para FIELD (preserva orden solicitado)
+    const params = [...ids, ...ids];
+    return await ejecutarConReintento<TratamientoDTO>(query, params);
+  }
 }
+
+export default TratamientoRepositoryMySQL;

@@ -1,3 +1,5 @@
+// packages/core/src/application/services/AvailabilityService/SlotAccumulator.ts
+
 import type {
   AgendaPolicyResolved,
   SlotAccumulatorInput,

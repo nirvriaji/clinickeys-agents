@@ -1,3 +1,5 @@
+// packages/core/src/application/usecases/OrchestrateConversationUseCase.ts
+
 import { z } from "zod";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 
@@ -8,14 +10,14 @@ import {
   CheckAvailabilityUseCase,
   ManageAppointmentStateUseCase,
   CreateTaskUseCase,
-  IdentifyPatientUseCase,
-  ClarifyPatientUseCase,
+  LoadPatientsByPhoneUseCase,
   RegularConversationUseCase,
+  SessionResetUseCase,
 } from "@clinickeys-agents/core/application/usecases";
 
 import type { BotConfigDTO } from "@clinickeys-agents/core/domain/botConfig";
 import { KommoCustomFieldValueBase } from "@clinickeys-agents/core/infrastructure/integrations/kommo";
-import { localTime, mergePlaceholdersIntoContext } from "@clinickeys-agents/core/utils";
+import { localTime } from "@clinickeys-agents/core/utils";
 import {
   PATIENT_MESSAGE_PROCESSED_CHUNK,
   PLEASE_WAIT_MESSAGE,
@@ -33,8 +35,6 @@ import {
   RESP_ID,
 } from "@clinickeys-agents/core/utils";
 
-import { SessionResetUseCase } from "@clinickeys-agents/core/application/usecases/SessionResetUseCase";
-
 // =============================
 // Zod Schemas (validación de tool-calls)
 // =============================
@@ -48,13 +48,14 @@ const CheckAvailabilitySchema = z.object({
   summary: z.string(),
 });
 
-const ScheduleAppointmentSchema = z.object({
+// Modo A: usar paciente existente
+const ScheduleAppointmentUseExistingSchema = z.object({
   nombre: z.string(),
   apellido: z.string(),
   telefono: z.string(),
   summary: z.string(),
   id_paciente: z.number(),
-  shouldCreatePatient: z.boolean(),
+  shouldCreatePatient: z.literal(false),
   isThirdParty: z.boolean(),
   id_pack_bono: z.number().nullable().optional(),
   id_presupuesto: z.number().nullable().optional(),
@@ -69,10 +70,40 @@ const ScheduleAppointmentSchema = z.object({
   }),
 });
 
+// Modo B: crear/buscar paciente en agendar
+const ScheduleAppointmentCreateSchema = z.object({
+  nombre: z.string(),
+  apellido: z.string(),
+  telefono: z.string(),
+  summary: z.string(),
+  // id_paciente no requerido cuando se crea
+  id_paciente: z.number().optional(),
+  shouldCreatePatient: z.literal(true),
+  isThirdParty: z.boolean(),
+  id_pack_bono: z.number().nullable().optional(),
+  id_presupuesto: z.number().nullable().optional(),
+  horarioEscogido: z.object({
+    fecha_cita: z.string(),
+    fecha_legible: z.string(),
+    hora_inicio: z.string(),
+    hora_fin: z.string(),
+    id_tratamiento: z.number(),
+    id_medico: z.number(),
+    id_espacio: z.number(),
+  }),
+});
+
+const ScheduleAppointmentSchema = z.union([
+  ScheduleAppointmentUseExistingSchema,
+  ScheduleAppointmentCreateSchema,
+]);
+
 const ManageAppointmentStateSchema = z.object({
   id_cita: z.number(),
   estado: z.enum(["PROGRAMADA", "CANCELADA", "CONFIRMADA", "EN_CAMINO"]),
   summary: z.string(),
+  contexto: z.string(),
+  motivo_cambio: z.string(),
 });
 
 const CreateTaskSchema = z.object({
@@ -83,33 +114,8 @@ const CreateTaskSchema = z.object({
   canal_preferido: z.string().nullable().optional(),
 });
 
-const IdentifyPatientSchema = z.object({
-  nombre: z.string(),
-  apellido: z.string(),
-  telefono: z.string(),
-});
-
-const ClarifyPatientSchema = z.object({
-  id_clinica: z.number().optional(),
-  candidatos: z.union([
-    z.string(),
-    z.array(
-      z.object({
-        id_paciente: z.number().optional(),
-        nombre: z.string().optional(),
-        apellido: z.string().optional(),
-        telefono: z.string().optional(),
-        paciente: z
-          .object({
-            id_paciente: z.number(),
-            nombre: z.string(),
-            apellido: z.string(),
-            telefono: z.string().optional(),
-          })
-          .optional(),
-      })
-    ),
-  ]),
+const LoadPatientsByPhoneSchema = z.object({
+  telefono_consulta: z.string(),
 });
 
 const RegularConversationSchema = z.object({
@@ -140,13 +146,13 @@ export interface OrchestrateConversationUseCaseDeps {
   checkAvailabilityUC: CheckAvailabilityUseCase;
   manageAppointmentStateUC: ManageAppointmentStateUseCase;
   createTaskUC: CreateTaskUseCase;
-  identifyPatientUC: IdentifyPatientUseCase;
-  clarifyPatientUC: ClarifyPatientUseCase;
+  loadPatientsByPhoneUC: LoadPatientsByPhoneUseCase;
   regularConversationUC: RegularConversationUseCase;
   sessionResetUC: SessionResetUseCase;
 }
 
 const MAX_TOOL_RETRIES = 3;
+const MAX_TOOL_CALLS_PER_TURN = 5;
 
 export class OrchestrateConversationUseCase {
   constructor(private readonly deps: OrchestrateConversationUseCaseDeps) {}
@@ -169,8 +175,19 @@ export class OrchestrateConversationUseCase {
       // Flag para postFlight
       let usedCriticalTool = false;
 
+      // Contador de tool-calls por turno
+      let toolCallsThisTurn = 0;
+
+      // Caché simple de pacientes por turno (clave: nombre|apellido|telefono normalizado)
+      const patientCache = new Map<string, number>();
+
       // Executor local: mapea tool-calls → Use Cases (con retries por tool)
       const executor = async (name: string, args: Record<string, any>) => {
+        if (toolCallsThisTurn >= MAX_TOOL_CALLS_PER_TURN) {
+          Logger.warn("[OrchestrateConversation] Límite de tool-calls alcanzado", { limit: MAX_TOOL_CALLS_PER_TURN });
+          throw new Error("MAX_TOOL_CALLS_REACHED");
+        }
+
         Logger.info("[OrchestrateConversation] Ejecutando tool", { name, args });
 
         for (let attempt = 1; attempt <= MAX_TOOL_RETRIES; attempt++) {
@@ -187,7 +204,10 @@ export class OrchestrateConversationUseCase {
                   usedCriticalTool = true;
                 }
               },
+              patientCache,
             });
+
+            toolCallsThisTurn += 1;
             return toolOutput;
           } catch (err) {
             const isLast = attempt === MAX_TOOL_RETRIES;
@@ -281,8 +301,9 @@ export class OrchestrateConversationUseCase {
     leadId: number;
     normalizedLeadCF: (KommoCustomFieldValueBase & { value: any })[];
     markCritical: () => void;
+    patientCache: Map<string, number>;
   }): Promise<string> {
-    const { name, args, botConfig, leadId, normalizedLeadCF, markCritical } = params;
+    const { name, args, botConfig, leadId, normalizedLeadCF, markCritical, patientCache } = params;
 
     switch (name) {
       case "consulta_agendar": {
@@ -298,7 +319,7 @@ export class OrchestrateConversationUseCase {
           subdomain: botConfig.kommo.subdomain,
         });
         if (!out.success) throw new Error("consulta_agendar UC failed");
-        return this.wrapToolOutput(out.toolOutput, botConfig);
+        return this.wrapToolOutput(out.toolOutput);
       }
 
       case "agendar_cita": {
@@ -313,9 +334,19 @@ export class OrchestrateConversationUseCase {
           horarioEscogido: {
             ...parsed.horarioEscogido,
           },
-          id_pack_bono: norm(parsed.id_pack_bono) as number | undefined,
-          id_presupuesto: norm(parsed.id_presupuesto) as number | undefined,
+          id_pack_bono: norm((parsed as any).id_pack_bono) as number | undefined,
+          id_presupuesto: norm((parsed as any).id_presupuesto) as number | undefined,
         } as typeof parsed;
+
+        // Sugerencia de reuso de cache: si no viene id_paciente pero tenemos coincidencia exacta de nombre/apellido/telefono
+        if ((fixed as any).shouldCreatePatient === true && !(fixed as any).id_paciente) {
+          const key = this.cacheKey((fixed as any).nombre, (fixed as any).apellido, (fixed as any).telefono);
+          const cachedId = patientCache.get(key);
+          if (cachedId) {
+            (fixed as any).id_paciente = cachedId;
+            (fixed as any).shouldCreatePatient = false; // ya tenemos ID
+          }
+        }
 
         const out = await this.deps.scheduleAppointmentUC.execute({
           botConfig,
@@ -328,15 +359,23 @@ export class OrchestrateConversationUseCase {
         });
         if (!out.success) throw new Error("agendar_cita UC failed");
 
+        // Guardar en caché el id_paciente resultante si vino
+        const p = parsed as any;
+        const idResult = (out as any).id_paciente_result as number | undefined;
+        if (idResult) {
+          const key = this.cacheKey(p.nombre, p.apellido, p.telefono);
+          patientCache.set(key, idResult);
+        }
+
         // Confirmación/desconfirmación automática
-        if (out.createdAppointmentId) {
+        if ((out as any).createdAppointmentId) {
           try {
             await this.deps.manageAppointmentStateUC.execute({
               leadId,
               params: {
-                id_cita: out.createdAppointmentId,
-                estado: out.needsConfirmation ? "CONFIRMADA" : "PROGRAMADA",
-                summary: parsed.summary,
+                id_cita: (out as any).createdAppointmentId,
+                estado: (out as any).needsConfirmation ? "CONFIRMADA" : "PROGRAMADA",
+                summary: (parsed as any).summary,
               },
             });
           } catch (e) {
@@ -344,7 +383,7 @@ export class OrchestrateConversationUseCase {
           }
         }
 
-        return this.wrapToolOutput(out.toolOutput, botConfig);
+        return this.wrapToolOutput(out.toolOutput);
       }
 
       case "gestionar_estado_cita": {
@@ -356,7 +395,7 @@ export class OrchestrateConversationUseCase {
           params: parsed,
         });
         if (!out.success) throw new Error("gestionar_estado_cita UC failed");
-        return this.wrapToolOutput(out.toolOutput, botConfig);
+        return this.wrapToolOutput(out.toolOutput);
       }
 
       case "crear_tarea": {
@@ -370,57 +409,21 @@ export class OrchestrateConversationUseCase {
           params: parsed,
         });
         if (!out.success) throw new Error("crear_tarea UC failed");
-        return this.wrapToolOutput(out.toolOutput, botConfig);
+        return this.wrapToolOutput(out.toolOutput);
       }
 
-      case "identificar_paciente": {
-        Logger.info("[Tool] identificar_paciente");
-        const parsed = IdentifyPatientSchema.parse(args);
-        const out = await this.deps.identifyPatientUC.execute({
+      case "cargar_pacientes_por_telefono": {
+        Logger.info("[Tool] cargar_pacientes_por_telefono");
+        const parsed = LoadPatientsByPhoneSchema.parse(args);
+        const out = await this.deps.loadPatientsByPhoneUC.execute({
           leadId,
           botConfig,
+          normalizedLeadCF,
           params: parsed,
           tiempoActualDT: localTime(botConfig.timezone),
         });
-        if (!out.success) throw new Error("identificar_paciente UC failed");
-        return this.wrapToolOutput(out.toolOutput, botConfig);
-      }
-
-      case "clarificar_paciente": {
-        Logger.info("[Tool] clarificar_paciente");
-        const parsed = ClarifyPatientSchema.parse(args);
-
-        // Normalización de candidatos (acepta string JSON o array con posible {paciente:{...}})
-        let candidatesArr: Array<{ id_paciente: number; nombre: string; apellido: string; telefono: string }> = [];
-        try {
-          const raw = Array.isArray(parsed.candidatos) ? parsed.candidatos : JSON.parse(parsed.candidatos as string);
-          candidatesArr = (raw as any[])
-            .map((item: any) => {
-              const base = item?.paciente || item || {};
-              return {
-                id_paciente: Number(base.id_paciente),
-                nombre: String(base.nombre || ""),
-                apellido: String(base.apellido || ""),
-                telefono: base.telefono ? String(base.telefono) : "",
-              };
-            })
-            .filter((c: any) => Number.isFinite(c.id_paciente));
-        } catch (e) {
-          Logger.warn("[Tool] clarificar_paciente → candidatos no parseables, se envía vacío", { e });
-          candidatesArr = [];
-        }
-
-        const out = await this.deps.clarifyPatientUC.execute({
-          botConfig,
-          leadId,
-          normalizedLeadCF,
-          params: {
-            id_clinica: parsed.id_clinica ?? botConfig.clinicId,
-            candidatos: candidatesArr,
-          },
-        });
-        if (!out.success) throw new Error("clarificar_paciente UC failed");
-        return this.wrapToolOutput(out.toolOutput, botConfig);
+        if (!out.success) throw new Error("cargar_pacientes_por_telefono UC failed");
+        return this.wrapToolOutput(out.toolOutput);
       }
 
       default: {
@@ -429,13 +432,21 @@ export class OrchestrateConversationUseCase {
           params: RegularConversationSchema.parse({ assistantMessage: String(args?.assistantMessage || "") }),
         });
         if (!out.success) throw new Error("regularConversation UC failed");
-        return this.wrapToolOutput(out.toolOutput, botConfig);
+        return this.wrapToolOutput(out.toolOutput);
       }
     }
   }
 
-  private wrapToolOutput(toolOutput: string, botConfig: BotConfigDTO): string {
-    const placeholders = mergePlaceholdersIntoContext(botConfig.placeholders);
-    return `${toolOutput}\n${placeholders}`;
+  private wrapToolOutput(toolOutput: string): string {
+    // IMPORTANTE: no cerrar con una llave extra (bug anterior) — devolver tal cual
+    return `${toolOutput}`;
+  }
+
+  private cacheKey(nombre: string, apellido: string, telefono: string): string {
+    const norm = (s: string) => String(s || "").trim().toLowerCase();
+    const tel = String(telefono || "").replace(/\D+/g, "");
+    return `${norm(nombre)}|${norm(apellido)}|${tel}`;
   }
 }
+
+export default OrchestrateConversationUseCase;

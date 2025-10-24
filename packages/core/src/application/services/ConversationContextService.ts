@@ -2,7 +2,7 @@
 
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { FetchPatientInfoUseCase } from "@clinickeys-agents/core/application/usecases";
-import { localTime, getClinicLocalTimestamp, mergePlaceholdersIntoContext } from "@clinickeys-agents/core/utils";
+import { localTime, getClinicLocalTimestamp } from "@clinickeys-agents/core/utils";
 import type { BotConfigDTO } from "@clinickeys-agents/core/domain/botConfig";
 
 // Tipos devueltos por FetchPatientInfoUseCase (coinciden con los ya existentes)
@@ -93,13 +93,7 @@ export class ConversationContextService {
     }
 
     // 3) Placeholders (mantener compacto: solo el bloque del asistente principal)
-    const CONTEXTO_PLACEHOLDERS = JSON.stringify({
-      ASISTENTE_PRINCIPAL_CONFIG: botConfig?.placeholders?.ASISTENTE_PRINCIPAL_CONFIG || "",
-    });
-
-    // 4) Bloque opcional en texto plano con TODOS los placeholders (para concatenar si hace falta)
-    //    No va en el JSON principal para no contaminar el razonamiento.
-    const FULL_PLACEHOLDERS_TEXT = mergePlaceholdersIntoContext(botConfig.placeholders);
+    const ASISTENTE_PRINCIPAL_CONFIG = botConfig?.placeholders?.ASISTENTE_PRINCIPAL_CONFIG || "";
 
     // 5) Construir payload JSON compacto (coherente con el diseño previo)
     const payload = {
@@ -108,8 +102,7 @@ export class ConversationContextService {
       TIEMPO_LOCAL: localTimeForPrompts,
       TELEFONO_INTERLOCUTOR: interlocutorPhone,
       PACIENTES_ASOCIADOS_AL_INTERLOCUTOR: patients,
-      CONTEXTO_PLACEHOLDERS,
-      FULL_PLACEHOLDERS_TEXT,
+      ASISTENTE_PRINCIPAL_CONFIG,
     } as const;
 
     const userPayloadJSON = JSON.stringify(payload);
@@ -119,7 +112,7 @@ export class ConversationContextService {
       appointmentsCount,
       hasReminderThread,
       hasInterlocutorPhone: !!interlocutorPhone,
-      payloadBytes: userPayloadJSON // Buffer.byteLength(userPayloadJSON, "utf8"),
+      payloadBytes: Buffer.byteLength(userPayloadJSON, "utf8"),
     });
 
     return {

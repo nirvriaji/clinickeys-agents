@@ -1,8 +1,4 @@
-/*
- * AvailabilitySearch.ts
- * Tipos y esquemas Zod del nuevo motor de búsqueda de disponibilidades
- * (sin compatibilidad legacy, sin sufijos "v2").
- */
+// packages/core/src/application/services/AvailabilityService/AvailabilitySearch/AvailabilitySearch.ts
 
 import { z } from "zod";
 
@@ -20,12 +16,21 @@ export const ISODateSchema = z.string().regex(ISO_DATE_RE, "Debe ser YYYY-MM-DD"
 export const HHMMSchema = z.string().regex(HHMM_RE, "Debe ser HH:mm");
 
 // =============================
+// Catálogos disponibles (para extractor / normalización)
+// =============================
+export interface CatalogosDisponibles {
+  tratamientosDisponibles: string[];
+  medicosDisponibles: string[];
+  espaciosDisponibles: string[];
+}
+
+// =============================
 // Rango de fechas
 // =============================
 export const DateRangeSchema = z
   .object({
     start: ISODateSchema, // inclusive
-    end: ISODateSchema,   // inclusive
+    end: ISODateSchema, // inclusive
   })
   .strict()
   .refine((o) => o.end >= o.start, {
@@ -39,10 +44,10 @@ export type DateRange = z.infer<typeof DateRangeSchema>;
 // Divisiones horarias canónicas
 // =============================
 export const TimeDivisionKeySchema = z.enum([
-  "manana",     // 06:00–11:59
-  "mediodia",   // 12:00–14:59
-  "tarde",      // 15:00–17:59
-  "noche",      // 18:00–23:59
+  "manana", // 06:00–11:59 (sin tilde para evitar incompatibilidades en claves)
+  "mediodia", // 12:00–14:59
+  "tarde", // 15:00–17:59
+  "noche", // 18:00–23:59
 ]);
 
 export type TimeDivisionKey = z.infer<typeof TimeDivisionKeySchema>;
@@ -51,7 +56,7 @@ export const TimeDivisionSchema = z
   .object({
     key: TimeDivisionKeySchema,
     start: HHMMSchema, // inclusive
-    end: HHMMSchema,   // inclusive
+    end: HHMMSchema, // inclusive
   })
   .strict();
 
@@ -98,11 +103,11 @@ export const DateRankingInputSchema = z
 export type DateRankingInput = z.infer<typeof DateRankingInputSchema>;
 
 export const RankedDateReasonSchema = z.enum([
-  "explicit_single",        // fecha suelta que mencionó la persona
-  "range_first_day",       // primer día de un rango mencionado
-  "range_follow_up",       // resto de días del rango mencionado
-  "weekday_preference",    // coincide con preferencias de días (jueves/viernes, etc.)
-  "proximity_filler",      // fechas cercanas al presente no mencionadas
+  "explicit_single", // fecha suelta que mencionó la persona
+  "range_first_day", // primer día de un rango mencionado
+  "range_follow_up", // resto de días del rango mencionado
+  "weekday_preference", // coincide con preferencias de días (jueves/viernes, etc.)
+  "proximity_filler", // fechas cercanas al presente no mencionadas
 ]);
 
 export type RankedDateReason = z.infer<typeof RankedDateReasonSchema>;
@@ -159,9 +164,9 @@ export const MinimalSlotSchema = z
     fecha_cita: ISODateSchema,
     fecha_legible: z.string().nullable().default(null),
     hora_inicio: HHMMSchema,
-    id_medico: z.union([z.number(), z.string()]).nullable().default(null),
+    id_medico: z.number().nullable().default(null),
     nombre_medico: z.string().nullable().default(null),
-    id_espacio: z.union([z.number(), z.string()]).nullable().default(null),
+    id_espacio: z.number().nullable().default(null),
     nombre_espacio: z.string().nullable().default(null),
     id_tratamiento: z.number().nullable().default(null),
     nombre_tratamiento: z.string().nullable().default(null),
@@ -191,7 +196,9 @@ export const SearchPlanSchema = z
   .object({
     datesRanked: z.array(ISODateSchema),
     batches: z.array(z.array(ISODateSchema)), // grupos secuenciales a consultar
-    divisions: z.array(TimeDivisionSchema).default(DefaultTimeDivisions as any),
+    divisions: z.array(TimeDivisionSchema).default(
+      DefaultTimeDivisions as unknown as TimeDivision[]
+    ),
     target: SearchTargetSchema,
   })
   .strict();
@@ -219,8 +226,8 @@ export type SearchStep = z.infer<typeof SearchStepSchema>;
 // =============================
 export const SearchStopReasonSchema = z.enum([
   "target_met", // se alcanzaron >= targetFullDays completos con variedad
-  "exhausted",  // se agotó el horizonte (o fechas rankeadas) sin llegar al objetivo
-  "error",      // falla no recuperable
+  "exhausted", // se agotó el horizonte (o fechas rankeadas) sin llegar al objetivo
+  "error", // falla no recuperable
 ]);
 
 export type SearchStopReason = z.infer<typeof SearchStopReasonSchema>;
@@ -231,7 +238,10 @@ export const AvailabilitySearchSummarySchema = z
     discardedDates: z.array(ISODateSchema),
     daysCompleted: z.array(ISODateSchema),
     daysPartial: z.array(ISODateSchema),
-    divisionCoverageByDay: z.record(ISODateSchema, z.record(TimeDivisionKeySchema, DivisionCoverageItemSchema)),
+    divisionCoverageByDay: z.record(
+      ISODateSchema,
+      z.record(TimeDivisionKeySchema, DivisionCoverageItemSchema)
+    ),
     steps: z.array(SearchStepSchema),
     stopReason: SearchStopReasonSchema,
     totalSlots: z.number().int().min(0),
@@ -239,7 +249,9 @@ export const AvailabilitySearchSummarySchema = z
   })
   .strict();
 
-export type AvailabilitySearchSummary = z.infer<typeof AvailabilitySearchSummarySchema>;
+export type AvailabilitySearchSummary = z.infer<
+  typeof AvailabilitySearchSummarySchema
+>;
 
 // =============================
 // Resultado final del motor (para pasar al redactor)
@@ -252,10 +264,255 @@ export const AvailabilitySearchResultSchema = z
   })
   .strict();
 
-export type AvailabilitySearchResult = z.infer<typeof AvailabilitySearchResultSchema>;
+export type AvailabilitySearchResult = z.infer<
+  typeof AvailabilitySearchResultSchema
+>;
 
 // =============================
-// Utilidades de types
+// Tipos de filtro del extractor (dos variantes bien separadas)
+// =============================
+export interface ExtractorFilterNames {
+  tratamientos: string[];
+  medicos: string[];
+  espacios: string[];
+  aparatologias: string[];
+  especialidades: string[];
+  date_ranges: { start_date: ISODate; end_date: ISODate }[];
+  time_preferences?: string | null; // texto libre tipo "mañana/tarde"
+}
+
+export interface ExtractorFilterIds {
+  tratamiento_ids: number[];
+  medico_ids: number[];
+  espacio_ids: number[];
+  aparatologias: string[];
+  especialidades: string[];
+  date_ranges: { start_date: ISODate; end_date: ISODate }[];
+  time_preferences?: string | null;
+}
+
+// En la app usamos la variante por NOMBRES para normalización previa.
+export type ExtractorFilter = ExtractorFilterNames;
+
+// =============================
+// Normalización y matching
+// =============================
+/**
+ * Normaliza un texto para matching:
+ *  - trim
+ *  - minúsculas
+ *  - sin tildes/diacríticos
+ *  - colapsa espacios
+ *  - elimina puntuación simple
+ *  - elimina títulos médicos comunes (dr, dra, doctor, doctora)
+ */
+export function normalizeForMatch(raw: string): string {
+  const base = String(raw || "");
+  const lower = base
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // quita diacríticos
+    .toLowerCase();
+
+  // elimina puntuación ligera y puntos sueltos, mantiene letras/números/espacios
+  const noPunct = lower.replace(/[^a-z0-9\s]/g, " ");
+
+  // elimina títulos/marcadores frecuentes
+  const removedTitles = noPunct
+    .replace(/\bdr\.\b/g, " ")
+    .replace(/\bdra\.\b/g, " ")
+    .replace(/\bdr\b/g, " ")
+    .replace(/\bdra\b/g, " ")
+    .replace(/\bdoctor(a)?\b/g, " ")
+    .replace(/\bmedico(a)?\b/g, " ");
+
+  // colapsa espacios
+  return removedTitles.replace(/\s+/g, " ").trim();
+}
+
+/** Devuelve el nombre canónico (exacto) del catálogo si hay match flexible; si no, null. */
+export function matchCanonical(
+  value: string | null | undefined,
+  catalog: string[]
+): string | null {
+  if (!value) return null;
+  const needle = normalizeForMatch(value);
+  if (!needle) return null;
+
+  let candidate: string | null = null;
+  let candidateLen = Infinity; // preferimos el match más corto (e.g., evita arrastres)
+
+  for (const item of catalog || []) {
+    const norm = normalizeForMatch(item);
+    if (!norm) continue;
+    if (norm === needle) {
+      // match exacto tras normalización ⇒ mejor caso
+      return item;
+    }
+    // Coincidencia flexible: contiene todas las palabras del needle (AND)
+    const words = needle.split(" ");
+    const ok = words.every((w) => norm.includes(w));
+    if (ok) {
+      // preferimos el ítem con menor longitud normalizada (más canónico/conciso)
+      if (norm.length < candidateLen) {
+        candidate = item;
+        candidateLen = norm.length;
+      }
+    }
+  }
+  return candidate;
+}
+
+// =============================
+// Mapeos a canónico
+// =============================
+/** Mapea arrays de campos a sus nombres canónicos exactos de catálogo. */
+export function mapFilterFieldsToCanonical(
+  f: ExtractorFilterNames,
+  cat: CatalogosDisponibles
+): ExtractorFilterNames {
+  const mapArray = (arr: string[] | undefined, catalog: string[]) => {
+    const out: string[] = [];
+    for (const v of arr || []) {
+      const m = matchCanonical(v, catalog);
+      if (m && !out.includes(m)) out.push(m);
+    }
+    return out;
+  };
+
+  return {
+    tratamientos: mapArray(f.tratamientos, cat.tratamientosDisponibles),
+    medicos: mapArray(f.medicos, cat.medicosDisponibles),
+    espacios: mapArray(f.espacios, cat.espaciosDisponibles),
+    aparatologias: Array.isArray(f.aparatologias) ? [...f.aparatologias] : [],
+    especialidades: Array.isArray(f.especialidades) ? [...f.especialidades] : [],
+    date_ranges: Array.isArray(f.date_ranges) ? [...f.date_ranges] : [],
+    time_preferences: f.time_preferences ?? null,
+  };
+}
+
+export interface ToolCallingParamsLike {
+  tratamiento: string;
+  medico?: string | null;
+  espacio?: string | null;
+  fechas?: string; // libre, no se toca aquí
+  horas?: string; // libre, no se toca aquí
+}
+
+/**
+ * Selecciona valores canónicos a partir de tool‑calling params (no obliga a extractor).
+ *  - Si no hay match, devuelve null para ese campo (no inventa).
+ */
+export function canonicalFromParams(
+  params: ToolCallingParamsLike,
+  cat: CatalogosDisponibles
+): { tratamiento?: string; medico?: string | null; espacio?: string | null } {
+  const tratamiento =
+    matchCanonical(params.tratamiento, cat.tratamientosDisponibles) || undefined;
+  const medico =
+    params.medico != null
+      ? matchCanonical(params.medico, cat.medicosDisponibles) || null
+      : undefined;
+  const espacio =
+    params.espacio != null
+      ? matchCanonical(params.espacio, cat.espaciosDisponibles) || null
+      : undefined;
+  return { tratamiento, medico, espacio };
+}
+
+/**
+ * Garantiza el contrato de que solo se usará filters[0] (por nombres) y devuelve una copia
+ * mapeada a canónico. Si el extractor envió valores no canónicos, aquí se corrigen.
+ */
+export function ensureSingleCanonicalFilter(
+  filters: ReadonlyArray<ExtractorFilterNames>,
+  params: ToolCallingParamsLike,
+  cat: CatalogosDisponibles
+): ExtractorFilterNames {
+  const f0: ExtractorFilterNames | undefined =
+    Array.isArray(filters) && filters.length ? filters[0] : undefined;
+
+  // Fallback mínimo cuando no hay filtro válido del extractor
+  if (!f0) {
+    const canon = canonicalFromParams(params, cat);
+    return {
+      tratamientos: canon.tratamiento ? [canon.tratamiento] : [],
+      medicos: canon.medico ? [canon.medico] : [],
+      espacios: canon.espacio ? [canon.espacio] : [],
+      aparatologias: [],
+      especialidades: [],
+      date_ranges: [], // el use case maneja ausencia/derivación de rangos
+      time_preferences: null,
+    };
+  }
+
+  // 1) mapear a nombres canónicos exactos
+  const mapped = mapFilterFieldsToCanonical(f0, cat);
+
+  // 2) Si tratamiento llega vacío por extractor, intentar rescatar desde params
+  if (!mapped.tratamientos?.length) {
+    const canon = canonicalFromParams(params, cat);
+    if (canon.tratamiento) mapped.tratamientos = [canon.tratamiento];
+  }
+
+  // 3) No mezclar categorías: ya garantizado por mapeo por catálogo distinto
+  return mapped;
+}
+
+// =============================
+// Construcción de inputs para caché (por NOMBRES)
+// =============================
+export interface FechasItem {
+  fecha: ISODate;
+}
+
+export interface AvailabilitySearchInputKeyLike {
+  id_clinica: number;
+  tratamientos: string[]; // nombres exactos
+  medicos: string[]; // nombres exactos
+  espacios: string[]; // nombres exactos
+  fechas: FechasItem[]; // YYYY-MM-DD
+}
+
+/**
+ * Construye el input clave para la AvailabilitySearchCache garantizando:
+ *  - arrays presentes (posiblemente vacíos) con nombres exactos
+ *  - fechas normalizadas (YYYY-MM-DD)
+ */
+export function buildCacheInputKeyLike(
+  clinicId: number,
+  f0: ExtractorFilterNames,
+  fechas: FechasItem[],
+  paramsFallback: ToolCallingParamsLike
+): AvailabilitySearchInputKeyLike {
+  const tratamientos = Array.isArray(f0.tratamientos) ? f0.tratamientos : [];
+  const medicos = Array.isArray(f0.medicos) ? f0.medicos : [];
+  const espacios = Array.isArray(f0.espacios) ? f0.espacios : [];
+
+  const fechasNorm: FechasItem[] = (fechas || [])
+    .map((x) => ({ fecha: String(x?.fecha || "").slice(0, 10) as ISODate }))
+    .filter((x) => ISO_DATE_RE.test(x.fecha));
+
+  // Si no hay tratamiento canónico en el filtro, intenta rescatar desde params.
+  const tratamientosFinal =
+    tratamientos.length > 0
+      ? tratamientos
+      : (() => {
+          // En este contexto no tenemos catálogos, por lo que no podemos rescatar aquí.
+          // El rescate en caliente se hace en ensureSingleCanonicalFilter.
+          return [] as string[];
+        })();
+
+  return {
+    id_clinica: clinicId,
+    tratamientos: tratamientosFinal,
+    medicos,
+    espacios,
+    fechas: fechasNorm,
+  };
+}
+
+// =============================
+// Pequeñas utilidades de ayuda
 // =============================
 export function isISODate(s: string): boolean {
   return ISO_DATE_RE.test(String(s || ""));
@@ -263,4 +520,28 @@ export function isISODate(s: string): boolean {
 
 export function isHHMM(s: string): boolean {
   return HHMM_RE.test(String(s || ""));
+}
+
+export function isNonEmptyString(x: unknown): x is string {
+  return typeof x === "string" && x.trim().length > 0;
+}
+
+export function uniq<T>(arr: T[]): T[] {
+  return Array.from(new Set(arr));
+}
+
+export function pickFirst<T>(arr: T[] | undefined | null): T | undefined {
+  return Array.isArray(arr) && arr.length ? arr[0] : undefined;
+}
+
+/**
+ * Determina si hay al menos un nombre no canónico (útil para telemetría).
+ */
+export function hasNonCanonical(
+  values: string[] | undefined,
+  catalog: string[]
+): boolean {
+  if (!Array.isArray(values) || !values.length) return false;
+  const set = new Set(catalog);
+  return values.some((v) => !set.has(v));
 }

@@ -1,5 +1,3 @@
-// packages/core/src/application/usecases/ScheduleAppointmentUseCase.ts
-
 import {
   isAppointmentSoon,
   getClinicLocalTimestamp,
@@ -80,6 +78,8 @@ interface ScheduleAppointmentOutput {
   customFields?: Record<string, string>;
   createdAppointmentId?: number;
   needsConfirmation?: boolean;
+  /** Id del paciente finalmente utilizado (existente o recién creado). */
+  id_paciente_result?: number;
 }
 
 type StepTipo =
@@ -126,7 +126,7 @@ export class ScheduleAppointmentUseCase {
       hasHorario: !!horarioEscogido,
     });
 
-    // 1) Mensaje inicial al bot
+    // 1) Mensaje inicial al bot (UX)
     await this.kommoService.sendBotInitialMessage({
       leadId,
       normalizedLeadCF,
@@ -134,19 +134,31 @@ export class ScheduleAppointmentUseCase {
       message: 'Perfecto, voy a intentar agendar tu cita ahora mismo. Un momento por favor.'
     });
 
-    // 2) Asegurar paciente
+    // 2) Asegurar paciente (único lugar donde se crea si shouldCreatePatient === true)
     let finalPatientId = id_paciente;
     if (!finalPatientId && shouldCreatePatient) {
-      Logger.info('[ScheduleAppointment] Creando nuevo paciente');
-      finalPatientId = await this.patientService.createPatient({
-        nombre,
-        apellido,
-        telefono,
-        id_clinica: botConfig.clinicId,
-        id_super_clinica: botConfig.superClinicId,
-        kommo_lead_id: leadId,
-      });
-      Logger.info('[ScheduleAppointment] Paciente creado', { finalPatientId });
+      Logger.info('[ScheduleAppointment] Resolviendo paciente (find-only antes de crear)');
+      try {
+        // Dedupe básico: buscar primero por teléfono en la clínica
+        const existentes = await this.patientService.getBasicPatientsByPhone(telefono, botConfig.clinicId);
+        if (existentes && existentes.length) {
+          finalPatientId = existentes[0].id_paciente;
+          Logger.info('[ScheduleAppointment] Paciente existente reutilizado', { finalPatientId });
+        } else {
+          Logger.info('[ScheduleAppointment] Creando nuevo paciente');
+          finalPatientId = await this.patientService.createPatient({
+            nombre,
+            apellido,
+            telefono,
+            id_clinica: botConfig.clinicId,
+            id_super_clinica: botConfig.superClinicId,
+            kommo_lead_id: leadId,
+          });
+          Logger.info('[ScheduleAppointment] Paciente creado', { finalPatientId });
+        }
+      } catch (err: any) {
+        Logger.error('[ScheduleAppointment] Error al resolver/crear paciente', { message: err?.message });
+      }
     }
 
     if (!finalPatientId) {
@@ -154,6 +166,7 @@ export class ScheduleAppointmentUseCase {
       return {
         success: false,
         toolOutput: '#agendarCita\nNo se pudo identificar o crear un paciente válido para agendar la cita.',
+        id_paciente_result: undefined,
       };
     }
 
@@ -251,6 +264,7 @@ export class ScheduleAppointmentUseCase {
         customFields,
         createdAppointmentId: appointmentCreated.id_cita,
         needsConfirmation: appointmentCreated.isSoon,
+        id_paciente_result: finalPatientId,
       };
     }
 
@@ -476,6 +490,7 @@ export class ScheduleAppointmentUseCase {
       customFields,
       createdAppointmentId: undefined,
       needsConfirmation: false,
+      id_paciente_result: finalPatientId,
     };
   }
 

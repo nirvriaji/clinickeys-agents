@@ -34,7 +34,7 @@ const STATE_CODES = {
  * - Marcar en camino
  */
 export class ManageAppointmentStateUseCase {
-  constructor(private readonly appointmentService: AppointmentService) {}
+  constructor(private readonly appointmentService: AppointmentService) { }
 
   public async execute(input: ManageAppointmentStateInput): Promise<ManageAppointmentStateOutput> {
     const { leadId, params } = input;

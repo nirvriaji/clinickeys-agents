@@ -30,22 +30,28 @@ export const ExtractorDateRangeSchema = z
 
 export type ExtractorDateRange = z.infer<typeof ExtractorDateRangeSchema>;
 
+// ============================
+// Filtros del extractor — ID-first
+// ============================
 /**
- * Filtro individual del extractor (una alternativa OR).
+ * Filtro individual del extractor (una alternativa OR) en modo **ID-first**.
  *
- * Notas:
- * - `tratamientos`, `medicos`, `espacios`, `aparatologias`, `especialidades` son
- *   listas normalizadas contra los catálogos del Contexto.
- * - `date_ranges` contiene uno o varios rangos (OR interno entre rangos).
- * - `time_preferences` es opcional y textual; no lista de horas.
+ * Reglas:
+ * - El extractor debe devolver **IDs** exactos para tratamiento/médico/espacio.
+ * - Si no hay match, debe devolver `[]` (no inventa nombres).
+ * - `date_ranges` contiene uno o varios rangos (OR interno entre rangos) y es obligatorio.
+ * - `time_preferences` es textual (p. ej. "mañana", "tarde", "19:00"), opcional.
  */
 export const ExtractorFilterSchema = z
   .object({
-    tratamientos: z.array(z.string()),
-    medicos: z.array(z.string()),
-    espacios: z.array(z.string()),
+    tratamiento_ids: z.array(z.number().int().positive()),
+    medico_ids: z.array(z.number().int().positive()),
+    espacio_ids: z.array(z.number().int().positive()),
+
+    // Campos informativos adicionales (se mantienen como listas vacías si no aplican)
     aparatologias: z.array(z.string()),
     especialidades: z.array(z.string()),
+
     date_ranges: z.array(ExtractorDateRangeSchema).min(1),
     time_preferences: z.string().trim().nullable().optional(),
   })

@@ -1,3 +1,5 @@
+// packages/core/src/application/services/AvailabilityService/AvailabilityDomainService.ts
+
 import { AvailabilitySQLBuilder } from "@clinickeys-agents/core/application/services";
 import { ITratamientoRepository, TratamientoSearchResultDTO } from "@clinickeys-agents/core/domain/tratamiento";
 import { AvailabilityCalculator, AvailabilityAdjuster } from "@clinickeys-agents/core/domain/availability";
@@ -15,17 +17,24 @@ import type {
 } from "@clinickeys-agents/core/domain/availability";
 
 // =============================
-// Tipos públicos
+// Tipos públicos (ID-first compatible)
 // =============================
 export interface GetTreatmentsDataInput {
   clinicId: number;
-  tratamientosConsultados: string[];
+  tratamientosConsultados: string[]; // solo nombres; camino legacy
 }
 
 export interface AppointmentAvailabilityInput {
-  tratamientos: string[];
+  // Preferidos (ID-first)
+  tratamiento_ids?: number[];
+  medico_ids?: number[];
+  espacio_ids?: number[];
+
+  // Soporte por nombre (fallback si faltan IDs)
+  tratamientos?: string[];
   medicos?: string[];
   espacios?: string[];
+
   fechas: { fecha: string }[]; // YYYY-MM-DD locales (normalizadas por la app)
   id_clinica: number;
   tiempo_actual: string; // ISO local ya normalizado (no convertir)
@@ -38,7 +47,7 @@ export interface AppointmentAvailabilityResult {
 }
 
 // =============================
-// Implementación del servicio de dominio
+// Implementación del servicio de dominio (ID-first)
 // =============================
 export class AvailabilityDomainService {
   private treatmentRepo: ITratamientoRepository;
@@ -56,13 +65,13 @@ export class AvailabilityDomainService {
   }
 
   // =============================
-  // Carga tratamientos → médicos → espacios
+  // Carga tratamientos → médicos → espacios (por NOMBRES)
   // =============================
   async fetchTreatmentsWithDoctorsAndSpaces({
     clinicId,
     tratamientosConsultados,
   }: GetTreatmentsDataInput): Promise<TratamientoEntrada[]> {
-    Logger.info("[AvailabilityDomainService] Inicio búsqueda de tratamientos", {
+    Logger.info("[AvailabilityDomainService] Inicio búsqueda de tratamientos (nombres)", {
       clinicId,
       tratamientosConsultados,
     });
@@ -134,25 +143,104 @@ export class AvailabilityDomainService {
   }
 
   // =============================
-  // Cálculo de disponibilidad para fechas dadas
+  // Carga tratamientos → médicos → espacios (por IDS)
+  // =============================
+  private async fetchTreatmentsByIdsWithDoctorsAndSpaces(
+    clinicId: number,
+    tratamientoIds: number[],
+  ): Promise<TratamientoEntrada[]> {
+    const ids = Array.from(new Set((tratamientoIds || []).filter((n) => Number.isInteger(n)))) as number[];
+    if (!ids.length) return [];
+
+    Logger.info("[AvailabilityDomainService] Inicio búsqueda de tratamientos (IDs)", {
+      clinicId,
+      ids,
+    });
+
+    // Preferimos bulk para detalles (duración/nombre). Si no existe, se podría degradar a getTreatmentDetailsById.
+    const tratamientos = await this.treatmentRepo.findTreatmentsByIds(ids);
+
+    if (!tratamientos.length) {
+      const event = AvailabilityEventCatalog.TRATAMIENTOS_NO_ENCONTRADOS(ids.map(String));
+      AvailabilityEventLogger.log(event);
+      return [];
+    }
+
+    const result: TratamientoEntrada[] = await Promise.all(
+      tratamientos.map(async (t) => {
+        let medicos: MedicoEntrada[] = [];
+        try {
+          const medicosRaw = await this.doctorRepo.getMedicosByTratamiento(t.id_tratamiento, clinicId);
+
+          medicos = await Promise.all(
+            medicosRaw.map(async (medico) => {
+              const espacios = await this.spaceRepo.getEspaciosByMedicoAndTratamiento(
+                medico.id_medico,
+                t.id_tratamiento,
+                clinicId,
+              );
+
+              const espaciosMapped: EspacioEntrada[] = espacios.map((e) => ({
+                id_espacio: e.id_espacio,
+                nombre_espacio: e.nombre,
+              }));
+
+              return {
+                id_medico: medico.id_medico,
+                nombre_medico: medico.nombre_completo,
+                espacios: espaciosMapped,
+              };
+            }),
+          );
+        } catch (error: any) {
+          const event = AvailabilityEventCatalog.ERROR_CONSULTA_SQL(error.message);
+          AvailabilityEventLogger.log(event);
+        }
+
+        return {
+          tratamiento: {
+            id_tratamiento: t.id_tratamiento,
+            nombre_tratamiento: t.nombre_tratamiento,
+            duracion_tratamiento: t.duracion,
+          },
+          medicos,
+        };
+      }),
+    );
+
+    return result;
+  }
+
+  // =============================
+  // Cálculo de disponibilidad para fechas dadas (ID-first)
   // =============================
   async getAppointmentAvailability(
     input: AppointmentAvailabilityInput,
   ): Promise<AppointmentAvailabilityResult> {
     try {
       const {
-        tratamientos: tratamientosConsultados,
-        medicos: medicosConsultados = [],
-        espacios: espaciosConsultados = [],
+        tratamiento_ids: tratamientoIdsIn = [],
+        tratamientos: tratamientosConsultadosIn = [],
+        medico_ids: medicoIdsIn = [],
+        medicos: medicosConsultadosIn = [],
+        espacio_ids: espacioIdsIn = [],
+        espacios: espaciosConsultadosIn = [],
         fechas: fechasSeleccionadas,
         id_clinica: clinicId,
         tiempo_actual,
       } = input;
 
-      Logger.info("[AvailabilityDomainService] Inicio de cálculo de disponibilidad", {
+      const tratamientosConsultados = (tratamientosConsultadosIn || []).filter(Boolean);
+      const medicosConsultados = (medicosConsultadosIn || []).filter(Boolean);
+      const espaciosConsultados = (espaciosConsultadosIn || []).filter(Boolean);
+
+      Logger.info("[AvailabilityDomainService] Inicio de cálculo de disponibilidad (ID-first)", {
         clinicId,
+        tratamientoIds: tratamientoIdsIn,
         tratamientosConsultados,
+        medicoIds: medicoIdsIn,
         medicosConsultados,
+        espacioIds: espacioIdsIn,
         espaciosConsultados,
         fechas: (fechasSeleccionadas || []).map((f) => f.fecha).slice(0, 6),
       });
@@ -160,12 +248,6 @@ export class AvailabilityDomainService {
       // Validaciones de negocio
       if (!clinicId) {
         const event = AvailabilityEventCatalog.FALTA_ID_CLINICA();
-        AvailabilityEventLogger.log(event);
-        return { success: false, message: event.message, analisis_agenda: [] };
-      }
-
-      if (!Array.isArray(tratamientosConsultados) || !tratamientosConsultados.length) {
-        const event = AvailabilityEventCatalog.NINGUN_TRATAMIENTO_SELECCIONADO();
         AvailabilityEventLogger.log(event);
         return { success: false, message: event.message, analisis_agenda: [] };
       }
@@ -187,23 +269,39 @@ export class AvailabilityDomainService {
         return { success: false, message: event.message, analisis_agenda: [] };
       }
 
-      // 1) Catálogo: tratamientos → médicos → espacios
-      const datosTratamientos = await this.fetchTreatmentsWithDoctorsAndSpaces({
-        clinicId,
-        tratamientosConsultados,
-      });
+      // =============================
+      // 1) Catálogo: tratamientos → médicos → espacios (IDs primero)
+      // =============================
+      let datosTratamientos: TratamientoEntrada[] = [];
+      const tratamientoIds = Array.from(new Set((tratamientoIdsIn || []).filter((n) => Number.isInteger(n)))) as number[];
+
+      if (tratamientoIds.length) {
+        datosTratamientos = await this.fetchTreatmentsByIdsWithDoctorsAndSpaces(clinicId, tratamientoIds);
+      } else if (tratamientosConsultados.length) {
+        datosTratamientos = await this.fetchTreatmentsWithDoctorsAndSpaces({
+          clinicId,
+          tratamientosConsultados,
+        });
+      }
 
       if (!datosTratamientos.length) {
-        const event = AvailabilityEventCatalog.TRATAMIENTOS_NO_ENCONTRADOS(tratamientosConsultados);
+        const event = tratamientoIds.length
+          ? AvailabilityEventCatalog.TRATAMIENTOS_NO_ENCONTRADOS(tratamientoIds.map(String))
+          : AvailabilityEventCatalog.TRATAMIENTOS_NO_ENCONTRADOS(tratamientosConsultados);
         AvailabilityEventLogger.log(event);
         return { success: true, message: event.message, analisis_agenda: [] };
       }
 
-      // 2) Filtros por médico/espacio (si el caller los impone). Nunca se ignoran.
-      let idsMedicosSolicitados: number[] = [];
+      // =============================
+      // 2) Filtros por médico/espacio (IDs tienen prioridad)
+      // =============================
       let tratamientosFiltrados = datosTratamientos;
 
-      if (medicosConsultados.length > 0) {
+      // Médicos
+      let idsMedicosSolicitados: number[] = [];
+      if (medicoIdsIn && medicoIdsIn.length) {
+        idsMedicosSolicitados = Array.from(new Set(medicoIdsIn.filter((n) => Number.isInteger(n)))) as number[];
+      } else if (medicosConsultados.length > 0) {
         const rows = await this.doctorRepo.getIdsMedicosPorNombre(medicosConsultados, clinicId);
         idsMedicosSolicitados = rows.map((f) => f.id_medico);
 
@@ -212,9 +310,11 @@ export class AvailabilityDomainService {
           AvailabilityEventLogger.log(event);
           return { success: true, message: event.message, analisis_agenda: [] };
         }
+      }
 
+      if (idsMedicosSolicitados.length) {
         const setIds = new Set(idsMedicosSolicitados);
-        tratamientosFiltrados = datosTratamientos
+        tratamientosFiltrados = tratamientosFiltrados
           .map((t) => ({
             ...t,
             medicos: t.medicos.filter((m) => setIds.has(m.id_medico)),
@@ -223,15 +323,19 @@ export class AvailabilityDomainService {
 
         if (!tratamientosFiltrados.length) {
           const event = AvailabilityEventCatalog.MEDICO_NO_ASOCIADO_A_TRATAMIENTO(
-            medicosConsultados,
-            tratamientosConsultados,
+            idsMedicosSolicitados.map(String),
+            (tratamientoIds.length ? tratamientoIds.map(String) : tratamientosConsultados),
           );
           AvailabilityEventLogger.log(event);
           return { success: true, message: event.message, analisis_agenda: [] };
         }
       }
 
-      if (espaciosConsultados.length > 0) {
+      // Espacios
+      let idsEspaciosSolicitados: number[] = [];
+      if (espacioIdsIn && espacioIdsIn.length) {
+        idsEspaciosSolicitados = Array.from(new Set(espacioIdsIn.filter((n) => Number.isInteger(n)))) as number[];
+      } else if (espaciosConsultados.length > 0) {
         const setNombresEspacios = new Set(
           espaciosConsultados.map((n) => String(n).trim().toLowerCase()),
         );
@@ -250,34 +354,57 @@ export class AvailabilityDomainService {
           .filter((t) => t.medicos && t.medicos.length > 0);
       }
 
+      if (idsEspaciosSolicitados.length) {
+        const setIdsE = new Set(idsEspaciosSolicitados);
+        tratamientosFiltrados = tratamientosFiltrados
+          .map((t) => ({
+            ...t,
+            medicos: t.medicos
+              .map((m) => ({
+                ...m,
+                espacios: (m.espacios || []).filter((e) => setIdsE.has(e.id_espacio)),
+              }))
+              .filter((m) => (m.espacios && m.espacios.length > 0)),
+          }))
+          .filter((t) => t.medicos && t.medicos.length > 0);
+      }
+
       const idsMedicos = idsMedicosSolicitados.length
         ? idsMedicosSolicitados
         : [...new Set(tratamientosFiltrados.flatMap((t) => t.medicos.map((m) => m.id_medico)))];
 
-      const idsEspacios = [
-        ...new Set(
-          tratamientosFiltrados.flatMap((t) =>
-            t.medicos.flatMap((m) => m.espacios.map((e) => e.id_espacio)),
-          ),
-        ),
-      ];
+      const idsEspacios = (
+        idsEspaciosSolicitados.length
+          ? idsEspaciosSolicitados
+          : [
+              ...new Set(
+                tratamientosFiltrados.flatMap((t) =>
+                  t.medicos.flatMap((m) => m.espacios.map((e) => e.id_espacio)),
+                ),
+              ),
+            ]
+      );
 
       if (!idsMedicos.length) {
-        const event = AvailabilityEventCatalog.NINGUN_MEDICO_ENCONTRADO(tratamientosConsultados);
+        const event = AvailabilityEventCatalog.NINGUN_MEDICO_ENCONTRADO(
+          tratamientoIds.length ? tratamientoIds.map(String) : tratamientosConsultados,
+        );
         AvailabilityEventLogger.log(event);
         return { success: true, message: event.message, analisis_agenda: [] };
       }
 
       if (!idsEspacios.length) {
         const event = AvailabilityEventCatalog.NINGUN_ESPACIO_ENCONTRADO(
-          tratamientosConsultados,
+          tratamientoIds.length ? tratamientoIds.map(String) : tratamientosConsultados,
           idsMedicos.map(String),
         );
         AvailabilityEventLogger.log(event);
         return { success: true, message: event.message, analisis_agenda: [] };
       }
 
+      // =============================
       // 3) Consultas SQL por fechas
+      // =============================
       const consultasSQL = AvailabilitySQLBuilder({
         fechas: fechasValidas,
         id_medicos: idsMedicos,
@@ -335,7 +462,9 @@ export class AvailabilityDomainService {
         return { success: true, message: event.message, analisis_agenda: [] };
       }
 
+      // =============================
       // 4) Cálculo de disponibilidad y ajuste de 3h desde ahora
+      // =============================
       const availability = AvailabilityCalculator({
         tratamientos: tratamientosFiltrados,
         citas_programadas: citas,
@@ -348,7 +477,7 @@ export class AvailabilityDomainService {
 
       if (!adjustedAvailability.length) {
         const event = AvailabilityEventCatalog.SIN_HORARIOS_DISPONIBLES(
-          tratamientosConsultados,
+          tratamientoIds.length ? tratamientoIds.map(String) : tratamientosConsultados,
           fechasValidas,
         );
         AvailabilityEventLogger.log(event);

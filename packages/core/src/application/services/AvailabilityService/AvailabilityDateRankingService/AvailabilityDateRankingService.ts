@@ -1,3 +1,5 @@
+// packages/core/src/application/services/AvailabilityService/AvailabilityDateRankingService/AvailabilityDateRankingService.ts
+
 import { DateTime } from "luxon";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import type { ExtractorFilter, ExtractorDateRange } from "@clinickeys-agents/core/application/services/types";
@@ -168,9 +170,9 @@ export class AvailabilityDateRankingService {
     const explicit: ISODate[] = [];
     const ranges: { start: ISODate; end: ISODate }[] = [];
 
-    for (const f of filters || []) {
-      const drs = Array.isArray((f as any).date_ranges) ? (f as any).date_ranges : [];
-      for (const r of drs as ExtractorDateRange[]) {
+    for (const f of filters ?? []) {
+      const drs: ExtractorDateRange[] = Array.isArray(f.date_ranges) ? f.date_ranges : [];
+      for (const r of drs) {
         const start = r?.start_date;
         const end = r?.end_date ?? r?.start_date;
         if (!isISO(start) || !isISO(end)) continue;
@@ -196,7 +198,7 @@ function dt(d: ISODate): DateTime {
   return DateTime.fromISO(d, { zone: "utc" }).startOf("day");
 }
 function iso(d: DateTime): ISODate { return d.toISODate() as ISODate; }
-function isISO(s: any): s is ISODate { return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s); }
+function isISO(s: unknown): s is ISODate { return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s); }
 
 function cmpISO(a: ISODate, b: ISODate): number {
   const da = dt(a).toMillis();

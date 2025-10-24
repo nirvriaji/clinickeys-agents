@@ -1,3 +1,5 @@
+// packages/core/src/application/services/AvailabilityResponseRedactorService.ts
+
 import fs from 'fs';
 import path from 'path';
 import { z } from 'zod';

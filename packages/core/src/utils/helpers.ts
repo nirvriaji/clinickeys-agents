@@ -204,20 +204,3 @@ function capitalizeFirst(s: string): string {
   const lower = s.toLowerCase();
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
-
-export function mergePlaceholdersIntoContext(
-  placeholders: Record<string, string | undefined> = {}
-): string {
-  if (!placeholders || Object.keys(placeholders).length === 0) {
-    return "";
-  }
-
-  const entries = Object.entries(placeholders)
-    .map(([key, value]) => `${key}: ${value}`);
-
-  if (entries.length === 0) {
-    return "";
-  }
-
-  return `\n\n=== CONTEXTO_PLACEHOLDERS ===\n${entries.join("\n")}\n============================\n`;
-}

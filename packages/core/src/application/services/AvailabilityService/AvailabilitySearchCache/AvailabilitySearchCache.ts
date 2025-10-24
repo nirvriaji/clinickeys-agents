@@ -1,100 +1,29 @@
-/*
- * AvailabilitySearchCache
- * ---------------------------------------------
- * Cache en memoria para resultados de búsqueda de disponibilidad.
- *
- * Objetivos:
- * - Evitar repetir consultas idénticas (mismas fechas/doctor/espacio/tratamiento/clinica).
- * - TTL estricto y política LRU simple para evitar crecimiento sin control.
- * - Claves determinísticas y normalizadas (case-insensitive, arrays ordenados).
- * - Invalidation granular por clínica, por rango de fechas, y por entidades.
- * - Telemetría ligera (hits/misses, tamaño, entradas expiradas purgadas).
- *
- * NOTAS:
- * - Diseñado para funcionar dentro del ciclo de vida de una Lambda (por lo que es un cache
- *   best-effort y efímero). No persiste entre invocaciones.
- * - Totalmente independiente de capas legacy.
- */
+// packages/core/src/application/services/AvailabilityService/AvailabilitySearchCache.ts
 
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 
 // =============================
-// Tipos del dominio mínimo (no importar los pesados)
+// Tipos públicos (ID-first)
 // =============================
-export interface FechasItem { fecha: string }
-
 export interface AvailabilitySearchInputKey {
   id_clinica: number;
-  tratamientos: string[]; // nombres normalizados en la entrada (el repos ya resuelve IDs)
-  medicos: string[];      // nombres
-  espacios: string[];     // nombres
-  fechas: FechasItem[];   // lista exacta de YYYY-MM-DD
+  tratamiento_ids: number[]; // únicos y ordenados
+  medico_ids: number[];      // únicos y ordenados
+  espacio_ids: number[];     // únicos y ordenados
+  fechas: string[];          // YYYY-MM-DD
 }
 
 export interface AvailabilitySearchValue {
   analisis_agenda: any[]; // SlotDisponibilidad[] ya ajustados
   fetchedAtISO: string;
-  ttlMs: number;
+  ttlMs: number; // TTL sugerido por el caller; si falta se usa por defecto del cache
 }
 
 export type CacheHitMiss = "hit" | "miss" | "stale";
 
-// =============================
-// Utilidades
-// =============================
-function toISODate(s: string): string {
-  // Acepta YYYY-MM-DD, tolera espacios
-  const v = String(s || "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return "";
-  return v;
-}
-
-function normText(x: string): string { return String(x || "").trim().toLowerCase(); }
-
-function uniqSorted(arr: string[]): string[] {
-  return Array.from(new Set(arr.map(normText))).sort();
-}
-
-function stableKeyOf(input: AvailabilitySearchInputKey): string {
-  const fechas = (input.fechas || [])
-    .map(f => toISODate(f.fecha))
-    .filter(Boolean)
-    .sort();
-  const payload = {
-    c: input.id_clinica,
-    t: uniqSorted(input.tratamientos || []),
-    m: uniqSorted(input.medicos || []),
-    e: uniqSorted(input.espacios || []),
-    f: fechas,
-  };
-  // JSON estable + sin espacios para minimizar tamaño
-  return JSON.stringify(payload);
-}
-
-// =============================
-// Entrada almacenada con metadatos
-// =============================
-interface Entry {
-  key: string;                // clave estable
-  value: AvailabilitySearchValue;
-  expiresAt: number;          // epoch ms
-  lastAccess: number;         // para LRU
-  tags: {
-    clinicId: number;
-    // ayudas para invalidación
-    dates: string[];          // YYYY-MM-DD
-    medicos: string[];        // normalizados
-    espacios: string[];       // normalizados
-    tratamientos: string[];   // normalizados
-  };
-}
-
-// =============================
-// Config y métricas
-// =============================
 export interface AvailabilitySearchCacheOptions {
-  ttlMs?: number;       // por defecto 5 minutos
-  maxEntries?: number;  // por defecto 1000
+  ttlMs?: number;      // por defecto 5 minutos
+  maxEntries?: number; // por defecto 1000
   logger?: typeof Logger;
 }
 
@@ -110,11 +39,65 @@ export interface AvailabilitySearchCacheStats {
 }
 
 // =============================
+// Utilidades internas
+// =============================
+function toISODate(s: string): string {
+  const v = String(s || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "";
+}
+
+function normIds(arr: number[] | undefined): number[] {
+  const out = new Set<number>();
+  for (const x of arr || []) {
+    const n = Number(x);
+    if (Number.isInteger(n) && n > 0) out.add(n);
+  }
+  return Array.from(out).sort((a, b) => a - b);
+}
+
+function normDates(arr: string[] | undefined): string[] {
+  const out = new Set<string>();
+  for (const s of arr || []) {
+    const d = toISODate(s);
+    if (d) out.add(d);
+  }
+  return Array.from(out).sort();
+}
+
+function stableKeyOf(input: AvailabilitySearchInputKey): string {
+  const payload = {
+    c: Number(input.id_clinica) || 0,
+    t: normIds(input.tratamiento_ids),
+    m: normIds(input.medico_ids),
+    e: normIds(input.espacio_ids),
+    f: normDates(input.fechas),
+  };
+  return JSON.stringify(payload); // estable, sin espacios
+}
+
+// =============================
+// Entrada almacenada con metadatos
+// =============================
+interface Entry {
+  key: string;                // clave estable
+  value: AvailabilitySearchValue;
+  expiresAt: number;          // epoch ms
+  lastAccess: number;         // para LRU
+  tags: {
+    clinicId: number;
+    dates: string[];          // YYYY-MM-DD
+    medicoIds: number[];
+    espacioIds: number[];
+    tratamientoIds: number[];
+  };
+}
+
+// =============================
 // Implementación
 // =============================
 export class AvailabilitySearchCache {
   private store: Map<string, Entry> = new Map();
-  private order: string[] = []; // cola LRU simple (keys); la más antigua al inicio
+  private order: string[] = []; // cola LRU simple
   private ttlMs: number;
   private maxEntries: number;
   private hits = 0;
@@ -147,7 +130,6 @@ export class AvailabilitySearchCache {
       return null;
     }
     if (ent.expiresAt <= now) {
-      // marcar como stale y purgar en deferred
       this.stale++;
       this.store.delete(key);
       this.removeFromOrder(key);
@@ -166,18 +148,14 @@ export class AvailabilitySearchCache {
     const now = Date.now();
     const ttl = Math.max(1000, value.ttlMs || this.ttlMs);
 
-    const dates = ((value as any)?.dates || []) as string[]; // opcional, por si el caller lo agrega
-    const parsedDates = dates.length
-      ? dates.map(toISODate).filter(Boolean)
-      : this.extractDatesFromKey(key);
-
-    const tags = {
+    // Etiquetas para invalidación
+    const tags: Entry["tags"] = {
       clinicId: this.extractClinicIdFromKey(key),
-      dates: parsedDates,
-      medicos: this.extractFieldFromKey(key, "m"),
-      espacios: this.extractFieldFromKey(key, "e"),
-      tratamientos: this.extractFieldFromKey(key, "t"),
-    } as Entry["tags"];
+      dates: this.extractStringArrayFromKey(key, "f"),
+      medicoIds: this.extractNumberArrayFromKey(key, "m"),
+      espacioIds: this.extractNumberArrayFromKey(key, "e"),
+      tratamientoIds: this.extractNumberArrayFromKey(key, "t"),
+    };
 
     const entry: Entry = {
       key,
@@ -233,24 +211,27 @@ export class AvailabilitySearchCache {
     return this.deleteKeys(ids);
   }
 
-  /** Invalida por nombres de médicos (normalizados). */
-  public invalidateDoctors(clinicId: number, doctors: string[]): number {
-    const set = new Set(uniqSorted(doctors));
-    const ids = this.findKeysByPredicate(ent => ent.tags.clinicId === clinicId && ent.tags.medicos.some(m => set.has(m)));
+  /** Invalida por IDs de médicos. */
+  public invalidateDoctors(clinicId: number, doctorIds: number[]): number {
+    const set = new Set(normIds(doctorIds));
+    if (!set.size) return 0;
+    const ids = this.findKeysByPredicate(ent => ent.tags.clinicId === clinicId && ent.tags.medicoIds.some(m => set.has(m)));
     return this.deleteKeys(ids);
   }
 
-  /** Invalida por nombres de espacios (normalizados). */
-  public invalidateSpaces(clinicId: number, spaces: string[]): number {
-    const set = new Set(uniqSorted(spaces));
-    const ids = this.findKeysByPredicate(ent => ent.tags.clinicId === clinicId && ent.tags.espacios.some(x => set.has(x)));
+  /** Invalida por IDs de espacios. */
+  public invalidateSpaces(clinicId: number, spaceIds: number[]): number {
+    const set = new Set(normIds(spaceIds));
+    if (!set.size) return 0;
+    const ids = this.findKeysByPredicate(ent => ent.tags.clinicId === clinicId && ent.tags.espacioIds.some(x => set.has(x)));
     return this.deleteKeys(ids);
   }
 
-  /** Invalida por nombres de tratamientos (normalizados). */
-  public invalidateTreatments(clinicId: number, treatments: string[]): number {
-    const set = new Set(uniqSorted(treatments));
-    const ids = this.findKeysByPredicate(ent => ent.tags.clinicId === clinicId && ent.tags.tratamientos.some(t => set.has(t)));
+  /** Invalida por IDs de tratamientos. */
+  public invalidateTreatments(clinicId: number, treatmentIds: number[]): number {
+    const set = new Set(normIds(treatmentIds));
+    if (!set.size) return 0;
+    const ids = this.findKeysByPredicate(ent => ent.tags.clinicId === clinicId && ent.tags.tratamientoIds.some(t => set.has(t)));
     return this.deleteKeys(ids);
   }
 
@@ -271,9 +252,7 @@ export class AvailabilitySearchCache {
   // --------- Internos ---------
 
   private enforceCapacity(): void {
-    // Purga expirados primero
     this.purgeExpired();
-    // Luego aplica LRU si excede
     while (this.store.size > this.maxEntries) {
       const oldestKey = this.order[0];
       if (!oldestKey) break;
@@ -300,7 +279,6 @@ export class AvailabilitySearchCache {
   }
 
   private touch(key: string): void {
-    // LRU: mover al final (más reciente)
     this.removeFromOrder(key);
     this.order.push(key);
   }
@@ -329,7 +307,7 @@ export class AvailabilitySearchCache {
     return count;
   }
 
-  // --- Extractores desde la key (evita parsear JSON 2 veces en callers) ---
+  // --- Extractores desde la key (evita parsear JSON en callers) ---
   private extractClinicIdFromKey(key: string): number {
     try {
       const obj = JSON.parse(key);
@@ -339,21 +317,21 @@ export class AvailabilitySearchCache {
     }
   }
 
-  private extractDatesFromKey(key: string): string[] {
+  private extractStringArrayFromKey(key: string, prop: "f"): string[] {
     try {
       const obj = JSON.parse(key);
-      const arr = Array.isArray(obj?.f) ? obj.f : [];
-      return arr.map((d: string) => toISODate(d)).filter(Boolean);
+      const arr = Array.isArray(obj?.[prop]) ? obj[prop] : [];
+      return normDates(arr);
     } catch {
       return [];
     }
   }
 
-  private extractFieldFromKey(key: string, prop: "t" | "m" | "e"): string[] {
+  private extractNumberArrayFromKey(key: string, prop: "t" | "m" | "e"): number[] {
     try {
       const obj = JSON.parse(key);
       const arr = Array.isArray(obj?.[prop]) ? obj[prop] : [];
-      return arr.map(normText);
+      return normIds(arr);
     } catch {
       return [];
     }
