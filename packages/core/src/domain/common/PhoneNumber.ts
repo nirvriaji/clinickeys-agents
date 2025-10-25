@@ -1,13 +1,4 @@
-/*
- * Domain Value Object: PhoneNumber
- * ------------------------------------------------------------
- * Única fuente de verdad para normalizar teléfonos provenientes
- * de texto libre (chat/usuario) o de integraciones (Kommo).
- *
- * - Totalmente inmutable
- * - Sin opcionales en su interfaz pública
- * - Listo para Clean Architecture + DDD
- */
+// packages/core/src/domain/common/PhoneNumber.ts
 
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
 

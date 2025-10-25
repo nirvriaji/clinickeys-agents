@@ -1,13 +1,11 @@
 /*
  * Domain: Conversation → Linked Phones
  * Purpose: Represent and manipulate the set of phone numbers linked to the interlocutor.
- * Notes:
- *  - Vendor-neutral: no Kommo-specific terms here.
- *  - Lightweight normalization/dedup: compare by digits-only; keep a single entry per phone.
- *  - Origin is optional and strictly informative (precedence rules applied on dedup).
+ * Scope: Vendor-neutral (no provider terms). Focus on business rules: origin, precedence, dedupe, upsert.
  */
 
 import { z } from "zod";
+import { PhoneNumber } from "@clinickeys-agents/core/domain/common";
 
 // ---------------------------------------------------------
 // Public API
@@ -17,10 +15,10 @@ import { z } from "zod";
  * Canonical, vendor-neutral origins for a linked phone.
  */
 export enum LinkedPhoneOrigin {
-  ContactoPrincipal = "contacto_principal", // Contact base phone (e.g., main contact phone)
+  ContactoPrincipal = "contacto_principal", // Contact base phone (main contact phone)
   TelefonoAdicionalEnLead = "telefono_adicional_en_lead", // Additional/secondary phone stored for the lead
-  AportadoEnConversacion = "aportado_en_conversacion", // Provided ad-hoc by the user during chat
-  DetectadoEnHistorial = "detectado_en_historial", // (Optional) Parsed from previous messages/logs
+  AportadoEnConversacion = "aportado_en_conversacion", // Provided on-the-fly by the user in chat
+  DetectadoEnHistorial = "detectado_en_historial", // Parsed from previous messages/logs
 }
 
 /**
@@ -28,7 +26,7 @@ export enum LinkedPhoneOrigin {
  */
 export interface LinkedPhone {
   telefono: string; // Raw representation as provided/received. Keep formatting for traceability.
-  origen?: LinkedPhoneOrigin; // Optional metadata to help with precedence, dedupe and audit.
+  origen?: LinkedPhoneOrigin; // Optional metadata to help precedence/dedupe/audit.
 }
 
 /** Zod schema for runtime validation */
@@ -44,35 +42,24 @@ export const LinkedPhoneArraySchema = z.array(LinkedPhoneSchema);
  * Create a LinkedPhone after validating inputs. Throws if invalid.
  */
 export function createLinkedPhone(telefono: string, origen?: LinkedPhoneOrigin): LinkedPhone {
-  const candidate: LinkedPhone = { telefono: telefono.trim(), origen };
+  const candidate: LinkedPhone = { telefono: String(telefono || "").trim(), origen };
   LinkedPhoneSchema.parse(candidate);
   return candidate;
 }
 
 // ---------------------------------------------------------
-// Normalization & comparison helpers (vendor-neutral)
+// Normalization & comparison helpers (reuse PhoneNumber VO)
 // ---------------------------------------------------------
 
-/**
- * Produce two lightweight normal forms for comparison:
- * - digits: only numeric characters, suitable for equality checks
- * - e164Like: keep leading "+" if present + digits (NOT a full E.164 guarantee)
- */
-export function normalizePhone(telefono: string): { digits: string; e164Like: string } {
-  const raw = String(telefono || "").trim();
-  const hasPlus = raw.startsWith("+");
-  const digits = raw.replace(/\D+/g, "");
-  const e164Like = hasPlus ? `+${digits}` : digits;
-  return { digits, e164Like };
+function digitsOnly(raw: string, defaultCountry?: string): string {
+  const pn = PhoneNumber.fromFreeform(raw, (defaultCountry || "").toUpperCase());
+  return pn.digitsOnly || "";
 }
 
-/**
- * Compare two raw phone strings by digits-only equality.
- */
-export function isSamePhone(a: string, b: string): boolean {
-  const na = normalizePhone(a).digits;
-  const nb = normalizePhone(b).digits;
-  return na.length > 0 && na === nb;
+function samePhone(a: string, b: string, defaultCountry?: string): boolean {
+  const da = digitsOnly(a, defaultCountry);
+  const db = digitsOnly(b, defaultCountry);
+  return da.length > 0 && da === db;
 }
 
 // ---------------------------------------------------------
@@ -89,10 +76,10 @@ const ORIGIN_PRECEDENCE: Record<LinkedPhoneOrigin, number> = {
   [LinkedPhoneOrigin.DetectadoEnHistorial]: 3,
 };
 
-function betterOf(a?: LinkedPhone, b?: LinkedPhone): LinkedPhone | undefined {
+function choosePreferable(a?: LinkedPhone, b?: LinkedPhone): LinkedPhone | undefined {
   if (!a) return b;
   if (!b) return a;
-  // Prefer one that has an origin over one without
+  // Prefer entry with origin over one without
   if (a.origen && !b.origen) return a;
   if (b.origen && !a.origen) return b;
   // If both have origins, apply precedence
@@ -101,21 +88,23 @@ function betterOf(a?: LinkedPhone, b?: LinkedPhone): LinkedPhone | undefined {
     const pb = ORIGIN_PRECEDENCE[b.origen];
     if (pa !== pb) return pa < pb ? a : b;
   }
-  // Tie-breaker: keep the first argument
+  // Tie-breaker: keep the first
   return a;
 }
 
 /**
  * Remove duplicates by phone (digits-only), keeping the entry with better origin precedence.
+ * `defaultCountry` is optional, but improves robustness when numbers lack `+`.
  */
-export function dedupeLinkedPhones(list: LinkedPhone[]): LinkedPhone[] {
+export function dedupeLinkedPhones(list: LinkedPhone[], defaultCountry?: string): LinkedPhone[] {
   const byDigits = new Map<string, LinkedPhone>();
-  for (const item of list) {
-    const { digits } = normalizePhone(item.telefono);
-    if (!digits) continue;
-    const current = byDigits.get(digits);
-    const winner = betterOf(current, item) as LinkedPhone | undefined;
-    if (winner) byDigits.set(digits, winner);
+  for (const item of list || []) {
+    if (!item || !item.telefono) continue;
+    const key = digitsOnly(item.telefono, defaultCountry);
+    if (!key) continue;
+    const current = byDigits.get(key);
+    const winner = choosePreferable(current, item);
+    if (winner) byDigits.set(key, winner);
   }
   return Array.from(byDigits.values());
 }
@@ -123,8 +112,8 @@ export function dedupeLinkedPhones(list: LinkedPhone[]): LinkedPhone[] {
 /**
  * Merge two lists and dedupe using origin precedence.
  */
-export function mergeLinkedPhones(a: LinkedPhone[], b: LinkedPhone[]): LinkedPhone[] {
-  return dedupeLinkedPhones([...(a || []), ...(b || [])]);
+export function mergeLinkedPhones(a: LinkedPhone[], b: LinkedPhone[], defaultCountry?: string): LinkedPhone[] {
+  return dedupeLinkedPhones([...(a || []), ...(b || [])], defaultCountry);
 }
 
 // ---------------------------------------------------------
@@ -151,11 +140,12 @@ export function fromDetectadoEnHistorial(telefono: string): LinkedPhone {
 // Utility: find if a number already exists in the list
 // ---------------------------------------------------------
 
-export function containsPhone(list: LinkedPhone[], telefono: string): boolean {
-  const target = normalizePhone(telefono).digits;
-  if (!target) return false;
-  for (const item of list) {
-    if (isSamePhone(item.telefono, telefono)) return true;
+export function containsPhone(list: LinkedPhone[], telefono: string, defaultCountry?: string): boolean {
+  const targetDigits = digitsOnly(telefono, defaultCountry);
+  if (!targetDigits) return false;
+  for (const item of list || []) {
+    if (!item || !item.telefono) continue;
+    if (samePhone(item.telefono, telefono, defaultCountry)) return true;
   }
   return false;
 }
@@ -164,9 +154,14 @@ export function containsPhone(list: LinkedPhone[], telefono: string): boolean {
 // Utility: ensure a phone exists in the set with proper precedence
 // ---------------------------------------------------------
 
-export function upsertLinkedPhone(list: LinkedPhone[], telefono: string, origen?: LinkedPhoneOrigin): LinkedPhone[] {
+export function upsertLinkedPhone(
+  list: LinkedPhone[],
+  telefono: string,
+  origen?: LinkedPhoneOrigin,
+  defaultCountry?: string
+): LinkedPhone[] {
   const entry = createLinkedPhone(telefono, origen);
-  return dedupeLinkedPhones([...(list || []), entry]);
+  return dedupeLinkedPhones([...(list || []), entry], defaultCountry);
 }
 
 // ---------------------------------------------------------

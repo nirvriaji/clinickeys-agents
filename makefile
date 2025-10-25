@@ -32,18 +32,27 @@ _guard_deploy:
 	esac
 
 # ---------- Desarrollo local ----------
-local:
+sst-dev:
 	@$(AWS_ARGS) $(SST) dev --stage dev
 
-remove-local:
-	@$(AWS_ARGS) $(SST) remove --stage dev
+sst-remove:
+	@$(AWS_ARGS) $(SST) remove --stage $(STAGE)
 
 # ---------- Deploy / Remove con guard ----------
-deploy: _guard_deploy
+sst-deploy: _guard_deploy
 	@$(AWS_ARGS) $(SST) deploy --stage $(STAGE)
 
-remove: _guard_deploy
+sst-remove: _guard_deploy
 	@$(AWS_ARGS) $(SST) remove --stage $(STAGE)
+
+sst-unlock:
+	@$(AWS_ARGS) $(SST) unlock --stage $(STAGE)
+
+sst-refresh:
+	@$(AWS_ARGS) $(SST) refresh --stage $(STAGE)
+
+sst-repair:
+	@$(AWS_ARGS) $(SST) state repair
 
 # ---------- Push seguros ----------
 # 'make push' empuja la rama actual al mismo nombre remoto,
