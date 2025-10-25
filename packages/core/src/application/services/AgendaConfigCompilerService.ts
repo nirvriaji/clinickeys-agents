@@ -77,7 +77,7 @@ export async function AgendaConfigCompilerService(
 
   // 3) Llamada a OpenAI con validación por esquema
   const schemaLabel = 'AgendaPolicyResolvedSchema';
-  const model = contexto?.model || 'gpt-4o-mini';
+  const model = contexto?.model || 'gpt-4.1-mini';
 
   const parsed = await openAIService.getSchemaStructuredResponse(
     systemPrompt,
