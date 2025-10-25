@@ -42,7 +42,7 @@ interface ScheduleAppointmentInput {
   leadId: number;
   normalizedLeadCF: (KommoCustomFieldValueBase & { value: any })[];
   params: {
-    id_paciente?: number;
+    id_paciente?: number | null;
     shouldCreatePatient: boolean;
     isThirdParty: boolean;
     nombre: string;
@@ -103,16 +103,32 @@ export class ScheduleAppointmentUseCase {
     const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT } = input;
 
     const {
-      id_paciente,
       shouldCreatePatient,
       nombre,
       apellido,
       telefono,
       summary,
-      id_pack_bono = 0,
-      id_presupuesto = 0,
       horarioEscogido,
     } = params;
+
+    // Normalización fuerte de campos opcionales
+    const id_pack_bono = (params.id_pack_bono ?? null) as number | null;
+    const id_presupuesto = (params.id_presupuesto ?? null) as number | null;
+
+    // Invariante de identidad paciente: id_paciente null cuando se crea; number cuando no
+    let id_paciente: number | null = (params.id_paciente ?? null);
+
+    if (shouldCreatePatient) {
+      id_paciente = null;
+    } else {
+      if (id_paciente === null || !Number.isFinite(id_paciente)) {
+        Logger.error('[ScheduleAppointment] Contrato inválido: shouldCreatePatient=false requiere id_paciente:number');
+        return {
+          success: false,
+          toolOutput: '#agendarCita\nNo se pudo agendar: falta un id_paciente válido cuando shouldCreatePatient=false.',
+        };
+      }
+    }
 
     const localTimeForPrompts = getClinicLocalTimestamp(tiempoActualDT, timezone);
 
@@ -135,7 +151,7 @@ export class ScheduleAppointmentUseCase {
     });
 
     // 2) Asegurar paciente (único lugar donde se crea si shouldCreatePatient === true)
-    let finalPatientId = id_paciente;
+    let finalPatientId: number | null = id_paciente;
     if (!finalPatientId && shouldCreatePatient) {
       Logger.info('[ScheduleAppointment] Resolviendo paciente (find-only antes de crear)');
       try {
