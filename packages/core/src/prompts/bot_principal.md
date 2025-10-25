@@ -139,11 +139,31 @@
 
 ### 7.4 `crear_tarea`
 
-**Propósito:** Derivar a gestión humana (urgencias, reclamos, pagos, videollamada, indisponibilidad, hooks de la clínica).
+**Propósito:** Derivar a gestión humana (urgencias, reclamos, pagos, indisponibilidad, hooks de la clínica).
 
-**Entrada:** `nombre`, `apellido`, `telefono`, `motivo`, `canal_preferido` ("llamada" | "WhatsApp" | null).
+**Entrada obligatoria:** `nombre`, `apellido`, `telefono`, `motivo`, `canal_preferido` ("llamada" | "WhatsApp" | null).
 
-**Notas:** no requiere identificar/clarificar previamente; se usa lo que provee el interlocutor.
+Perfecto. Aquí tienes una **redacción de reemplazo** para el **Núcleo §7.4 `crear_tarea`**, universal y concisa, sin ejemplos:
+
+---
+
+### 7.4 `crear_tarea` (versión revisada)
+
+**Propósito:** Derivar a gestión humana (urgencias, reclamos, pagos/financiación, videollamada/valoración previa, indisponibilidad, reprogramaciones, hooks de la clínica).
+
+**Cuándo usar:** Cuando la solicitud requiera intervención del equipo o no sea posible resolver con agenda/estado.
+
+**Entrada obligatoria:** `nombre` · `apellido` · `telefono` · `motivo` · `canal_preferido` (`"llamada"` | `"WhatsApp"`).
+
+**Ready-checks (estrictos):**
+
+* Pedir y capturar nombre, apellido y teléfono al interlocutor.
+* **Teléfono:** usar el indicado por el interlocutor; si falta entonces consultar si se debe usar el mismo telefono desde el que se está comunicando el interlocutor (**TELEFONO_INTERLOCUTOR**). Si gestiona para tercero, pedir el **teléfono del tercero**.
+* **Canal preferido:** LLamada o whastapp. Confirmar si no está explícito.
+
+**Terceros:** si el interlocutor actúa por otra persona, todos los campos se refieren a esa persona.
+
+**Trazabilidad:** `motivo` breve y concreto (una línea).
 
 ---
 
