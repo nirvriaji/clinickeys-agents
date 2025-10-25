@@ -4,6 +4,12 @@ import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { FetchPatientInfoUseCase } from "@clinickeys-agents/core/application/usecases";
 import { localTime, getClinicLocalTimestamp } from "@clinickeys-agents/core/utils";
 import type { BotConfigDTO } from "@clinickeys-agents/core/domain/botConfig";
+import {
+  LinkedPhone,
+  dedupeLinkedPhones,
+  fromContactoPrincipal,
+  fromTelefonoAdicionalEnLead,
+} from "@clinickeys-agents/core/utils";
 
 // Tipos devueltos por FetchPatientInfoUseCase (coinciden con los ya existentes)
 type PatientInfo = Awaited<ReturnType<FetchPatientInfoUseCase["execute"]>>;
@@ -82,8 +88,18 @@ export class ConversationContextService {
     const patients = patientInfo.patients ?? [];
     const appointmentsCount = patients.reduce((acc, p) => acc + (p.appointments?.length || 0), 0);
 
-    // Teléfono del interlocutor proveniente del CONTACT CF de Kommo (garantizado por flujo)
+    // Teléfono del interlocutor proveniente del CONTACT (garantizado por flujo)
     const interlocutorPhone = patientInfo.interlocutorPhone || "";
+
+    // 1.a) Construir TELEFONOS_VINCULADOS_AL_INTERLOCUTOR (vendor-neutral)
+    const linkedPhones: LinkedPhone[] = dedupeLinkedPhones([
+      ...(patientInfo.phones?.in_contact_cf
+        ? [fromContactoPrincipal(patientInfo.phones.in_contact_cf)]
+        : []),
+      ...(patientInfo.phones?.in_lead_cf
+        ? [fromTelefonoAdicionalEnLead(patientInfo.phones.in_lead_cf)]
+        : []),
+    ]);
 
     // 2) Resolver mensaje efectivo del usuario (respuesta a recordatorio vs mensaje normal)
     let MENSAJE_USUARIO = (userMessage || "").trim();
@@ -95,12 +111,13 @@ export class ConversationContextService {
     // 3) Placeholders (mantener compacto: solo el bloque del asistente principal)
     const ASISTENTE_PRINCIPAL_CONFIG = botConfig?.placeholders?.ASISTENTE_PRINCIPAL_CONFIG || "";
 
-    // 5) Construir payload JSON compacto (coherente con el diseño previo)
+    // 4) Construir payload JSON compacto (coherente con el diseño previo)
     const payload = {
       MENSAJE_USUARIO,
       TIMEZONE_SISTEMA: tz,
       TIEMPO_LOCAL: localTimeForPrompts,
       TELEFONO_INTERLOCUTOR: interlocutorPhone,
+      TELEFONOS_VINCULADOS_AL_INTERLOCUTOR: linkedPhones,
       PACIENTES_ASOCIADOS_AL_INTERLOCUTOR: patients,
       ASISTENTE_PRINCIPAL_CONFIG,
     } as const;
@@ -112,6 +129,7 @@ export class ConversationContextService {
       appointmentsCount,
       hasReminderThread,
       hasInterlocutorPhone: !!interlocutorPhone,
+      linkedPhonesCount: linkedPhones.length,
       payloadBytes: Buffer.byteLength(userPayloadJSON, "utf8"),
     });
 
@@ -145,8 +163,12 @@ export class ConversationContextService {
       return info as PatientInfo;
     } catch (err) {
       this.logger.error("[ConversationContextService] Error en FetchPatientInfoUseCase", err as Error);
-      // Fallback seguro: sin pacientes y sin teléfono
-      return { patients: [], interlocutorPhone: "" } as unknown as PatientInfo;
+      // Fallback seguro: sin pacientes y sin teléfonos
+      return {
+        patients: [],
+        interlocutorPhone: "",
+        phones: { in_conversation: "", in_lead_cf: "", in_contact_cf: "" },
+      } as unknown as PatientInfo;
     }
   }
 }

@@ -30,7 +30,8 @@
 * **MENSAJE_USUARIO** y, cuando aplique, **MENSAJE_RECORDATORIO_CITA**.
 * **TIMEZONE_SISTEMA** y **TIEMPO_LOCAL** (fecha/hora actual en esa zona).
 * **TELEFONO_INTERLOCUTOR**: teléfono del **interlocutor del chat** (puede o no ser el paciente objetivo). Siempre llega por contexto.
-* **PACIENTES_ASOCIADOS_AL_INTERLOCUTOR**: colección con **toda** la info (citas ±400d, packs/bonos, presupuestos, datos) de los pacientes encontrados por **TELEFONO_INTERLOCUTOR**.
+* **TELEFONOS_VINCULADOS_AL_INTERLOCUTOR**: lista de teléfonos **adicionales y persistentes** asociados al interlocutor (cada item `{ telefono, origen? }`). Sus pacientes se **autoprecargan** y se unen al pool en turnos futuros.
+* **PACIENTES_ASOCIADOS_AL_INTERLOCUTOR**: colección con **toda** la info (citas ±400d, packs/bonos, presupuestos, datos) de los pacientes encontrados por **TELEFONO_INTERLOCUTOR** y por los **TELEFONOS_VINCULADOS_AL_INTERLOCUTOR**.
 * **ASISTENTE_PRINCIPAL_CONFIG**: bloque único con políticas/copys/catálogos.
 * **Bloques listos para mostrar**: p. ej., disponibilidades devueltas por `consulta_agendar` o textos generados por otros casos de uso.
 
@@ -54,7 +55,7 @@
 * **Identidad obligatoria** únicamente para **`agendar_cita`** (crear/modificar registros/citas).
 * **No es necesaria** para **`consulta_agendar`** ni para **`gestionar_estado_cita`** (esta última opera sobre citas futuras de pacientes ya asociados al interlocutor; si hay ambigüedad se desambigua en chat).
 * **TELEFONO_INTERLOCUTOR** puede o no corresponder al paciente objetivo; el asistente **no asume**.
-* **cargar_pacientes_por_telefono** permite consultar **cualquier** teléfono (propio/tercero), traer **todos** los pacientes asociados, y **guardar** ese teléfono en CF; los pacientes traídos se **unen** al pool ya existente en contexto (quedan disponibles en turnos futuros).
+* **cargar_pacientes_por_telefono** → **Usar únicamente** para **un número distinto** al **TELEFONO_INTERLOCUTOR** y que **no** figure en **TELEFONOS_VINCULADOS_AL_INTERLOCUTOR**; trae **todos** los pacientes asociados y **vincula** ese número para turnos futuros. No crea pacientes.
 * **Creación de pacientes:** se realiza **exclusivamente** desde **`agendar_cita`** cuando `shouldCreatePatient:true`.
 
 ---
@@ -137,16 +138,6 @@
 
 ---
 
-### 7.4 `crear_tarea`
-
-**Propósito:** Derivar a gestión humana (urgencias, reclamos, pagos, indisponibilidad, hooks de la clínica).
-
-**Entrada obligatoria:** `nombre`, `apellido`, `telefono`, `motivo`, `canal_preferido` ("llamada" | "WhatsApp" | null).
-
-Perfecto. Aquí tienes una **redacción de reemplazo** para el **Núcleo §7.4 `crear_tarea`**, universal y concisa, sin ejemplos:
-
----
-
 ### 7.4 `crear_tarea` (versión revisada)
 
 **Propósito:** Derivar a gestión humana (urgencias, reclamos, pagos/financiación, videollamada/valoración previa, indisponibilidad, reprogramaciones, hooks de la clínica).
@@ -169,15 +160,15 @@ Perfecto. Aquí tienes una **redacción de reemplazo** para el **Núcleo §7.4 `
 
 ### 7.5 `cargar_pacientes_por_telefono` (solo lectura)
 
-**Propósito:** **Precargar** en contexto los pacientes asociados a un número (del interlocutor o de un tercero) y actualizar CF.
+**Propósito:** Consultar pacientes asociados a **un número distinto** del **TELEFONO_INTERLOCUTOR** (terceros) y **unirlos** al pool del turno; el número quedará **vinculado** para turnos futuros.
 
 **Entrada:** `telefono_consulta` (string).
 
 **Comportamiento:**
 
-* Trae **todos** los pacientes asociados a `telefono_consulta` (con su info completa) y los **une** al pool `PACIENTES_ASOCIADOS_*` ya presente.
-* **No crea** pacientes.
-* La desambiguación (si hay varios candidatos) se resuelve en **conversación regular** antes de invocar otras tools.
+* Si **existe**: trae **todos** los pacientes asociados a `telefono_consulta` (citas ±400d, packs/bonos, presupuestos, datos) y los **une** al pool `PACIENTES_ASOCIADOS_*` ya presente. El número se añade a **TELEFONOS_VINCULADOS_AL_INTERLOCUTOR** (autoprecarga futura).
+* Si **no existe**: **no crea** pacientes; si luego se agenda, `agendar_cita` (`shouldCreatePatient:true`) creará el paciente con ese número.
+* **Regla de oro:** **No** usar para `TELEFONO_INTERLOCUTOR` ni para números ya presentes en **TELEFONOS_VINCULADOS_AL_INTERLOCUTOR**.
 
 ---
 
@@ -238,3 +229,4 @@ Cierre de ese paso: “¿Con cuál opción seguimos?” (solo si es necesaria la
 * El orquestador puede mantener un **caché de pacientes por turno** para reusar `id_paciente_result` cuando se agenden múltiples citas del **mismo nuevo paciente**.
 * **Máximo 5 tool‑calls por turno**; límites adicionales (p. ej., por clínica o por tipo de acción) viven en la **Config**.
 * Las preferencias clínicas (p. ej., mantener médico reciente) se implementan desde la **Config** y nunca se infieren si no están especificadas.
+* **Persistencia de teléfonos vinculados:** Números consultados con `cargar_pacientes_por_telefono` se **vinculan** y sus pacientes se **autoprecargan** en turnos posteriores. Implementar **deduplicación** entre **TELEFONO_INTERLOCUTOR** y **TELEFONOS_VINCULADOS_AL_INTERLOCUTOR**.

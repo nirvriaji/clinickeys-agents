@@ -1,6 +1,7 @@
 export * from './defaultPlaceholders';
 export * from './CustomFieldUtils';
 export * from './openaiTools';
+export * from './linkedPhone';
 export * from './errorCodes';
 export * from './constants';
 export * from './timeUtils';

@@ -1,4 +1,4 @@
-// // packages/core/src/application/usecases/FetchPatientInfoUseCase.ts
+// packages/core/src/application/usecases/FetchPatientInfoUseCase.ts
 
 import { CHAT_BOT_CUSTOM_FIELDS, PATIENT_PHONE } from '@clinickeys-agents/core/utils';
 import { PatientService } from '@clinickeys-agents/core/application/services';
@@ -25,7 +25,17 @@ export interface FetchPatientInfoOutput {
     packsBonos: PackBonoConUsoDTO[];
     budgets: PresupuestoDTO[];
   }>;
+  /**
+   * Teléfono principal del interlocutor (contacto base) ya normalizado
+   * y listo para inyección en el contexto como TELEFONO_INTERLOCUTOR.
+   */
   interlocutorPhone: string;
+  /**
+   * Conjunto de teléfonos detectados en las fuentes conocidas para este lead/contact.
+   * Se incluye para que capas superiores puedan construir TELEFONOS_VINCULADOS_AL_INTERLOCUTOR
+   * de manera vendor‑neutral.
+   */
+  phones: LeadPhones;
 }
 
 export type PatientFullInfo = {
@@ -34,6 +44,18 @@ export type PatientFullInfo = {
   packsBonos: PackBonoConUsoDTO[];
   presupuestos: PresupuestoDTO[];
 };
+
+/**
+ * Teléfonos asociados al lead/contact en distintas fuentes.
+ * - in_contact_cf: Teléfono del contacto (CONTACT PHONE). Suele ser el "principal" del interlocutor.
+ * - in_lead_cf: Teléfono adicional capturado para el lead (por ejemplo, de terceros gestionados).
+ * - in_conversation: Se completa río abajo (PatientService) con números aportados textual/temporalmente durante la conversación cuando aplique.
+ */
+export interface LeadPhones {
+  in_conversation: string; // libre / se completa en PatientService cuando corresponda
+  in_lead_cf: string; // del CF de lead
+  in_contact_cf: string; // del CF de contacto (PHONE)
+}
 
 export class FetchPatientInfoUseCase {
   private fetchKommoDataUseCase: FetchKommoDataUseCase;
@@ -57,12 +79,13 @@ export class FetchPatientInfoUseCase {
       leadId
     });
 
-    // Valor por defecto (defensivo) si algo falla antes de normalizar
+    // Valores por defecto (defensivos)
     let interlocutorPhone = '';
+    let phones: LeadPhones = { in_conversation: '', in_lead_cf: '', in_contact_cf: '' };
 
     if (!kommoData) {
       Logger.warn('[FetchPatientInfo] No se pudo obtener datos de Kommo', { leadId });
-      return { patients: [], interlocutorPhone };
+      return { patients: [], interlocutorPhone, phones };
     }
 
     Logger.debug('[FetchPatientInfo] Datos de Kommo obtenidos', {
@@ -74,24 +97,24 @@ export class FetchPatientInfoUseCase {
         .map((cf: any) => ({ name: cf.field_name, value: cf.value })) || [],
     });
 
-    const leadPhones = this.prepareLeadPhones(kommoData, kommoData.botConfig?.defaultCountry);
-    interlocutorPhone = leadPhones.in_contact_cf || '';
+    phones = this.prepareLeadPhones(kommoData, kommoData.botConfig?.defaultCountry);
+    interlocutorPhone = phones.in_contact_cf || '';
 
     Logger.debug('[FetchPatientInfo] Obteniendo información del paciente desde PatientService');
     const patientInfo = await this.patientService.getPatientInfo(
       tiempoActualDT,
       kommoData.botConfig.clinicId,
-      leadPhones
+      phones
     );
 
     if (!patientInfo || !patientInfo.patients) {
       Logger.warn('[FetchPatientInfo] No se encontró información del paciente', { leadId });
-      return { patients: [], interlocutorPhone };
+      return { patients: [], interlocutorPhone, phones };
     }
 
     if (!patientInfo.patients.length) {
       Logger.warn('[FetchPatientInfo] Pacientes vacío', { leadId });
-      return { patients: [], interlocutorPhone };
+      return { patients: [], interlocutorPhone, phones };
     }
 
     await this.syncKommoLeadId(patientInfo.patients, kommoData.leadData.id);
@@ -107,7 +130,7 @@ export class FetchPatientInfoUseCase {
       budgets: p.presupuestos
     }));
 
-    return { patients: outputPatients, interlocutorPhone };
+    return { patients: outputPatients, interlocutorPhone, phones };
   }
 
   /**
@@ -115,7 +138,7 @@ export class FetchPatientInfoUseCase {
    * - Si el número es válido, devolvemos E.164.
    * - Si es inválido, devolvemos digitsOnly (para búsquedas tolerantes).
    */
-  private prepareLeadPhones(kommoData: any, defaultCountry?: string): { in_conversation: string; in_lead_cf: string; in_contact_cf: string } {
+  private prepareLeadPhones(kommoData: any, defaultCountry?: string): LeadPhones {
     // CONTACT PHONE (field_code === 'PHONE')
     let contactRaw: unknown = '';
     try {
