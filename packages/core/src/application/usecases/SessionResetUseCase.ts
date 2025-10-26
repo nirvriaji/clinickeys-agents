@@ -7,15 +7,17 @@ import {
   buildPreFlightPatch,
   buildRenderingPhasePatch,
   buildPostFlightPatch,
+  buildLightClosePatch,
   toLeadFieldMap,
   isSameSession,
+} from "@clinickeys-agents/core/utils";
+
+import {
   SESSION_ID,
   SESSION_SEQ,
   SESSION_PHASE,
   PHASE_ACTIVE,
-  PHASE_IDLE,
   CONVERSATION_LAST_ACTIVE_MS,
-  PLEASE_WAIT_MESSAGE,
 } from "@clinickeys-agents/core/utils";
 
 export interface SessionResetPreFlightInput {
@@ -38,17 +40,15 @@ export interface SessionRenderingPhaseInput {
 export interface SessionPostFlightInput {
   botConfig: BotConfigDTO;
   leadId: number;
-  usedCriticalTool?: boolean; // agendar_cita | gestionar_estado_cita | crear_tarea
 }
 
 /**
  * Gestión de sesión y limpieza de CF con reglas:
  * - Reset temporal: si han pasado >= 24h desde el último activity.
- * - Reset por camino crítico: si se usa alguna tool crítica (agendar/gestionar/crear_tarea).
+ * - Cierre ligero cuando NO hay reset temporal (conserva efímeros),
+ *   solo marca IDLE y actualiza lastActive.
  *
- * PreFlight aplica limpieza completa SOLO si corresponde (time reset). En caso contrario
- * solo marca la fase ACTIVE. PostFlight cierra la sesión y limpia SOLO si hubo camino crítico
- * o hay reset temporal; de lo contrario, conserva los efímeros para mantener la hilación.
+ * Nota: Ya NO existe el criterio de "herramienta crítica" para forzar full reset.
  */
 export class SessionResetUseCase {
   private readonly kommoService: KommoService;
@@ -104,9 +104,11 @@ export class SessionResetUseCase {
       return { success: true, sessionId, sessionSeq };
     }
 
-    // No hay reset temporal → solo abrir sesión (fase ACTIVE) sin limpiar efímeros
+    // No hay reset temporal → abrir sesión (fase ACTIVE) sin limpiar efímeros
     const minimalPatch: Record<string, string> = {
       [SESSION_PHASE]: PHASE_ACTIVE,
+      // No tocamos CONVERSATION_LAST_ACTIVE_MS aquí para conservar histograma fino de actividad
+      // (se actualiza en postFlight con cierre ligero)
     };
     await this.kommoService.updateLeadCustomFields({ botConfig, leadId, customFields: minimalPatch });
 
@@ -134,8 +136,8 @@ export class SessionResetUseCase {
   // POST-FLIGHT
   // --------------------
   public async postFlight(input: SessionPostFlightInput): Promise<{ success: boolean }> {
-    const { botConfig, leadId, usedCriticalTool } = input;
-    Logger.info("[SessionResetUseCase.postFlight] Inicio", { leadId, usedCriticalTool: !!usedCriticalTool });
+    const { botConfig, leadId } = input;
+    Logger.info("[SessionResetUseCase.postFlight] Inicio", { leadId });
 
     // Re-evaluar reset temporal respecto al LAST_ACTIVE antes de cerrar
     const latest = await this.kommoService.getLeadById(leadId);
@@ -149,7 +151,7 @@ export class SessionResetUseCase {
     const nowMs = Date.now();
     const shouldTimeReset = nowMs - lastActiveMs >= SessionResetUseCase.RESET_WINDOW_MS;
 
-    if (usedCriticalTool || shouldTimeReset) {
+    if (shouldTimeReset) {
       // Limpieza completa + cierre (sin Salesbot), dejando lastActive ahora
       const patch = buildPostFlightPatch();
       await this.kommoService.updateLeadCustomFields({ botConfig, leadId, customFields: patch });
@@ -158,11 +160,7 @@ export class SessionResetUseCase {
     }
 
     // Cierre ligero: mantener efímeros, solo marcar IDLE y actualizar lastActive
-    const lightPatch: Record<string, string> = {
-      [PLEASE_WAIT_MESSAGE]: "false",
-      [SESSION_PHASE]: PHASE_IDLE,
-      [CONVERSATION_LAST_ACTIVE_MS]: String(nowMs),
-    };
+    const lightPatch = buildLightClosePatch();
     await this.kommoService.updateLeadCustomFields({ botConfig, leadId, customFields: lightPatch });
 
     Logger.info("[SessionResetUseCase.postFlight] Listo (light close)", { leadId });

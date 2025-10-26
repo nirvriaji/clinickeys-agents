@@ -257,7 +257,7 @@ export class OrchestrateConversationUseCase {
         responseId,
       });
 
-      await this.deps.kommoService.replyToLead({
+      const reply = await this.deps.kommoService.replyToLead({
         salesbotId: botConfig.kommo.salesbotId,
         leadId,
         customFields: baseFields,
@@ -265,7 +265,11 @@ export class OrchestrateConversationUseCase {
       });
 
       // Fase RENDERING (sin Salesbot), útil para trazas
-      await this.deps.sessionResetUC.markRenderingPhase({ botConfig, leadId });
+      if (!reply.aborted) {
+        await this.deps.sessionResetUC.markRenderingPhase({ botConfig, leadId });
+      } else {
+        Logger.warn("[OrchestrateConversation] replyToLead abortado por guardia de concurrencia (randomStamp). Se omite RENDERING.", { leadId });
+      }
 
       // =============================
       // POST-FLIGHT: limpieza condicional y cierre de sesión (sin Salesbot)
@@ -349,22 +353,22 @@ export class OrchestrateConversationUseCase {
         if (!out.success) throw new Error("agendar_cita UC failed");
 
         // Guardar en caché el id_paciente resultante si vino
-        const p = parsed as any;
-        const idResult = (out as any).id_paciente_result as number | undefined;
+        const p = parsed;
+        const idResult = out.id_paciente_result as number | undefined;
         if (idResult) {
           const key = this.cacheKey(p.nombre, p.apellido, p.telefono);
           patientCache.set(key, idResult);
         }
 
         // Confirmación/desconfirmación automática
-        if ((out as any).createdAppointmentId) {
+        if (out.createdAppointmentId) {
           try {
             await this.deps.manageAppointmentStateUC.execute({
               leadId,
               params: {
-                id_cita: (out as any).createdAppointmentId,
-                estado: (out as any).needsConfirmation ? "CONFIRMADA" : "PROGRAMADA",
-                summary: (parsed as any).summary,
+                id_cita: out.createdAppointmentId,
+                estado: out.needsConfirmation ? "CONFIRMADA" : "PROGRAMADA",
+                summary: parsed.summary,
               },
             });
           } catch (e) {

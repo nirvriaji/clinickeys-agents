@@ -40,7 +40,6 @@ export const CONVERSATION_LAST_ACTIVE_MS = "conversationLastActiveMs"; // epoch 
 
 // --- Session Phase Values (strings que se guardan en SESSION_PHASE) --- //
 export const PHASE_ACTIVE = "ACTIVE";
-export const PHASE_IDLE = "IDLE";
 
 // --- Profiles --- //
 export const profiles = {

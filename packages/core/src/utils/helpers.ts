@@ -3,8 +3,6 @@
 import { RANDOM_STAMP } from '@clinickeys-agents/core/utils';
 import { DateTime, IANAZone } from 'luxon';
 
-// packages/core/src/utils/helpers.ts
-
 /**
  * Parsea la respuesta dependiendo del tipo de contenido (json, text, blob)
  */

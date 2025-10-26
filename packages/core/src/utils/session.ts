@@ -97,6 +97,7 @@ export function generateSessionId(): string {
  * Build the pre-flight patch (no Salesbot):
  * - Reset ephemerals and pleaseWait=false
  * - Start/advance session with ACTIVE phase
+ * - Set conversationLastActiveMs to now to avoid immediate post-flight resets
  */
 export function buildPreFlightPatch(params: {
   prevSessionSeq?: string | null;
@@ -109,6 +110,7 @@ export function buildPreFlightPatch(params: {
     [SESSION_ID]: sessionId,
     [SESSION_SEQ]: sessionSeq,
     [SESSION_PHASE]: SESSION_PHASES.ACTIVE,
+    [CONVERSATION_LAST_ACTIVE_MS]: nowEpochMsString(),
   };
 }
 
@@ -122,18 +124,31 @@ export function buildRenderingPhasePatch(): Record<string, string> {
 }
 
 /**
- * Build the post-flight patch (no Salesbot):
+ * Build the post-flight patch (no Salesbot) – FULL RESET variant:
  * - Reset ephemerals and pleaseWait=false
- * - Mark CLEAN_PENDING then finalize to IDLE with lastActive timestamp.
- *
- * Use the two-step pattern in code if you want strict phase transitions. This helper
- * returns the final state (what should remain on the lead).
+ * - Mark IDLE and update lastActive
  */
 export function buildPostFlightPatch(): Record<string, string> {
   return {
     ...getEphemeralResetMap(),
     [CONVERSATION_LAST_ACTIVE_MS]: nowEpochMsString(),
     [SESSION_PHASE]: SESSION_PHASES.IDLE,
+  };
+}
+
+/**
+ * Build a LIGHT CLOSE patch (no Salesbot):
+ * - DO NOT clear ephemerals (preserve patient/bot messages)
+ * - Ensure pleaseWait=false, set IDLE, and update lastActive
+ *
+ * Useful when the reply was aborted due to concurrency (randomStamp mismatch)
+ * or when we want to keep ephemeral context for the next turn.
+ */
+export function buildLightClosePatch(): Record<string, string> {
+  return {
+    [PLEASE_WAIT_MESSAGE]: "false",
+    [SESSION_PHASE]: SESSION_PHASES.IDLE,
+    [CONVERSATION_LAST_ACTIVE_MS]: nowEpochMsString(),
   };
 }
 

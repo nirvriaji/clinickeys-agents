@@ -1,3 +1,5 @@
+// packages/core/src/application/usecases/ScheduleAppointmentUseCase.ts
+
 import {
   isAppointmentSoon,
   getClinicLocalTimestamp,

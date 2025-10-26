@@ -35,9 +35,6 @@ _guard_deploy:
 sst-dev:
 	@$(AWS_ARGS) $(SST) dev --stage dev
 
-sst-remove:
-	@$(AWS_ARGS) $(SST) remove --stage $(STAGE)
-
 # ---------- Deploy / Remove con guard ----------
 sst-deploy: _guard_deploy
 	@$(AWS_ARGS) $(SST) deploy --stage $(STAGE)
