@@ -102,7 +102,6 @@ const ManageAppointmentStateSchema = z.object({
   id_cita: z.number(),
   estado: z.enum(["PROGRAMADA", "CANCELADA", "CONFIRMADA", "EN_CAMINO"]),
   summary: z.string(),
-  contexto: z.string(),
   motivo_cambio: z.string(),
 });
 

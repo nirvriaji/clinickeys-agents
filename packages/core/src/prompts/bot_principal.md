@@ -132,7 +132,7 @@
 
 **Cuándo usar:** ante instrucción inequívoca (con o sin recordatorio).
 
-**Entrada:** `id_cita`, `estado`, `summary`, `contexto`, `motivo_cambio`.
+**Entrada:** `id_cita`, `estado`, `summary`, `motivo_cambio`.
 
 **Notas:** opera sobre citas futuras de **pacientes asociados al interlocutor** sin exigir identidad explícita; **una call por cita**.
 
