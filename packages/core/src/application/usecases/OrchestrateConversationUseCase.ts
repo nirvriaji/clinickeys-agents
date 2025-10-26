@@ -54,11 +54,11 @@ const ScheduleAppointmentUseExistingSchema = z.object({
   apellido: z.string(),
   telefono: z.string(),
   summary: z.string(),
-  id_paciente: z.number(),
+  id_paciente: z.number(), // requerido y numérico
   shouldCreatePatient: z.literal(false),
   isThirdParty: z.boolean(),
-  id_pack_bono: z.number().nullable().optional(),
-  id_presupuesto: z.number().nullable().optional(),
+  id_pack_bono: z.number().nullable(),
+  id_presupuesto: z.number().nullable(),
   horarioEscogido: z.object({
     fecha_cita: z.string(),
     fecha_legible: z.string(),
@@ -70,18 +70,17 @@ const ScheduleAppointmentUseExistingSchema = z.object({
   }),
 });
 
-// Modo B: crear/buscar paciente en agendar
+// Modo B: crear/buscar paciente en agendar (id_paciente debe venir como null)
 const ScheduleAppointmentCreateSchema = z.object({
   nombre: z.string(),
   apellido: z.string(),
   telefono: z.string(),
   summary: z.string(),
-  // id_paciente no requerido cuando se crea
-  id_paciente: z.number().optional(),
+  id_paciente: z.null(), // requerido por la tool, pero valor null
   shouldCreatePatient: z.literal(true),
   isThirdParty: z.boolean(),
-  id_pack_bono: z.number().nullable().optional(),
-  id_presupuesto: z.number().nullable().optional(),
+  id_pack_bono: z.number().nullable(),
+  id_presupuesto: z.number().nullable(),
   horarioEscogido: z.object({
     fecha_cita: z.string(),
     fecha_legible: z.string(),
@@ -317,9 +316,11 @@ export class OrchestrateConversationUseCase {
 
       case "agendar_cita": {
         Logger.info("[Tool] agendar_cita");
+
+        // ENFOQUE nullable+required: no borrar id_paciente si viene null; el union decide la rama
         const parsed = ScheduleAppointmentSchema.parse(args);
 
-        // Normalizar null → undefined para campos opcionales del horarioEscogido
+        // Normalizar null → undefined solo para pack/presupuesto (aceptan null desde tool)
         const norm = (v: unknown) => (v === null ? undefined : v);
         const fixed = {
           ...parsed,
@@ -328,15 +329,16 @@ export class OrchestrateConversationUseCase {
           },
           id_pack_bono: norm((parsed as any).id_pack_bono) as number | undefined,
           id_presupuesto: norm((parsed as any).id_presupuesto) as number | undefined,
+          // id_paciente se mantiene tal cual (number | null) para el UC
         } as typeof parsed;
 
-        // Sugerencia de reuso de cache: si no viene id_paciente pero tenemos coincidencia exacta de nombre/apellido/telefono
-        if ((fixed as any).shouldCreatePatient === true && !(fixed as any).id_paciente) {
+        // Sugerencia de reuso de cache: si estamos en crear (id_paciente null) intenta reciclar
+        if ((fixed as any).shouldCreatePatient === true && (fixed as any).id_paciente === null) {
           const key = this.cacheKey((fixed as any).nombre, (fixed as any).apellido, (fixed as any).telefono);
           const cachedId = patientCache.get(key);
           if (cachedId) {
             (fixed as any).id_paciente = cachedId;
-            (fixed as any).shouldCreatePatient = false; // ya tenemos ID
+            (fixed as any).shouldCreatePatient = false; // ya tenemos ID existente
           }
         }
 
@@ -352,7 +354,7 @@ export class OrchestrateConversationUseCase {
         if (!out.success) throw new Error("agendar_cita UC failed");
 
         // Guardar en caché el id_paciente resultante si vino
-        const p = parsed;
+        const p = parsed as any;
         const idResult = out.id_paciente_result as number | undefined;
         if (idResult) {
           const key = this.cacheKey(p.nombre, p.apellido, p.telefono);
@@ -368,7 +370,8 @@ export class OrchestrateConversationUseCase {
                 id_cita: out.createdAppointmentId,
                 estado: out.needsConfirmation ? "CONFIRMADA" : "PROGRAMADA",
                 summary: parsed.summary,
-              },
+                // motivo_cambio no se envía en esta confirmación implícita
+              } as any,
             });
           } catch (e) {
             Logger.warn("[Tool] manageAppointmentState post-agendar falló (no bloqueante)", { e });

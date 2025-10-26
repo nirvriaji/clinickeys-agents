@@ -94,7 +94,8 @@ export const openaiTools: OpenAITool[] = [
           description:
             "Resumen breve (80–150 caracteres), sin identificadores internos ni mencionar el nombre del paciente.",
         },
-        id_paciente: { type: ["integer", "null"], description: "ID del paciente si ya existe; null si debe crearse." },
+        // REQUIRED + NULLABLE: Responses strict exige presencia; null cuando no aplica
+        id_paciente: { type: ["integer", "null"], description: "ID del paciente si ya existe; null si se va a crear." },
         shouldCreatePatient: { type: "boolean", description: "true si se debe crear un nuevo paciente." },
         isThirdParty: { type: "boolean", description: "true si el interlocutor actúa en nombre de otra persona." },
         horarioEscogido: {
