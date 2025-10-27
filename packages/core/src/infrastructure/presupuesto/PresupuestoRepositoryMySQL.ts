@@ -19,7 +19,7 @@ export class PresupuestoRepositoryMySQL implements IPresupuestoRepository {
         tpp.nombre AS nombre_tipo_pago,
         ep.nombre AS nombre_estado
       FROM presupuestos p
-      LEFT JOIN tipo_pago_presupuesto tpp ON p.id_tipo_pago = tpp.id_tipo_pago
+      LEFT JOIN tipo_pagos tpp ON p.id_tipo_pago = tpp.id_tipo_pago
       LEFT JOIN estados_presupuestos ep ON p.id_estado = ep.id
       WHERE p.id_paciente = ?
         AND p.id_clinica = ?
