@@ -1,8 +1,10 @@
+// packages/core/src/application/services/AvailabilityService/AvailabilityTimeDivisionsService/AvailabilityTimeDivisionsService.ts
+
 /*
  * AvailabilityTimeDivisionsService
  * ---------------------------------
  * Servicio utilitario para dividir los slots de un día en "divisiones horarias"
- * estratégicas (mañana, mediodía, tarde, noche, etc.) y operar sobre ellas.
+ * estratégicas (mañana, mediodía, tarde) y operar sobre ellas.
  *
  * Objetivos:
  *  - Asignar cada slot a una y solo una división horaria (rangos inclusivos por inicio).
@@ -90,6 +92,10 @@ function cmpHHMM(a: HHMM, b: HHMM): number {
   return toMinutes(a) - toMinutes(b);
 }
 
+function stripAccents(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 function inRangeInclusive(x: HHMM, start: HHMM, end: HHMM): boolean {
   const v = toMinutes(x);
   return v >= toMinutes(start) && v <= toMinutes(end);
@@ -99,31 +105,35 @@ function sortByTimeAsc<T extends { hora_inicio: HHMM }>(arr: T[]): T[] {
   return [...arr].sort((a, b) => cmpHHMM(a.hora_inicio, b.hora_inicio));
 }
 
+function minutesToHHMM(totalMinutes: number): HHMM {
+  const minutes = Math.max(0, Math.min(totalMinutes, 23 * 60 + 59));
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  const hh = h < 10 ? `0${h}` : String(h);
+  const mm = m < 10 ? `0${m}` : String(m);
+  return `${hh}:${mm}` as HHMM;
+}
+
 // =============================
 // Config por defecto (ES)
 // =============================
+
+const RAW_DEFAULT_DIVISIONS: DivisionConfig[] = [
+  { key: "mañana", start: "07:00", end: "11:59", order: 10 },
+  { key: "mediodía", start: "12:00", end: "14:59", order: 20 },
+  { key: "tarde", start: "15:00", end: "22:59", order: 30 },
+];
 
 /**
  * Devuelve una configuración por defecto pensada para clínicas en ES (24h).
  *
  * Bloques:
- *  - temprano:   07:00–08:59
- *  - mañana:     09:00–11:59
+ *  - mañana:     07:00–11:59
  *  - mediodía:   12:00–14:59
- *  - tarde:      15:00–17:59
- *  - noche:      18:00–20:59
- *  - última_hora:21:00–22:59
+ *  - tarde:      15:00–22:59
  */
 export function getDefaultDivisionsConfig(): DivisionConfig[] {
-  const cfg: DivisionConfig[] = [
-    { key: "temprano",     start: "07:00", end: "08:59", order: 10 },
-    { key: "mañana",       start: "09:00", end: "11:59", order: 20 },
-    { key: "mediodía",     start: "12:00", end: "14:59", order: 30 },
-    { key: "tarde",        start: "15:00", end: "17:59", order: 40 },
-    { key: "noche",        start: "18:00", end: "20:59", order: 50 },
-    { key: "última_hora",  start: "21:00", end: "22:59", order: 60 },
-  ];
-  return validateAndNormalizeConfig(cfg);
+  return validateAndNormalizeConfig(RAW_DEFAULT_DIVISIONS.map((d) => ({ ...d })));
 }
 
 /**
@@ -160,6 +170,90 @@ export function validateAndNormalizeConfig(input: DivisionConfig[]): DivisionCon
     }
   }
   return out;
+}
+
+const DIVISION_ALIAS_MAP: Record<string, string> = {
+  manana: "mañana",
+  "mañana": "mañana",
+  morning: "mañana",
+  temprano: "mañana",
+  "primer turno": "mañana",
+  mediodia: "mediodía",
+  "medio dia": "mediodía",
+  "medio-dia": "mediodía",
+  almuerzo: "mediodía",
+  lunch: "mediodía",
+  tarde: "tarde",
+  tardes: "tarde",
+  evening: "tarde",
+  tardeada: "tarde",
+  noche: "tarde",
+  nocturno: "tarde",
+  atardecer: "tarde",
+  vespertino: "tarde",
+};
+
+function normalizeDivisionToken(raw: string): string {
+  return stripAccents(String(raw || "")).trim().toLowerCase();
+}
+
+export function normalizeDivisionKey(
+  value: string,
+  config: DivisionConfig[] = getDefaultDivisionsConfig(),
+): string | null {
+  const normValue = normalizeDivisionToken(value);
+  if (!normValue) return null;
+
+  const configMap = new Map<string, string>();
+  for (const division of validateAndNormalizeConfig(config.map((d) => ({ ...d })))) {
+    configMap.set(normalizeDivisionToken(division.key), division.key);
+  }
+
+  if (configMap.has(normValue)) return configMap.get(normValue)!;
+
+  const aliasTarget = DIVISION_ALIAS_MAP[normValue];
+  if (aliasTarget) {
+    const canonical = configMap.get(normalizeDivisionToken(aliasTarget));
+    if (canonical) return canonical;
+  }
+
+  return null;
+}
+
+export function resolveDivisionForTime(
+  time: HHMM,
+  config: DivisionConfig[] = getDefaultDivisionsConfig(),
+): string | null {
+  const normCfg = validateAndNormalizeConfig(config.map((d) => ({ ...d })));
+  for (const division of normCfg) {
+    if (inRangeInclusive(time, division.start, division.end)) return division.key;
+  }
+  return null;
+}
+
+export function getDivisionRangeMap(
+  config: DivisionConfig[] = getDefaultDivisionsConfig(),
+): Map<string, { start: HHMM; end: HHMM }> {
+  const map = new Map<string, { start: HHMM; end: HHMM }>();
+  for (const division of validateAndNormalizeConfig(config.map((d) => ({ ...d })))) {
+    map.set(division.key, { start: division.start, end: division.end });
+  }
+  return map;
+}
+
+export function getDivisionMidpoint(
+  key: string,
+  config: DivisionConfig[] = getDefaultDivisionsConfig(),
+): HHMM | null {
+  const normCfg = validateAndNormalizeConfig(config.map((d) => ({ ...d })));
+  const division = normCfg.find((d) => d.key === key);
+  if (!division) return null;
+  const avg = Math.floor((toMinutes(division.start) + toMinutes(division.end)) / 2);
+  return minutesToHHMM(avg);
+}
+
+export function getDivisionKeys(config: DivisionConfig[] = getDefaultDivisionsConfig()): string[] {
+  return validateAndNormalizeConfig(config.map((d) => ({ ...d }))).map((d) => d.key);
 }
 
 // =============================
@@ -265,7 +359,7 @@ function dedupeStrings(arr: string[]): string[] {
 }
 
 function normalizeKey(k: string): string {
-  return String(k || "").trim().toLowerCase();
+  return normalizeDivisionToken(k);
 }
 
 function resolveDivisionOrder(config: DivisionConfig[], preferred: string[]): string[] {

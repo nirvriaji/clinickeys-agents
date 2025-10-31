@@ -276,10 +276,10 @@ export class AvailabilityEventCatalog {
     );
   }
 
-  static DISCLAIMER_RANGOS(count: number): AvailabilityEvent {
+  static QUERY_CONTEXT_RANGOS(count: number): AvailabilityEvent {
     return AvailabilityEventFactory.create(
       "EVT610",
-      `Disclaimer de rangos compactados: ${count} rango(s).`,
+      `Query context: rangos compactados = ${count}.`,
       "debug",
       { count }
     );

@@ -36,6 +36,7 @@ import type {
   SlotAccumulatorInput,
   SlotAccumulatorOutput,
 } from '@clinickeys-agents/core/application/services/types/Availability';
+import type { QueryContext } from '@clinickeys-agents/core/application/services/AvailabilityService/types/QueryContext';
 
 import { type HorarioEscogido } from '@clinickeys-agents/core/domain/availability';
 
@@ -373,7 +374,7 @@ export class ScheduleAppointmentUseCase {
           const baseResult = await this.availabilityService.getAppointmentAvailability(availabilityRequest);
           const analisis_local: any[] = baseResult.success && Array.isArray(baseResult.analisis_agenda) ? (baseResult.analisis_agenda as any[]) : [];
 
-          // Registrar bloque para disclaimer
+          // Registrar bloques consultados
           blocksConsultados.push(block);
 
           if (!analisis_local.length) {
@@ -450,7 +451,7 @@ export class ScheduleAppointmentUseCase {
       tiempoActualDT.toISO()!,
     ).slice(0, MAX_GLOBAL);
 
-    const disclaimerRanges = collapseBlocksToRanges(blocksConsultados);
+    const datesConsultedRanges = collapseBlocksToRanges(blocksConsultados);
 
     const diasMostrados = Array.from(
       new Set(
@@ -459,6 +460,48 @@ export class ScheduleAppointmentUseCase {
           .filter((x: any): x is string => typeof x === 'string' && x.length > 0),
       ),
     );
+
+    const daysWithResults = new Set<string>(
+      (finalHorarios || [])
+        .map((s: any) => s?.fecha_cita || s?.fecha)
+        .filter((x: any): x is string => typeof x === 'string' && x.length > 0),
+    );
+
+    const rankedDatesFallback = Array.from(
+      new Set(
+        blocksConsultados.flatMap((block) =>
+          expandRangeToFechas({ start: block.start, end: block.end }).map((f) => f.fecha),
+        ),
+      ),
+    ).sort();
+
+    const queryContext: QueryContext = {
+      fechas_rankeadas: rankedDatesFallback,
+      consultas_ejecutadas: datesConsultedRanges.map((r) => ({ start: r.start, end: r.end })),
+      fechas_entregadas_al_asistente: diasMostrados,
+      criterios: {
+        base: 'bloques alrededor de anclas → ascendente',
+        preferencias_horarias: '',
+        interpretacion_maximo: lastPolicyUsed?.interpretacion_maximo ?? 'ultimo_inicio',
+      },
+      caducidad: {
+        ttl_ms: 5 * 60 * 1000,
+        generated_at_iso: tiempoActualDT.toISO() as string,
+        timezone,
+      },
+      anchors: { today_iso: tiempoActualDT.toISODate() || undefined },
+      coverage: {
+        dates_consulted_count: datesConsultedRanges.reduce((acc, r) => {
+          const startMs = Date.parse(`${r.start}T00:00:00Z`);
+          const endMs = Date.parse(`${r.end}T00:00:00Z`);
+          if (Number.isNaN(startMs) || Number.isNaN(endMs)) return acc;
+          const diffDays = Math.max(1, Math.round((endMs - startMs) / (24 * 60 * 60 * 1000)) + 1);
+          return acc + diffDays;
+        }, 0),
+        dates_with_results_count: daysWithResults.size,
+        selected_days_count: diasMostrados.length,
+      },
+    };
 
     const redactorResult = await AvailabilityResponseRedactorService(
       this.openAIService,
@@ -469,7 +512,7 @@ export class ScheduleAppointmentUseCase {
         timezone,
         contextoRedactor: {
           tipo_busqueda: lastTipoBusquedaFromBlock || 'bloques',
-          disclaimer_fechas: disclaimerRanges,
+          query_context: queryContext,
           dias_mostrados: diasMostrados,
           horas_preferencia_usuario: '',
         },
@@ -484,7 +527,7 @@ export class ScheduleAppointmentUseCase {
 
     const toolOutput = `#agendarCita\n` +
       `    TIEMPO_LOCAL: ${localTimeForPrompts}\n` +
-      `    DISCLAIMER_FECHAS_BUSCADAS: ${JSON.stringify(disclaimerRanges)}\n` +
+      `    QUERY_CONTEXT: ${JSON.stringify(queryContext)}\n` +
       `    HORARIOS_DISPONIBLES: ${JSON.stringify({ tipo_busqueda: lastTipoBusquedaFromBlock || 'bloques', horarios_escogidos: finalHorarios })}\n` +
       `    HORARIOS_TEXTO: ${JSON.stringify(mensajeFinal)}\n` +
       `    MENSAJE_USUARIO: ${JSON.stringify({ nombre, apellido, telefono, summary })}\n` +

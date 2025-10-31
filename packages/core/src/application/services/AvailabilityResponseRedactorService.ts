@@ -5,6 +5,7 @@ import path from 'path';
 import { z } from 'zod';
 import { Logger } from '@clinickeys-agents/core/infrastructure/external';
 import type { AgendaPolicyResolved } from '@clinickeys-agents/core/application/services';
+import type { QueryContext } from '@clinickeys-agents/core/application/services/AvailabilityService/types/QueryContext';
 
 // =============================
 // Zod schema de salida (compatible con Responses API)
@@ -70,8 +71,11 @@ export async function AvailabilityResponseRedactorService(
   const contexto = (opts?.contextoRedactor || {}) as Record<string, unknown>;
   const tipo_busqueda_final = String(contexto['tipo_busqueda'] || 'bloques');
   const horas_preferencia_usuario = String(contexto['horas_preferencia_usuario'] || '');
-  const disclaimer_fechas = Array.isArray(contexto['disclaimer_fechas']) ? (contexto['disclaimer_fechas'] as any[]) : [];
-  const dias_mostrados = Array.isArray(contexto['dias_mostrados']) ? (contexto['dias_mostrados'] as string[]) : [];
+  const queryContext = normalizeQueryContext(contexto['query_context']);
+  const dias_mostrados_ctx = Array.isArray(contexto['dias_mostrados']) ? (contexto['dias_mostrados'] as string[]) : [];
+  const dias_mostrados = queryContext.fechas_entregadas_al_asistente.length > 0
+    ? queryContext.fechas_entregadas_al_asistente
+    : dias_mostrados_ctx;
   const divisiones_cubiertas = Array.isArray(contexto['divisiones_cubiertas']) ? (contexto['divisiones_cubiertas'] as string[]) : [];
 
   // Payload del usuario (fuente de verdad para el modelo)
@@ -80,9 +84,9 @@ export async function AvailabilityResponseRedactorService(
     slots_universo: Array.isArray(slots) ? slots : [],
     tipo_busqueda_final,
     horas_preferencia_usuario,
-    disclaimer_fechas,
+    query_context: queryContext,
     dias_mostrados,
-    divisiones_cubiertas, // informativo: p.ej. ["mañana","medio_dia","tarde","noche"]
+    divisiones_cubiertas, // informativo: p.ej. ["mañana","mediodía","tarde"]
     timezone: opts?.timezone || undefined,
     ahoraISO: opts?.ahoraISO,
 
@@ -97,6 +101,7 @@ export async function AvailabilityResponseRedactorService(
     mostrar_medicos: userPayload.mostrar_medicos,
     sedes: userPayload.sedes_lista.length,
     tipo_busqueda_final: userPayload.tipo_busqueda_final,
+    queryContextCoverage: queryContext.coverage,
   });
 
   // Llamada al modelo con firma posicional + schema Zod real
@@ -183,4 +188,149 @@ function construirFallback(
 
   partes.push('¿Cuál prefiere?');
   return partes.join('\n');
+}
+
+const EMPTY_QUERY_CONTEXT: QueryContext = {
+  fechas_rankeadas: [],
+  consultas_ejecutadas: [],
+  fechas_entregadas_al_asistente: [],
+  criterios: {},
+  caducidad: {
+    ttl_ms: 0,
+    generated_at_iso: new Date(0).toISOString(),
+    timezone: 'UTC',
+  },
+  coverage: {
+    dates_consulted_count: 0,
+    dates_with_results_count: 0,
+    selected_days_count: 0,
+  },
+  anchors: {},
+};
+
+function normalizeQueryContext(raw: unknown): QueryContext {
+  if (!raw || typeof raw !== 'object') return { ...EMPTY_QUERY_CONTEXT };
+
+  const source = raw as Record<string, unknown>;
+
+  const consultas =
+    Array.isArray(source.consultas_ejecutadas)
+      ? normalizeRangeArray(source.consultas_ejecutadas)
+      : normalizeRangeArray((source as any).dates_consulted);
+
+  const entregadas =
+    Array.isArray(source.fechas_entregadas_al_asistente)
+      ? normalizeDateArray(source.fechas_entregadas_al_asistente)
+      : normalizeDateArray((source as any).days_selected);
+
+  const ranking =
+    Array.isArray(source.fechas_rankeadas)
+      ? normalizeDateArray(source.fechas_rankeadas)
+      : normalizeDateArray((source as any).ranking_primary);
+
+  const criterios =
+    source.criterios && typeof source.criterios === 'object'
+      ? { ...(source.criterios as Record<string, unknown>) }
+      : {};
+
+  const legacyHorizon = typeof (source as any).horizon_end === 'string' ? (source as any).horizon_end : null;
+  if (legacyHorizon && typeof criterios === 'object' && criterios && !Object.prototype.hasOwnProperty.call(criterios, 'horizon_end')) {
+    (criterios as Record<string, unknown>).horizon_end = legacyHorizon;
+  }
+
+  const caducidad =
+    source.caducidad && typeof source.caducidad === 'object'
+      ? normalizeCaducidad(source.caducidad as Record<string, unknown>)
+      : { ...EMPTY_QUERY_CONTEXT.caducidad };
+
+  const coverage = normalizeCoverage(source.coverage);
+
+  const anchors = normalizeAnchors(source.anchors);
+  if (!anchors.today_iso && typeof (source as any).today_iso === 'string' && (source as any).today_iso.trim()) {
+    anchors.today_iso = (source as any).today_iso;
+  }
+
+  return {
+    fechas_rankeadas: ranking,
+    consultas_ejecutadas: consultas,
+    fechas_entregadas_al_asistente: entregadas,
+    criterios,
+    caducidad,
+    coverage,
+    anchors,
+  };
+}
+
+function normalizeRangeArray(value: unknown): Array<{ start: string; end: string }> {
+  if (!Array.isArray(value)) return [];
+  const ranges: Array<{ start: string; end: string }> = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const candidate = item as Record<string, unknown>;
+    const start =
+      typeof candidate.start === 'string'
+        ? candidate.start
+        : typeof candidate.start_date === 'string'
+          ? candidate.start_date
+          : null;
+    if (!start) continue;
+    const end =
+      typeof candidate.end === 'string'
+        ? candidate.end
+        : typeof candidate.end_date === 'string'
+          ? candidate.end_date
+          : start;
+    ranges.push({ start, end });
+  }
+  return ranges;
+}
+
+function normalizeDateArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== 'string') continue;
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+function normalizeCaducidad(raw: Record<string, unknown>): QueryContext['caducidad'] {
+  const ttl = Number(raw.ttl_ms);
+  const generated = typeof raw.generated_at_iso === 'string' && raw.generated_at_iso.length
+    ? raw.generated_at_iso
+    : new Date(0).toISOString();
+  const timezone = typeof raw.timezone === 'string' && raw.timezone.length ? raw.timezone : 'UTC';
+  return {
+    ttl_ms: Number.isFinite(ttl) ? ttl : EMPTY_QUERY_CONTEXT.caducidad.ttl_ms,
+    generated_at_iso: generated,
+    timezone,
+  };
+}
+
+function normalizeCoverage(raw: unknown): QueryContext['coverage'] {
+  if (!raw || typeof raw !== 'object') return { ...EMPTY_QUERY_CONTEXT.coverage };
+  const obj = raw as Record<string, unknown>;
+  const consulted = Number(obj.dates_consulted_count);
+  const withResults = Number(obj.dates_with_results_count);
+  const selected = Number(obj.selected_days_count);
+  return {
+    dates_consulted_count: Number.isFinite(consulted) ? consulted : 0,
+    dates_with_results_count: Number.isFinite(withResults) ? withResults : 0,
+    selected_days_count: Number.isFinite(selected) ? selected : 0,
+  };
+}
+
+function normalizeAnchors(raw: unknown): NonNullable<QueryContext['anchors']> {
+  const out: NonNullable<QueryContext['anchors']> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.today_iso === 'string' && obj.today_iso.trim()) {
+    out.today_iso = obj.today_iso;
+  }
+  return out;
 }

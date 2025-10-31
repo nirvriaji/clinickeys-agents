@@ -51,6 +51,11 @@ export class AvailabilityDateRankingService {
     // Normalizar entradas
     const explicit = uniqueISO(validDates(input.explicitDates));
     const ranges = normalizeRanges(validRanges(input.ranges));
+    const weekdaysPreferred = Array.isArray(input.weekdaysPreferred)
+      ? Array.from(new Set(input.weekdaysPreferred.filter((n) => Number.isInteger(n) && n >= 1 && n <= 7))).map((n) =>
+          Math.floor(Number(n)),
+        )
+      : [];
 
     const maxUserDate = latestMentionedDate(explicit, ranges);
     const horizonEnd = maxUserDate
@@ -87,12 +92,26 @@ export class AvailabilityDateRankingService {
     }
 
     // 3) Weekday preferred (si aplica): todas las fechas dentro del horizonte que caigan en esos días
-    const weekdaySet = new Set((input.weekdaysPreferred || []).map((x) => Math.floor(x)));
+    const weekdaySet = new Set(weekdaysPreferred);
     const bucketWeekdayPref: ISODate[] = [];
+    const totalHorizonDays = Math.max(
+      0,
+      Math.round(horizonEnd.diff(horizonStart, "days").days),
+    );
     if (weekdaySet.size > 0) {
-      for (let d = horizonStart; d <= horizonEnd; d = d.plus({ days: 1 })) {
-        if (weekdaySet.has(d.weekday)) bucketWeekdayPref.push(iso(d));
+      for (const weekday of weekdaySet) {
+        const occurrences = expandWeekdayOccurrences(iso(horizonStart), weekday, totalHorizonDays);
+        bucketWeekdayPref.push(...occurrences);
       }
+    }
+
+    const weekdayOnlyMode = weekdaySet.size > 0 && explicit.length === 0 && ranges.length === 0;
+    if (weekdayOnlyMode) {
+      Logger.info("[AvailabilityDateRankingService] Weekday-preferred mode activo", {
+        weekdays: Array.from(weekdaySet.values()),
+        occurrences: bucketWeekdayPref.length,
+        horizonDays: totalHorizonDays,
+      });
     }
 
     // 4) Resto de cada rango (orden natural dentro del rango, rangos en el orden ya ordenado)
@@ -150,6 +169,7 @@ export class AvailabilityDateRankingService {
       ordered: out.length,
       horizonStart: iso(horizonStart),
       horizonEnd: iso(horizonEnd),
+      weekdayOnlyMode,
     });
 
     return { orderedDates: out, horizonStart: iso(horizonStart), horizonEnd: iso(horizonEnd) };
@@ -249,4 +269,21 @@ function sortByCloseness(dates: ISODate[], base: DateTime): ISODate[] {
 
 function sortAsc(dates: ISODate[]): ISODate[] {
   return [...dates].sort(cmpISO);
+}
+
+function expandWeekdayOccurrences(startISO: ISODate, weekdayISO: number, horizonDays: number): ISODate[] {
+  const wk = ((Math.floor(weekdayISO) % 7) + 7) % 7 || 7; // 1..7 ISO weekday
+  const start = dt(startISO);
+  const limit = start.plus({ days: Math.max(0, horizonDays) });
+  let cursor = start;
+  const diff = (wk - cursor.weekday + 7) % 7;
+  if (diff > 0) {
+    cursor = cursor.plus({ days: diff });
+  }
+  const out: ISODate[] = [];
+  while (cursor <= limit) {
+    out.push(iso(cursor));
+    cursor = cursor.plus({ days: 7 });
+  }
+  return out;
 }

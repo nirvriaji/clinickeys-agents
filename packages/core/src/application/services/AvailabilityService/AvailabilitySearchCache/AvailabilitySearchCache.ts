@@ -11,6 +11,7 @@ export interface AvailabilitySearchInputKey {
   medico_ids: number[];      // únicos y ordenados
   espacio_ids: number[];     // únicos y ordenados
   fechas: string[];          // YYYY-MM-DD
+  intent_signature?: string;
 }
 
 export interface AvailabilitySearchValue {
@@ -71,6 +72,7 @@ function stableKeyOf(input: AvailabilitySearchInputKey): string {
     m: normIds(input.medico_ids),
     e: normIds(input.espacio_ids),
     f: normDates(input.fechas),
+    s: typeof input.intent_signature === "string" ? input.intent_signature : undefined,
   };
   return JSON.stringify(payload); // estable, sin espacios
 }
@@ -89,6 +91,7 @@ interface Entry {
     medicoIds: number[];
     espacioIds: number[];
     tratamientoIds: number[];
+    intentSignature?: string;
   };
 }
 
@@ -155,6 +158,7 @@ export class AvailabilitySearchCache {
       medicoIds: this.extractNumberArrayFromKey(key, "m"),
       espacioIds: this.extractNumberArrayFromKey(key, "e"),
       tratamientoIds: this.extractNumberArrayFromKey(key, "t"),
+      intentSignature: this.extractSignatureFromKey(key),
     };
 
     const entry: Entry = {
@@ -232,6 +236,14 @@ export class AvailabilitySearchCache {
     const set = new Set(normIds(treatmentIds));
     if (!set.size) return 0;
     const ids = this.findKeysByPredicate(ent => ent.tags.clinicId === clinicId && ent.tags.tratamientoIds.some(t => set.has(t)));
+    return this.deleteKeys(ids);
+  }
+
+  /** Invalida entradas asociadas a una firma de intención. */
+  public invalidateBySignature(signature: string): number {
+    const sig = String(signature || "").trim();
+    if (!sig) return 0;
+    const ids = this.findKeysByPredicate(ent => ent.tags.intentSignature === sig);
     return this.deleteKeys(ids);
   }
 
@@ -334,6 +346,16 @@ export class AvailabilitySearchCache {
       return normIds(arr);
     } catch {
       return [];
+    }
+  }
+
+  private extractSignatureFromKey(key: string): string | undefined {
+    try {
+      const obj = JSON.parse(key);
+      const sig = typeof obj?.s === "string" ? obj.s.trim() : "";
+      return sig || undefined;
+    } catch {
+      return undefined;
     }
   }
 }

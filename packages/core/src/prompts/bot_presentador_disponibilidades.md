@@ -39,6 +39,28 @@
    * `timezone`: string IANA (p. ej., "America/Lima"); si falta, **no** conviertas TZ.
    * `sede_elegida`: `string | null` (nombre exacto si la clínica maneja sedes; úsalo **solo** si la configuración lo indica y hay match exacto).
    * `ahoraISO`: `string` ISO local (opcional, para desempates por cercanía temporal).
+   * `query_context`: **objeto opcional** con la telemetría/criterios de la consulta:
+
+     ```json
+     {
+       "dates_consulted": ["YYYY-MM-DD", "..."],
+       "days_selected": ["YYYY-MM-DD", "..."],
+       "ranking_primary": ["YYYY-MM-DD", "..."],
+       "horizon_end": "YYYY-MM-DD",
+       "coverage": {
+         "consulted_days_count": 0,
+         "days_with_results_count": 0
+       },
+       "enforce_full_days": true
+     }
+     ```
+
+     * `dates_consulted`: días realmente consultados contra el dominio.
+     * `days_selected`: días escogidos por el motor/planner para **presentar completos** si `enforce_full_days` es `true`.
+     * `ranking_primary`: orden de ranking base aplicado por el planner.
+     * `horizon_end`: último día del horizonte consultado.
+     * `coverage`: métricas simples de cobertura.
+     * `enforce_full_days`: si es `true`, **no se recortan horarios dentro de las fechas en `days_selected`**; se listan **todas** las opciones válidas de esas fechas.
 
 3. **DISPONIBILIDADES_ORIGINALES** *(array JSON)*
 
@@ -75,7 +97,7 @@ Devuelve **un único objeto JSON válido** sin texto extra ni Markdown, con esta
   * `especifica` (boolean)
   * `fecha_legible` (opcional)
 * `dias_mostrados` (**array<string>**, requerido): fechas únicas efectivamente presentadas.
-* `disclaimer_fechas` (**string, opcional**): aclaraciones sobre TZ y alcance de fechas.
+* `query_context` (**objeto, opcional**): eco del contexto relevante (p. ej., `days_selected`, `dates_consulted`, `ranking_primary`, `horizon_end`, `coverage`, `enforce_full_days`).
 * `criterio_orden` (**string, opcional**): resumen del criterio aplicado (p. ej., "fecha↑, hora↑", "primer hueco").
 * `metadata` (**objeto, opcional**): ver §6.
 
@@ -93,6 +115,11 @@ Devuelve **un único objeto JSON válido** sin texto extra ni Markdown, con esta
 3. **Sin relajación automática:** Si las reglas resultan en 0, devuelve lista vacía y registra advertencias.
 4. **Zona horaria:** Usa `CONTEXTO.timezone` si existe; si no, no conviertas.
 5. **Determinismo:** Ante empates, orden base por `fecha_cita` ascendente y luego `hora_inicio` ascendente.
+6. **Días completos cuando se solicite:** Si `CONTEXTO.query_context.enforce_full_days === true`, entonces **para cada** fecha en `CONTEXTO.query_context.days_selected`:
+
+   * `horarios_escogidos` **debe incluir todos** los horarios válidos del día tras aplicar reglas de minutos/ventanas.
+   * Puedes limitar **el número de días** (recortar días completos), pero **no** recortar horarios dentro de los días seleccionados.
+   * `dias_mostrados` debe contener como mínimo esos `days_selected`.
 
 ---
 
@@ -112,6 +139,7 @@ Devuelve **un único objeto JSON válido** sin texto extra ni Markdown, con esta
   2. Busca coincidencias en `REGLAS_MINUTOS_POR_TRATAMIENTO` aplicando la misma normalización.
   3. Si hay regla específica y `PRIORIDAD_MINUTOS = "especifico_sobre_global"`, **usa solo** esa lista.
   4. Si **no** hay específica, usa `MINUTOS_GLOBALES`; si tampoco viene, aplica la **whitelist por defecto** del §3.2.
+
 * Si `POLITICA_MINUTOS = "estricta"` (valor recomendado), **descarta** todo inicio cuyo minuto **no** pertenezca a los permitidos efectivos. No redondees ni interpoles.
 
 ### 4.3 Sedes (copy y filtro)
@@ -130,6 +158,7 @@ Para cada disponibilidad original:
 3. Si `especifica = false`, los posibles inicios son: `hora_inicio = hora_inicio_minima + n * duracion_tratamiento`, con `n ≥ 0` y `hora_inicio ≤ hora_inicio_maxima` (según §4.1). El último inicio es válido **solo** si cae exactamente en `HH:mm` dentro del rango de inicios.
 4. Aplica **en este orden**: (a) filtros de sede/profesional/tratamiento/franjas/minutos; (b) orden; (c) **límites** (máximo por día, máximo de días, tope global).
 5. Convierte cada inicio elegido en un **ítem** de `horarios_escogidos` con todos los campos requeridos (§2).
+6. **Regla de días completos (si aplica):** Si `enforce_full_days === true` y la fecha está en `days_selected`, **omite el recorte intra-día** y vuelca **todos** los inicios válidos de esa fecha en `horarios_escogidos`.
 
 ---
 
@@ -137,6 +166,7 @@ Para cada disponibilidad original:
 
 * **Límites por defecto** (si la configuración no define otros): máximo **3 días** distintos y hasta **3** horarios por día.
 * **Orden base:** `fecha_cita` ascendente, luego `hora_inicio` ascendente. Si se pide “cercano al ahora”, usa `CONTEXTO.ahoraISO` como desempate y documenta en `criterio_orden`.
+* **Excepción por días completos:** Si `query_context.enforce_full_days === true`, **ignora el tope por día** **únicamente** para las fechas en `query_context.days_selected` y lista todos sus slots válidos. El tope de **número de días** puede mantenerse.
 
 ---
 
@@ -149,6 +179,17 @@ Recomendado para auditoría:
 * `criterios`: `{ minutos_permitidos?: string[], tope_dias?: number, tope_por_dia?: number, tope_global?: number }`.
 * `primer_hueco`: `{ fecha: string, hora: string }` cuando corresponda.
 * `conteos`: `{ total_original: number, total_derivados: number, total_filtrados: number, dias_presentados: number }`.
+* `query_context_aplicado`: espejo del `query_context` efectivo:
+
+  ```json
+  {
+    "enforce_full_days": true,
+    "days_selected": ["YYYY-MM-DD"],
+    "dates_consulted": ["YYYY-MM-DD"],
+    "ranking_primary": ["YYYY-MM-DD"],
+    "horizon_end": "YYYY-MM-DD"
+  }
+  ```
 
 ---
 
@@ -161,6 +202,14 @@ Si tras aplicar **todas** las reglas válidas no hay resultados:
   "presentacion": "Por ahora no encontré horarios que cumplan tus preferencias.",
   "horarios_escogidos": [],
   "dias_mostrados": [],
+  "query_context": {
+    "dates_consulted": [],
+    "days_selected": [],
+    "ranking_primary": [],
+    "horizon_end": "",
+    "coverage": { "consulted_days_count": 0, "days_with_results_count": 0 },
+    "enforce_full_days": false
+  },
   "metadata": { "tipo_busqueda": "sin_disponibilidad" }
 }
 ```

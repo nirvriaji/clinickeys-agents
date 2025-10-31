@@ -5,6 +5,16 @@ import type {
   SlotAccumulatorInput,
   SlotAccumulatorOutput,
 } from '@clinickeys-agents/core/application/services';
+import {
+  AvailabilityTimeDivisionsService,
+  getDefaultDivisionsConfig,
+  getDivisionKeys,
+  getDivisionMidpoint,
+  normalizeDivisionKey,
+  resolveDivisionForTime,
+} from '@clinickeys-agents/core/application/services/AvailabilityService/AvailabilityTimeDivisionsService';
+import type { DaySlot, HHMM } from '@clinickeys-agents/core/application/services/AvailabilityService/AvailabilityTimeDivisionsService';
+import type { ISODate } from '@clinickeys-agents/core/application/services/AvailabilityService/AvailabilitySearch';
 
 // =============================
 // Public API (Nueva estrategia)
@@ -86,52 +96,103 @@ export async function SlotAccumulator(input: SlotAccumulatorInput): Promise<Slot
   // 3) Priorización de días según filtros (si existen); fallback al orden natural de slots
   const dayOrderFromFilters = buildDayPriorityOrder(input.filters || []);
   const allDaysChrono = Array.from(new Set(allSlots.map(s => s.fecha_cita))).sort();
-  const dayOrder = dayOrderFromFilters.length
+
+  const rankedDays = Array.isArray(input.contexto?.query_context?.fechas_rankeadas)
+    ? input.contexto!.query_context!.fechas_rankeadas.filter((d): d is string => typeof d === 'string')
+    : [];
+
+  const combinedOrder = dayOrderFromFilters.length
     ? uniqPreserving([...dayOrderFromFilters, ...allDaysChrono])
     : allDaysChrono;
+
+  const rankingPosition = new Map<string, number>();
+  rankedDays.forEach((d, idx) => {
+    if (!rankingPosition.has(d)) rankingPosition.set(d, idx);
+  });
+
+  const dayOrder = [...combinedOrder].sort((a, b) => {
+    const pa = rankingPosition.has(a) ? rankingPosition.get(a)! : Number.MAX_SAFE_INTEGER;
+    const pb = rankingPosition.has(b) ? rankingPosition.get(b)! : Number.MAX_SAFE_INTEGER;
+    if (pa !== pb) return pa - pb;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
 
   // 4) Agrupar por día y ordenar intra‑día con preferencias
   const perDayMap = groupByDate(allSlots);
 
   const preferencias = input.contexto?.horas_preferencia_usuario || [];
 
-  // 5) Selección bajo la NUEVA estrategia:
-  //    - Tomar días completos (todas sus opciones válidas) siguiendo el ranking de días
-  //    - Parar cuando tengamos al menos 3 días completos
-  //    - Además, procurar cubrir divisiones horarias (mañana/mediodía/tarde/noche) en el universo seleccionado global
-  const MIN_DIAS_OBJETIVO = 3;
-  const selectedDays: string[] = [];
-  const selectedSlots: AnySlot[] = [];
+  const preferredDivisionKeys = preferencias
+    .map(p => normalizeDivisionKey(p, DEFAULT_DIVISIONS))
+    .filter((k): k is string => typeof k === 'string' && k.length > 0);
+  const preferredDivisionSet = new Set(preferredDivisionKeys);
+  const requestedDates = collectDatesFromFilters(input.filters || []);
+  const nowAnchor = normalizeAnchorDate(input.contexto?.ahoraISO);
+  const weekdayPreferenceSet = new Set<number>(
+    Array.isArray(input.contexto?.weekday_preferences)
+      ? (input.contexto!.weekday_preferences as number[])
+          .map((n) => parseInt(String(n), 10))
+          .filter((n) => Number.isInteger(n) && n >= 1 && n <= 7)
+      : [],
+  );
+  const derivedMaxDays = determineMaxDays(dayOrder, requestedDates, weekdayPreferenceSet);
+  const effectiveMaxDays = derivedMaxDays ?? MAX_SELECTED_DAYS;
 
-  // Seguimiento de cobertura por divisiones horarias globales
-  const divisionCoverage = new Map<string, number>();
+  const dayInfos: DaySelectionInfo[] = [];
 
   for (const day of dayOrder) {
     const list = perDayMap.get(day) || [];
     if (!list.length) continue;
 
     const orderedIntra = orderIntraDia(list, preferencias);
+    const daySlots: DaySlot[] = orderedIntra.map((slot) => ({
+      fecha_cita: slot.fecha_cita,
+      hora_inicio: slot.hora_inicio as HHMM,
+      id_medico: slot.id_medico,
+      id_espacio: slot.id_espacio,
+    }));
+    const assignment = AvailabilityTimeDivisionsService.assignDay(day, daySlots, DEFAULT_DIVISIONS);
+    AvailabilityTimeDivisionsService.logCoverage(assignment);
 
-    // Día completo: agregamos TODAS las opciones válidas del día (sin truncar)
-    for (const s of orderedIntra) {
-      selectedSlots.push(s);
-      const div = getDivisionId(s.hora_inicio);
-      divisionCoverage.set(div, (divisionCoverage.get(div) || 0) + 1);
-    }
-    selectedDays.push(day);
+    const prioritized = selectTopSlotsForDay(orderedIntra, preferredDivisionSet, MAX_SLOTS_PER_DAY);
+    const rankPos = rankingPosition.get(day as ISODate) ?? Number.MAX_SAFE_INTEGER;
+    const inRequestedRange = requestedDates.size === 0 ? true : requestedDates.has(day);
+    const diffFromNow = daysDiffFrom(nowAnchor, day);
+    const matchesPreferredWeekday = weekdayPreferenceSet.size === 0
+      ? true
+      : (() => {
+          const weekday = deriveWeekdayFromISO(day);
+          return weekday ? weekdayPreferenceSet.has(weekday) : false;
+        })();
 
-    // Criterio de parada mínimo
-    if (selectedDays.length >= MIN_DIAS_OBJETIVO) {
-      // Si ya cubrimos al menos 1 opción en cada división principal, podemos cortar
-      if (hasGlobalDivisionVariety(divisionCoverage)) break;
-      // Si no, seguimos añadiendo días hasta cubrir variedad o agotar días
-    }
+    dayInfos.push({
+      date: day,
+      prioritizedSlots: prioritized.slots,
+      preferredCount: prioritized.preferredCount,
+      isComplete: assignment.coverage.nonEmptyDivisions >= (DEFAULT_DIVISIONS.length || 1),
+      inRequestedRange,
+      rankPos,
+      diffFromNow,
+      matchesPreferredWeekday,
+    });
+  }
+
+  dayInfos.sort(compareDayInfo);
+  const topInfos = dayInfos.slice(0, effectiveMaxDays);
+
+  const selectedDays: string[] = [];
+  const selectedSlots: AnySlot[] = [];
+  for (const info of topInfos) {
+    selectedDays.push(info.date);
+    selectedSlots.push(...info.prioritizedSlots);
   }
 
   // 6) Resultado
+  const finalSelectedSlots = selectedSlots.sort(slotChronoCmp);
+
   return buildOutput({
     universo: allSlots,
-    seleccionadas: selectedSlots,
+    seleccionadas: finalSelectedSlots,
     dias: selectedDays,
     contexto: input.contexto,
     reglasAplicadas: {
@@ -161,12 +222,28 @@ interface AnySlot {
   duracion_tratamiento?: number;
 }
 
+interface DaySelectionInfo {
+  date: string;
+  prioritizedSlots: AnySlot[];
+  preferredCount: number;
+  isComplete: boolean;
+  inRequestedRange: boolean;
+  rankPos: number;
+  diffFromNow: number;
+  matchesPreferredWeekday: boolean;
+}
+
 // =============================
 // Utils — tiempo y slots
 // =============================
 const DEFAULT_MINUTES_WHITELIST = [
   '00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55',
 ];
+
+const DEFAULT_DIVISIONS = getDefaultDivisionsConfig();
+const DEFAULT_DIVISION_KEYS = getDivisionKeys(DEFAULT_DIVISIONS);
+const MAX_SELECTED_DAYS = 3;
+const MAX_SLOTS_PER_DAY = 3;
 
 function toSet<T>(arr: T[]): Set<T> { return new Set(arr); }
 
@@ -331,17 +408,23 @@ function intraCmp(a: AnySlot, b: AnySlot, targets: string[]): number {
 }
 
 function buildPreferenceTargets(prefs: string[]): string[] {
-  const targets: string[] = [];
-  for (const p of prefs) {
-    const s = String(p || '').trim().toLowerCase();
-    if (!s) continue;
-    if (/^\d{2}:\d{2}$/.test(s)) { targets.push(s); continue; }
-    if (s === 'mañana' || s === 'manana') { targets.push('09:00', '10:00', '11:00'); continue; }
-    if (s === 'mediodia' || s === 'mediodía') { targets.push('12:00', '13:00', '14:00'); continue; }
-    if (s === 'tarde') { targets.push('15:00', '16:00', '17:00'); continue; }
-    if (s === 'noche') { targets.push('18:00', '19:00', '20:00'); continue; }
+  const targets = new Set<string>();
+  for (const pref of prefs) {
+    const raw = String(pref || '').trim();
+    if (!raw) continue;
+
+    if (/^\d{2}:\d{2}$/.test(raw)) {
+      targets.add(raw);
+      continue;
+    }
+
+    const normalizedKey = normalizeDivisionKey(raw, DEFAULT_DIVISIONS);
+    if (normalizedKey) {
+      const midpoint = getDivisionMidpoint(normalizedKey, DEFAULT_DIVISIONS);
+      if (midpoint) targets.add(midpoint);
+    }
   }
-  return targets;
+  return Array.from(targets);
 }
 
 function scorePreference(hhmm: string, targets: string[]): number {
@@ -359,23 +442,119 @@ function scorePreference(hhmm: string, targets: string[]): number {
   return best; // menor es mejor
 }
 
-function getDivisionId(hhmm: string): string {
-  // Divisiones simples y estables
-  // madrugada: 00:00-05:59 (no exigida), mañana: 06:00-11:59, mediodía: 12:00-14:59, tarde: 15:00-17:59, noche: 18:00-21:59, tardía: 22:00-23:59
-  const [h, m] = hhmm.split(':').map(n => parseInt(n, 10));
-  const mins = h * 60 + m;
-  if (mins >= 360 && mins <= 719) return 'mañana';
-  if (mins >= 720 && mins <= 899) return 'mediodía';
-  if (mins >= 900 && mins <= 1079) return 'tarde';
-  if (mins >= 1080 && mins <= 1319) return 'noche';
-  if (mins < 360) return 'madrugada';
-  return 'tardía';
+function selectTopSlotsForDay(
+  orderedSlots: AnySlot[],
+  preferredDivisions: Set<string>,
+  maxPerDay: number,
+): { slots: AnySlot[]; preferredCount: number } {
+  if (!orderedSlots.length || maxPerDay <= 0) {
+    return { slots: [], preferredCount: 0 };
+  }
+
+  const preferred: AnySlot[] = [];
+  const others: AnySlot[] = [];
+
+  for (const slot of orderedSlots) {
+    const divisionKey = resolveDivisionForTime(slot.hora_inicio as HHMM, DEFAULT_DIVISIONS);
+    if (divisionKey && preferredDivisions.has(divisionKey)) {
+      preferred.push(slot);
+    } else {
+      others.push(slot);
+    }
+  }
+
+  const buckets = preferredDivisions.size > 0 ? [preferred, others] : [orderedSlots];
+  const picked: AnySlot[] = [];
+  let preferredCount = 0;
+
+  for (const bucket of buckets) {
+    for (const slot of bucket) {
+      if (picked.length >= maxPerDay) break;
+      picked.push(slot);
+      const divisionKey = resolveDivisionForTime(slot.hora_inicio as HHMM, DEFAULT_DIVISIONS);
+      if (divisionKey && preferredDivisions.has(divisionKey)) {
+        preferredCount += 1;
+      }
+    }
+    if (picked.length >= maxPerDay) break;
+  }
+
+  if (!picked.length) {
+    const fallback = orderedSlots.slice(0, maxPerDay);
+    return { slots: fallback, preferredCount: 0 };
+  }
+
+  return { slots: picked, preferredCount };
 }
 
-function hasGlobalDivisionVariety(coverage: Map<string, number>): boolean {
-  // Requerimos al menos 1 en cada una de las divisiones principales
-  const main = ['mañana', 'mediodía', 'tarde', 'noche'];
-  return main.every(id => (coverage.get(id) || 0) > 0);
+function compareDayInfo(a: DaySelectionInfo, b: DaySelectionInfo): number {
+  if (a.rankPos !== b.rankPos) return a.rankPos - b.rankPos;
+  if (a.diffFromNow !== b.diffFromNow) return a.diffFromNow - b.diffFromNow;
+  if (a.inRequestedRange !== b.inRequestedRange) return a.inRequestedRange ? -1 : 1;
+  if (a.matchesPreferredWeekday !== b.matchesPreferredWeekday) return a.matchesPreferredWeekday ? -1 : 1;
+  if (a.isComplete !== b.isComplete) return a.isComplete ? -1 : 1;
+  if (a.preferredCount !== b.preferredCount) return b.preferredCount - a.preferredCount;
+  if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+  return 0;
+}
+
+function collectDatesFromFilters(filters: any[]): Set<string> {
+  const result = new Set<string>();
+  for (const f of filters || []) {
+    const drs = Array.isArray((f as any)?.date_ranges) ? (f as any).date_ranges : [];
+    for (const r of drs) {
+      const start = r?.start_date || r?.start;
+      const end = r?.end_date || r?.end || start;
+      if (!isISODate(start) || !isISODate(end)) continue;
+      for (const d of enumerateDates(start, end)) result.add(d);
+    }
+  }
+  return result;
+}
+
+function normalizeAnchorDate(raw: unknown): Date {
+  if (typeof raw === 'string' && raw.trim()) {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return new Date();
+}
+
+function daysDiffFrom(anchor: Date, targetISO: string): number {
+  const targetMs = Date.parse(`${targetISO}T00:00:00Z`);
+  if (Number.isNaN(targetMs)) return Number.MAX_SAFE_INTEGER;
+  const anchorUtc = Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), anchor.getUTCDate());
+  const diff = Math.floor((targetMs - anchorUtc) / 86400000);
+  if (diff < 0) return Math.abs(diff) + 1000;
+  return diff;
+}
+
+function deriveWeekdayFromISO(date: string): number | null {
+  if (!isISODate(date)) return null;
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const dow = parsed.getUTCDay(); // 0=domingo ... 6=sábado
+  return dow === 0 ? 7 : dow;
+}
+
+function determineMaxDays(
+  orderedDays: string[],
+  requestedDates: Set<string>,
+  preferredWeekdays: Set<number>,
+): number | null {
+  if (requestedDates.size > 0) {
+    return Math.max(MAX_SELECTED_DAYS, requestedDates.size);
+  }
+
+  if (preferredWeekdays.size === 0) return null;
+
+  const matchingDays = orderedDays.filter((day) => {
+    const weekday = deriveWeekdayFromISO(day);
+    return weekday ? preferredWeekdays.has(weekday) : false;
+  });
+
+  if (matchingDays.length === 0) return null;
+  return matchingDays.length;
 }
 
 // =============================
@@ -392,17 +571,17 @@ function buildOutput(args: {
 }): SlotAccumulatorOutput {
   return {
     universo_opciones: args.universo,
-    opciones_top10: args.seleccionadas, // ahora sin corte: todas las del/los días completos
+   opciones_top10: args.seleccionadas, // ahora sin corte: todas las del/los días completos
     dias_mostrados: args.dias,
-    disclaimer_fechas: args.contexto?.disclaimer_fechas,
+    query_context: args.contexto?.query_context,
     tipo_busqueda_final: args.tipoBusqueda,
     metadata: {
       reglas_aplicadas: args.reglasAplicadas,
       criterios: {
         orden: 'fecha↑, hora↑, id_espacio↑',
         estrategia: 'dias_completos_sin_topes',
-        min_dias_objetivo: 3,
-        divisiones: 'mañana/mediodía/tarde/noche',
+        max_dias_mostrados: MAX_SELECTED_DAYS,
+        divisiones: DEFAULT_DIVISION_KEYS.join('/'),
       },
       conteos: {
         total_original: args.universo.length,

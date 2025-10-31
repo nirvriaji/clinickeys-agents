@@ -1,6 +1,7 @@
 // packages/core/src/application/services/AvailabilityService/AvailabilitySearch/AvailabilitySearch.ts
 
 import { z } from "zod";
+import type { ExtractorTimeWindow } from "@clinickeys-agents/core/application/services/types/Availability";
 
 // =============================
 // Utiles comunes
@@ -44,10 +45,9 @@ export type DateRange = z.infer<typeof DateRangeSchema>;
 // Divisiones horarias canónicas
 // =============================
 export const TimeDivisionKeySchema = z.enum([
-  "manana", // 06:00–11:59 (sin tilde para evitar incompatibilidades en claves)
+  "manana", // 07:00–11:59 (sin tilde para evitar incompatibilidades en claves)
   "mediodia", // 12:00–14:59
-  "tarde", // 15:00–17:59
-  "noche", // 18:00–23:59
+  "tarde", // 15:00–22:59
 ]);
 
 export type TimeDivisionKey = z.infer<typeof TimeDivisionKeySchema>;
@@ -64,10 +64,9 @@ export type TimeDivision = z.infer<typeof TimeDivisionSchema>;
 
 // Preset por defecto (usado por AvailabilityTimeDivisionsService)
 export const DefaultTimeDivisions: Readonly<TimeDivision[]> = [
-  { key: "manana", start: "06:00", end: "11:59" },
+  { key: "manana", start: "07:00", end: "11:59" },
   { key: "mediodia", start: "12:00", end: "14:59" },
-  { key: "tarde", start: "15:00", end: "17:59" },
-  { key: "noche", start: "18:00", end: "23:59" },
+  { key: "tarde", start: "15:00", end: "22:59" },
 ] as const;
 
 // =============================
@@ -271,14 +270,19 @@ export type AvailabilitySearchResult = z.infer<
 // =============================
 // Tipos de filtro del extractor (dos variantes bien separadas)
 // =============================
+export interface ExtractorFilterDateRange {
+  start_date: ISODate;
+  end_date: ISODate;
+  time_windows?: ExtractorTimeWindow[];
+}
+
 export interface ExtractorFilterNames {
   tratamientos: string[];
   medicos: string[];
   espacios: string[];
   aparatologias: string[];
   especialidades: string[];
-  date_ranges: { start_date: ISODate; end_date: ISODate }[];
-  time_preferences?: string | null; // texto libre tipo "mañana/tarde"
+  date_ranges: ExtractorFilterDateRange[];
 }
 
 export interface ExtractorFilterIds {
@@ -287,8 +291,7 @@ export interface ExtractorFilterIds {
   espacio_ids: number[];
   aparatologias: string[];
   especialidades: string[];
-  date_ranges: { start_date: ISODate; end_date: ISODate }[];
-  time_preferences?: string | null;
+  date_ranges: ExtractorFilterDateRange[];
 }
 
 // En la app usamos la variante por NOMBRES para normalización previa.
@@ -370,6 +373,22 @@ export function mapFilterFieldsToCanonical(
   f: ExtractorFilterNames,
   cat: CatalogosDisponibles
 ): ExtractorFilterNames {
+  const cloneRanges = (
+    ranges: ExtractorFilterDateRange[] | undefined
+  ): ExtractorFilterDateRange[] => {
+    if (!Array.isArray(ranges)) return [];
+    return ranges
+      .map((r) => {
+        const start = String(r?.start_date || "").slice(0, 10) as ISODate;
+        const end = String(r?.end_date || "").slice(0, 10) as ISODate;
+        const windows = Array.isArray(r?.time_windows)
+          ? r.time_windows.map((tw) => ({ ...tw }))
+          : [];
+        return { start_date: start, end_date: end, time_windows: windows };
+      })
+      .filter((r) => ISO_DATE_RE.test(r.start_date) && ISO_DATE_RE.test(r.end_date));
+  };
+
   const mapArray = (arr: string[] | undefined, catalog: string[]) => {
     const out: string[] = [];
     for (const v of arr || []) {
@@ -385,8 +404,7 @@ export function mapFilterFieldsToCanonical(
     espacios: mapArray(f.espacios, cat.espaciosDisponibles),
     aparatologias: Array.isArray(f.aparatologias) ? [...f.aparatologias] : [],
     especialidades: Array.isArray(f.especialidades) ? [...f.especialidades] : [],
-    date_ranges: Array.isArray(f.date_ranges) ? [...f.date_ranges] : [],
-    time_preferences: f.time_preferences ?? null,
+    date_ranges: cloneRanges(f.date_ranges),
   };
 }
 
@@ -441,7 +459,6 @@ export function ensureSingleCanonicalFilter(
       aparatologias: [],
       especialidades: [],
       date_ranges: [], // el use case maneja ausencia/derivación de rangos
-      time_preferences: null,
     };
   }
 

@@ -226,7 +226,7 @@ export function planAllBlocks(
 }
 
 // =============================
-// Helper para DISCLAIMER: colapsar todos los bloques a rangos compactos
+// Helper para colapsar todos los bloques a rangos compactos
 // =============================
 export function collapseBlocksToRanges(blocks: Block[]): DateRange[] {
   const ranges = blocks.map(({ start, end }) => ({ start, end }));

@@ -44,6 +44,10 @@ export type ExecuteStepRunner = (args: {
   fechasISO: string[]; // YYYY-MM-DD
 }) => Promise<{ analisis_agenda: any[] }>; // ventanas/slots crudos del dominio
 
+export interface ExecuteStepsOptions {
+  batchSize?: number;
+}
+
 // =============================
 // buildAvailabilitySteps (ID-first, determinista)
 // - Un único paso "principal" que usa los IDs ya resueltos por el extractor.
@@ -85,21 +89,36 @@ export async function executeAvailabilitySteps(
   rankedDatesAll: string[],
   steps: AvailabilityStep[],
   runner: ExecuteStepRunner,
+  options?: ExecuteStepsOptions,
 ): Promise<ExecuteStepsResult> {
   const telemetry: ExecuteStepsResult["telemetry"] = [];
   const allResults: any[] = [];
+  const batchSize = Math.max(1, Math.floor(options?.batchSize ?? 14));
 
   for (const step of steps) {
     const fechasISO = Array.isArray(rankedDatesAll) ? rankedDatesAll.slice(0) : [];
-    const out = await runner({ step, fechasISO });
-    const count = Array.isArray(out?.analisis_agenda) ? out.analisis_agenda.length : 0;
+    let consulted = 0;
+    let collected = 0;
+
+    for (let offset = 0; offset < fechasISO.length; offset += batchSize) {
+      const chunk = fechasISO.slice(offset, offset + batchSize);
+      if (!chunk.length) continue;
+      consulted += chunk.length;
+
+      const out = await runner({ step, fechasISO: chunk });
+      const count = Array.isArray(out?.analisis_agenda) ? out.analisis_agenda.length : 0;
+      if (count) {
+        allResults.push(...out!.analisis_agenda);
+        collected += count;
+      }
+    }
+
     telemetry.push({
       stepIndex: step.index,
       label: step.label,
-      fechas_consultadas: fechasISO.length,
-      resultados: count,
+      fechas_consultadas: consulted,
+      resultados: collected,
     });
-    if (count) allResults.push(...out.analisis_agenda);
   }
 
   return { analisis_agenda: allResults, telemetry };

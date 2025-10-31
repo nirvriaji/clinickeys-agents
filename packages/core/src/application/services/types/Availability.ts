@@ -1,6 +1,7 @@
 // packages/core/src/application/services/types/Availability.ts
 
 import { z } from "zod";
+import type { QueryContext } from "@clinickeys-agents/core/application/services/AvailabilityService/types/QueryContext";
 
 // ============================
 // Utilidades de validación
@@ -8,11 +9,59 @@ import { z } from "zod";
 
 export const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/; // YYYY-MM-DD (validación leve)
 export const TWO_DIGIT_MINUTE_RE = /^\d{2}$/; // "00".."59" (validación leve)
+export const HHMM_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/; // HH:mm (24h)
 
 /**
  * Rango de fechas [start_date, end_date] en formato ISO (YYYY-MM-DD).
  * - Para día único: start_date == end_date.
  */
+export const ExtractorTimeWindowSchema = z
+  .discriminatedUnion("type", [
+    z
+      .object({
+        type: z.literal("any"),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("labels"),
+        labels: z.array(z.string().min(1)).min(1),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("after"),
+        time: z.string().regex(HHMM_RE),
+        inclusive: z.boolean().optional().default(true),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("before"),
+        time: z.string().regex(HHMM_RE),
+        inclusive: z.boolean().optional().default(true),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("between"),
+        start: z.string().regex(HHMM_RE),
+        end: z.string().regex(HHMM_RE),
+        inclusive_start: z.boolean().optional().default(true),
+        inclusive_end: z.boolean().optional().default(true),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("exact"),
+        time: z.string().regex(HHMM_RE),
+      })
+      .strict(),
+  ])
+  .readonly();
+
+export type ExtractorTimeWindow = z.infer<typeof ExtractorTimeWindowSchema>;
+
 export const ExtractorDateRangeSchema = z
   .object({
     start_date: z
@@ -21,6 +70,7 @@ export const ExtractorDateRangeSchema = z
     end_date: z
       .string()
       .regex(ISO_DATE_RE, "end_date debe tener formato YYYY-MM-DD"),
+    time_windows: z.array(ExtractorTimeWindowSchema).default([]),
   })
   .strict()
   .refine((o) => o.end_date >= o.start_date, {
@@ -40,7 +90,7 @@ export type ExtractorDateRange = z.infer<typeof ExtractorDateRangeSchema>;
  * - El extractor debe devolver **IDs** exactos para tratamiento/médico/espacio.
  * - Si no hay match, debe devolver `[]` (no inventa nombres).
  * - `date_ranges` contiene uno o varios rangos (OR interno entre rangos) y es obligatorio.
- * - `time_preferences` es textual (p. ej. "mañana", "tarde", "19:00"), opcional.
+ * - Cada `date_range` puede incluir `time_windows` con restricciones horarias.
  */
 export const ExtractorFilterSchema = z
   .object({
@@ -53,7 +103,6 @@ export const ExtractorFilterSchema = z
     especialidades: z.array(z.string()),
 
     date_ranges: z.array(ExtractorDateRangeSchema).min(1),
-    time_preferences: z.string().trim().nullable().optional(),
   })
   .strict();
 
@@ -217,8 +266,9 @@ export interface SlotAccumulatorContext {
   timezone?: string;
   sede_elegida?: string | null;
   horas_preferencia_usuario?: string[]; // ["mañana","tarde","19:00"]
-  disclaimer_fechas?: any; // ranges colapsados (lo que devuelve collapseBlocksToRanges)
+  query_context?: QueryContext;
   ahoraISO?: string; // opcional, informativo
+  weekday_preferences?: number[];
 }
 
 export interface SlotAccumulatorInput {
@@ -232,7 +282,7 @@ export interface SlotAccumulatorOutput {
   universo_opciones: any[]; // todos los inicios válidos (ordenados)
   opciones_top10: any[]; // top N (tope_global)
   dias_mostrados: string[]; // YYYY-MM-DD
-  disclaimer_fechas?: any;
+  query_context?: QueryContext;
   tipo_busqueda_final: string; // p.ej. "bloques" | otros si en el futuro se usa
   metadata?: {
     reglas_aplicadas?: Record<string, unknown>;

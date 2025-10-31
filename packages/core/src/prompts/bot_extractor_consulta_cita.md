@@ -56,9 +56,15 @@ Salida **única y exclusiva**:
       "aparatologias": ["…"],
       "especialidades": ["…"],
       "date_ranges": [
-        { "start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD" }
-      ],
-      "time_preferences": "…"
+        {
+          "start_date": "YYYY-MM-DD",
+          "end_date": "YYYY-MM-DD",
+          "time_windows": [
+            { "type": "labels", "labels": ["tarde"] },
+            { "type": "after", "time": "17:00", "inclusive": true }
+          ]
+        }
+      ]
     }
   ]
 }
@@ -71,7 +77,15 @@ Salida **única y exclusiva**:
 * `tratamiento_ids` / `medico_ids` / `espacio_ids`: **IDs canónicos** obtenidos al mapear los nombres de usuario contra los catálogos.
 * `aparatologias`, `especialidades`: etiquetas textuales opcionales; si no aplica, usar `[]`.
 * `date_ranges`: **siempre** rangos (para un día suelto, usar `start_date == end_date`).
-* `time_preferences`: **opcional** y **textual** (p. ej. "mañana", "tarde", "noche", "cualquier hora"). **No** se devuelven horas exactas.
+* Cada rango puede incluir `time_windows`: arreglo opcional de restricciones horarias normalizadas. Si no hay preferencia temporal, omite la propiedad o envía `[{ "type": "any" }]`.
+  * Tipos disponibles:
+    * `{ "type": "labels", "labels": ["mañana" | "mediodia" | "tarde"] }`
+    * `{ "type": "after", "time": "HH:MM", "inclusive": true|false }`
+    * `{ "type": "before", "time": "HH:MM", "inclusive": true|false }`
+    * `{ "type": "between", "start": "HH:MM", "end": "HH:MM", "inclusive_start": true|false, "inclusive_end": true|false }`
+    * `{ "type": "exact", "time": "HH:MM" }`
+    * `{ "type": "any" }` (anula restricciones y permite cualquier horario para ese rango)
+  * Las horas deben ir en formato 24h `HH:MM`. Puedes combinar varios elementos en `time_windows` para reflejar reglas compuestas.
 
 > **Compatibilidad opcional:** Si además detectas nombres canónicos, **no** los devuelvas en la salida principal; todo consumo aguas abajo es por IDs. (No incluir campos `tratamientos`, `medicos`, `espacios`.)
 
@@ -101,11 +115,19 @@ Salida **única y exclusiva**:
 
 * Si el usuario indica "cualquier …", dejar el array correspondiente **vacío** (`[]`).
 
-### 4.2 Fechas y rangos (sin horas)
+### 4.2 Fechas, rangos y ventanas horarias
 
 * Interpretar lenguaje temporal relativo utilizando `tiempo_actual`.
 * **Siempre devolver `date_ranges`** (no expandir a fechas diarias). Para un único día, usar `start_date == end_date`.
-* `time_preferences` se pobla solo con etiquetas de preferencia temporal (p. ej. "mañana/tarde/noche/cualquier hora"). **No** incluir horas exactas.
+* Cada rango puede declarar **ventanas horarias estructuradas** mediante `time_windows`. Usa la combinación que mejor represente la intención:
+  * "después de las 17" → `[{ "type": "after", "time": "17:00", "inclusive": true }]`
+  * "antes de las 12" → `[{ "type": "before", "time": "12:00", "inclusive": false }]`
+  * "entre 9 y 11" → `[{ "type": "between", "start": "09:00", "end": "11:00" }]`
+  * "exactamente a las 18" → `[{ "type": "exact", "time": "18:00" }]`
+  * "por la tarde" → `[{ "type": "labels", "labels": ["tarde"] }]`
+  * Si el usuario afirma “cualquier hora” o no impone preferencia, omite `time_windows` o envía `[{ "type": "any" }]`.
+* Puedes combinar varias entradas en `time_windows` para reflejar reglas compuestas (p. ej. `labels` + `after`).
+* Las horas deben escribirse en formato 24h `HH:MM` y se interpretan en la zona horaria de la clínica.
 * **Regla `DEFAULT_FORWARD_DAYS`** (de la cabecera `HEADER`):
 
   * Si el usuario **no** aporta fin del rango, fijar `end_date = start_date + DEFAULT_FORWARD_DAYS` (incluye extremos).
@@ -113,7 +135,7 @@ Salida **única y exclusiva**:
 * **Días de la semana (p. ej. "jueves y viernes")**:
 
   * Representar la intención mediante **rangos** que cubran el horizonte pertinente (p. ej. `start_date = hoy` y `end_date = hoy + DEFAULT_FORWARD_DAYS` si no hay fin explícito).
-  * **No** expandir por días concretos ni codificar los días de la semana en la salida; esta preferencia se maneja aguas abajo por el planificador/rankeador.
+  * Añade `time_windows` con `labels` si el paciente restringe la franja (p. ej. "los viernes por la mañana").
 * Mapeos típicos a **rangos** (ejemplos normativos):
 
   * "hoy" → `{ start_date: hoy, end_date: hoy }`
@@ -121,7 +143,7 @@ Salida **única y exclusiva**:
   * "próxima semana" → `{ start_date: lunes_siguiente, end_date: domingo_siguiente }`
   * "en <mes>" → rango del mes completo del año deducido por `tiempo_actual`.
   * "entre el <d1> y el <d2> de <mes>" → `{ start_date: d1, end_date: d2 }`.
-  * "después del <fecha>" → `{ start_date: <fecha+1>, end_date: start_date + DEFAULT_FORWARD_DAYS }`.
+  * "después del <fecha>" → `{ start_date: <fecha+1>, end_date: start_date + DEFAULT_FORWARD_DAYS }` (puedes añadir `after` si también señala una hora).
   * "a partir de <mes>" → si el mes es claro, rango del mes completo; si no es posible, usar `DEFAULT_FORWARD_DAYS` desde el primer día deducible.
 * **Formato obligatorio**: `YYYY-MM-DD` para `start_date`/`end_date`.
 * **Orden y consolidación**: ordenar rangos por `start_date` ascendente; si hay solapamiento o contigüidad, **colapsar** en un rango único.
@@ -164,7 +186,7 @@ El sistema que invoca al extractor gestionará la petición de clarificación al
 * Verificar que los IDs devueltos en `tratamiento_ids`, `medico_ids`, `espacio_ids` existen en los respectivos catálogos.
 * Comprobar que **cada rango** cumple `YYYY-MM-DD` y que `end_date >= start_date`.
 * Ordenar `date_ranges` de forma ascendente y colapsar superposiciones/contiguos.
-* Si se deduce una preferencia de tiempo amplia (p. ej. "lo antes posible"), usar `time_preferences: "cualquier hora"` y construir el/los `date_ranges` con `DEFAULT_FORWARD_DAYS` cuando aplique.
+* Si el paciente deja explícito que no hay restricción horaria, omite `time_windows` o incluye `[{ "type": "any" }]` en los rangos afectados.
 
 ---
 
@@ -184,9 +206,14 @@ El sistema que invoca al extractor gestionará la petición de clarificación al
       "aparatologias": [],
       "especialidades": [],
       "date_ranges": [
-        { "start_date": "2025-11-06", "end_date": "2025-11-06" }
-      ],
-      "time_preferences": "mañana"
+        {
+          "start_date": "2025-11-06",
+          "end_date": "2025-11-06",
+          "time_windows": [
+            { "type": "labels", "labels": ["mañana"] }
+          ]
+        }
+      ]
     }
   ]
 }
@@ -204,9 +231,14 @@ El sistema que invoca al extractor gestionará la petición de clarificación al
       "aparatologias": [],
       "especialidades": [],
       "date_ranges": [
-        { "start_date": "2025-11-10", "end_date": "2025-11-16" }
-      ],
-      "time_preferences": "tarde"
+        {
+          "start_date": "2025-11-10",
+          "end_date": "2025-11-16",
+          "time_windows": [
+            { "type": "labels", "labels": ["tarde"] }
+          ]
+        }
+      ]
     }
   ]
 }
@@ -224,9 +256,14 @@ El sistema que invoca al extractor gestionará la petición de clarificación al
       "aparatologias": [],
       "especialidades": [],
       "date_ranges": [
-        { "start_date": "2025-11-12", "end_date": "2025-11-15" }
-      ],
-      "time_preferences": "cualquier hora"
+        {
+          "start_date": "2025-11-12",
+          "end_date": "2025-11-15",
+          "time_windows": [
+            { "type": "any" }
+          ]
+        }
+      ]
     },
     {
       "tratamiento_ids": [101],
@@ -235,9 +272,14 @@ El sistema que invoca al extractor gestionará la petición de clarificación al
       "aparatologias": [],
       "especialidades": [],
       "date_ranges": [
-        { "start_date": "2025-11-12", "end_date": "2025-11-22" }
-      ],
-      "time_preferences": "cualquier hora"
+        {
+          "start_date": "2025-11-12",
+          "end_date": "2025-11-22",
+          "time_windows": [
+            { "type": "any" }
+          ]
+        }
+      ]
     }
   ]
 }
@@ -252,6 +294,6 @@ El sistema que invoca al extractor gestionará la petición de clarificación al
 3. Normalizar **por nombre** contra los catálogos `{ id, nombre }` y **obtener los IDs** de tratamientos/médicos/espacios.
 4. Construir **`date_ranges`** (no horas, no fechas diarias). Aplicar `DEFAULT_FORWARD_DAYS` cuando falte fin; **respetar** topes explícitos.
 5. Para indicaciones por día de semana, devolver **rangos** que cubran el horizonte (no expandir a días individuales).
-6. Poblar `time_preferences` si procede (texto sólo, p. ej. "mañana/tarde/noche/cualquier hora").
+6. Adjuntar `time_windows` en cada rango cuando el paciente imponga horarios (labels, after/before/between/exact); omitirlos o usar `[{ "type": "any" }]` si no hay restricciones.
 7. Ordenar y colapsar rangos. Validar formato e IDs.
 8. Responder **únicamente** con `{ "filters": [ … ] }` o `{ "filters": [] }` si es ambiguo.
