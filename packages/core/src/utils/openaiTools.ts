@@ -79,14 +79,19 @@ export const openaiTools: OpenAITool[] = [
     description:
       "Confirma y formaliza la reserva de un horario disponible para un paciente. " +
       "Usar únicamente después de mostrar disponibilidades y cuando el paciente elige un horario específico (slot). " +
-      "Identidad: si `shouldCreatePatient` es true, se crea/busca por nombre+apellido+teléfono; si es false, se debe proporcionar `id_paciente`. " +
-      "Siempre existe un id_espacio resuelto internamente (sea sede o cabina/sala).",
+      "Identidad (excluyente): \n" +
+      "  • Usar existente: shouldCreatePatient:false y id_paciente presente.\n" +
+      "  • Crear/buscar: shouldCreatePatient:true y {nombre, apellido(s), telefono} confirmados (datos reales, sin placeholders). " +
+      "Si se propone usar el TELEFONO_INTERLOCUTOR, debe existir confirmación explícita en el chat. " +
+      "Siempre existe un id_espacio resuelto internamente (sede o cabina/sala). " +
+      "Ready-checks específicos: slot completo y consistente; identidad válida según el modo elegido. " +
+      "No encadenar reservas dependientes si faltan precondiciones.",
     parameters: {
       type: "object",
       properties: {
-        nombre: { type: "string", description: "Nombre del paciente (NO PUEDE ESTAR VACÍO)" },
-        apellido: { type: "string", description: "Apellido del paciente (NO PUEDE ESTAR VACÍO)" },
-        telefono: { type: "string", description: "Teléfono del paciente (NO PUEDE ESTAR VACÍO)" },
+        nombre: { type: "string", description: "Nombre del paciente (dato real, no genérico)." },
+        apellido: { type: "string", description: "Apellido(s) del paciente según Config local (uno o dos)." },
+        telefono: { type: "string", description: "Teléfono de contacto confirmado del paciente." },
         id_pack_bono: { type: ["integer", "null"], description: "Id del pack/bono si aplica." },
         id_presupuesto: { type: ["integer", "null"], description: "Id del presupuesto si aplica." },
         summary: {
@@ -147,7 +152,8 @@ export const openaiTools: OpenAITool[] = [
     description:
       "Actualiza el estado de una cita futura ya existente (CONFIRMADA, CANCELADA, EN_CAMINO). " +
       "Operar directamente cuando el usuario se expresa de forma inequívoca (con o sin recordatorio). " +
-      "Debe operar únicamente sobre citas futuras.",
+      "Debe operar únicamente sobre citas futuras asociadas al interlocutor. " +
+      "Si hay ambigüedad (varias citas), desambiguar con una pregunta compuesta mínima antes de ejecutar. ",
     parameters: {
       type: "object",
       properties: {
@@ -177,14 +183,18 @@ export const openaiTools: OpenAITool[] = [
     name: "crear_tarea",
     description:
       "Registra una tarea administrativa o de seguimiento para gestión humana. " +
-      "Úsala en urgencias, reclamos, consultas no resueltas, sustituciones configuradas externamente o hooks post‑acción.",
+      "Usarla cuando la solicitud requiera intervención del equipo o no sea posible resolver con agenda/estado. " +
+      "Requiere identidad y contacto: nombre y apellidos reales (uno o dos según Config), teléfono confirmado y canal preferido. " +
+      "Si el interlocutor prefiere usar su propio número, se debe confirmar explícitamente. " +
+      "Si gestiona para un tercero, TODOS los datos se refieren a esa persona. " +
+      "Ready-checks específicos: identidad válida, teléfono confirmado, canal preferido ('llamada' o 'WhatsApp'). ",
     parameters: {
       type: "object",
       properties: {
-        nombre: { type: "string", description: "Nombre del paciente." },
-        apellido: { type: "string", description: "Apellido del paciente." },
-        telefono: { type: "string", description: "Teléfono del paciente." },
-        motivo: { type: "string", description: "Motivo de la tarea (texto libre o motivo comercial)." },
+        nombre: { type: "string", description: "Nombre del paciente (dato real, no genérico)." },
+        apellido: { type: "string", description: "Apellido(s) del paciente según Config local (uno o dos)." },
+        telefono: { type: "string", description: "Teléfono de contacto confirmado para el seguimiento." },
+        motivo: { type: "string", description: "Motivo de la tarea (texto breve y concreto, una línea)." },
         canal_preferido: {
           type: ["string", "null"],
           enum: ["llamada", "WhatsApp"],
@@ -200,8 +210,9 @@ export const openaiTools: OpenAITool[] = [
     type: "function",
     name: "cargar_pacientes_por_telefono",
     description:
-      "Carga al contexto la información de todos los pacientes asociados a un teléfono dado (propio o de un tercero). " +
-      "No crea pacientes. Útil para actuar por terceros y para enriquecer el contexto antes de gestionar citas o agendar.",
+      "Carga al contexto la información de todos los pacientes asociados a un teléfono dado. " +
+      "No crea pacientes. Útil para actuar por terceros y enriquecer el contexto antes de gestionar citas o agendar. " +
+      "Según Núcleo (§7.5), usarla únicamente para un número **distinto** del TELEFONO_INTERLOCUTOR y que no figure aún como vinculado; el número quedará vinculado para turnos futuros.",
     parameters: {
       type: "object",
       properties: {
