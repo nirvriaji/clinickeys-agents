@@ -80,7 +80,7 @@ main: BEGIN
     END IF;
 
     /* ===== Programar envío ===== */
-    IF v_id_clinica = 64 AND DAYOFWEEK(v_fecha_cita) = 2 THEN
+    IF v_id_clinica IN (64, 78, 90) AND DAYOFWEEK(v_fecha_cita) = 2 THEN
       SET v_fecha_envio = DATE(v_fecha_cita - INTERVAL 3 DAY);
       SET v_hora_envio  = v_hora_inicio;
     ELSE
@@ -114,7 +114,7 @@ main: BEGIN
     SET v_payload = JSON_OBJECT(
       'clinicName', v_nombre_clinica,
       'treatmentName', v_nombre_tratamiento,
-      'visit_date', DATE_FORMAT(v_fecha_cita, '%Y-%m-%d'),
+      'visit_date', DATE_FORMAT(v_fecha_cita, '%d/%m'),
       'visit_init_time', TIME_FORMAT(v_hora_inicio, '%H:%i:%s'),
       'visit_end_time', IFNULL(TIME_FORMAT(v_hora_fin, '%H:%i:%s'), NULL),
       'visit_space_name', v_nombre_espacio,
