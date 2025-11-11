@@ -2,7 +2,7 @@
 
 import { CHAT_BOT_CUSTOM_FIELDS, PATIENT_PHONE } from '@clinickeys-agents/core/utils';
 import { PatientService } from '@clinickeys-agents/core/application/services';
-import { PackBonoConUsoDTO } from '@clinickeys-agents/core/domain/packBono';
+import { BonoConUsoDTO } from '@clinickeys-agents/core/domain/bono';
 import { AppointmentDTO } from '@clinickeys-agents/core/domain/appointment';
 import { PresupuestoDTO } from '@clinickeys-agents/core/domain/presupuesto';
 import { BotConfigDTO } from '@clinickeys-agents/core/domain/botConfig';
@@ -22,7 +22,7 @@ export interface FetchPatientInfoOutput {
   patients: Array<{
     patient: PatientDTO;
     appointments: AppointmentDTO[];
-    packsBonos: PackBonoConUsoDTO[];
+    packsBonos: BonoConUsoDTO[];
     budgets: PresupuestoDTO[];
   }>;
   /**
@@ -41,7 +41,7 @@ export interface FetchPatientInfoOutput {
 export type PatientFullInfo = {
   paciente: PatientDTO;
   citas: AppointmentDTO[];
-  packsBonos: PackBonoConUsoDTO[];
+  packsBonos: BonoConUsoDTO[];
   presupuestos: PresupuestoDTO[];
 };
 

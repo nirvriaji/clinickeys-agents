@@ -125,7 +125,7 @@ El asistente recibe un texto que contiene, entre otra información, un **hashtag
   * `nombre_paciente`, `apellido_paciente`.
   * `nombre_medico`, `apellido_medico`.
   * `nombre_espacio`, `nombre_tratamiento`.
-  * `nombre_pack_bono`, `id_pack_bono`, `nombre_presupuesto`, `id_presupuesto`.
+  * `nombre_pack_bono`, `id_bono_paciente`, `nombre_presupuesto`, `id_presupuesto`.
 * Cuando un dato no se identifique, usar `null`.
 
 **Ejemplo**:
@@ -145,7 +145,8 @@ El asistente recibe un texto que contiene, entre otra información, un **hashtag
   "nombre_tratamiento": "Consulta estética",
   "nombre_pack_bono": "Pack Belleza",
   "nombre_presupuesto": "Presupuesto Belleza",
-  "id_pack_bono": 345,
+  "id_bono_paciente": 345,
+  "item_bono_paciente": 678,
   "id_presupuesto": 786,
   "success": true,
   "errorMessage": null
@@ -168,7 +169,8 @@ El asistente recibe un texto que contiene, entre otra información, un **hashtag
   "nombre_tratamiento": null,
   "nombre_pack_bono": null,
   "nombre_presupuesto": null,
-  "id_pack_bono": null,
+  "id_bono_paciente": null,
+  "item_bono_paciente": null,
   "id_presupuesto": null,
   "success": false,
   "errorMessage": "No se pudo extraer información relevante de la solicitud."

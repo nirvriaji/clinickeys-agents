@@ -23,7 +23,7 @@ import {
   PatientService,
   AvailabilityDomainService,
   AppointmentService,
-  PackBonoService,
+  BonoService,
   AvailabilityRequestExtractorService,
   PrimaryBotService,
   ConversationContextService,
@@ -36,7 +36,7 @@ import { KommoRepository } from "@clinickeys-agents/core/infrastructure/kommo";
 import { OpenAIResponseRepository } from "@clinickeys-agents/core/infrastructure/openai";
 import { MedicoRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/medico";
 import { TratamientoRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/tratamiento";
-import { PackBonoRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/packBono";
+import { BonoRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/bono";
 import { EspacioRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/espacio";
 import { PatientRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/patient";
 import { AppointmentRepositoryMySQL } from "@clinickeys-agents/core/infrastructure/appointment";
@@ -106,7 +106,7 @@ export class LeadProcessorController {
     // Repos de dominio
     const appointmentRepo = new AppointmentRepositoryMySQL();
     const tratamientoRepo = new TratamientoRepositoryMySQL();
-    const packBonoRepo = new PackBonoRepositoryMySQL();
+    const BonoRepo = new BonoRepositoryMySQL();
     const patientRepo = new PatientRepositoryMySQL();
     const medicoRepo = new MedicoRepositoryMySQL();
     const espacioRepo = new EspacioRepositoryMySQL();
@@ -116,7 +116,7 @@ export class LeadProcessorController {
       patientRepo,
       appointmentRepo,
       presupuestoRepo: new PresupuestoRepositoryMySQL(),
-      packBonoRepo,
+      BonoRepo,
     });
 
     const getEstructuredAvailabilityRequestSvc = new AvailabilityRequestExtractorService(openAIService);
@@ -128,7 +128,7 @@ export class LeadProcessorController {
     );
 
     const appointmentService = new AppointmentService(appointmentRepo);
-    const packBonoService = new PackBonoService(packBonoRepo);
+    const bonoService = new BonoService(BonoRepo);
 
     // ===============================
     // 3) Use Cases (dependencias concretas)
@@ -144,7 +144,7 @@ export class LeadProcessorController {
       availabilityService,
       patientService,
       openAIService,
-      packBonoService,
+      bonoService,
     );
 
     const checkAvailabilityUC = new CheckAvailabilityUseCase(

@@ -1,4 +1,6 @@
-import { IAppointmentRepository, CreateAppointmentInput, UpdateAppointmentInput } from "@clinickeys-agents/core/domain/appointment";
+// packages/core/src/application/services/AppointmentService.ts
+
+import { IAppointmentRepository, UpdateAppointmentInput, AppointmentDTO } from "@clinickeys-agents/core/domain/appointment";
 import { AvailabilityEventCatalog } from "@clinickeys-agents/core/domain/availability/events";
 import { AvailabilityEventLogger } from "@clinickeys-agents/core/infrastructure/logging";
 
@@ -9,10 +11,6 @@ export class AppointmentService {
     this.appointmentRepository = appointmentRepository;
   }
 
-  async createAppointment(params: CreateAppointmentInput): Promise<number> {
-    return await this.appointmentRepository.createAppointment(params);
-  }
-
   async updateAppointment(params: UpdateAppointmentInput): Promise<void> {
     return await this.appointmentRepository.updateAppointment(params);
   }
@@ -21,8 +19,8 @@ export class AppointmentService {
     return await this.appointmentRepository.getAppointmentsByPatient(patientId, clinicId);
   }
 
-  async getAppointmentById(appointmentId: number): Promise<any | undefined> {
-    return await this.appointmentRepository.findById(appointmentId);
+  async getAppointmentById(appointmentId: number): Promise<AppointmentDTO | undefined> {
+    return await this.appointmentRepository.findAppointmentById(appointmentId);
   }
 
   async confirmAppointment(appointmentId: number, summary: string): Promise<any | undefined> {
@@ -101,7 +99,7 @@ export class AppointmentService {
     return await this.getAppointmentById(appointmentId);
   }
 
-  async insertarCitaPackBonos(params: {
+  async insertarCitaConComentario(params: {
     p_id_clinica: number;
     p_id_super_clinica: number;
     p_id_paciente: number;
@@ -109,12 +107,13 @@ export class AppointmentService {
     p_id_espacio: number;
     p_id_tratamiento: number;
     p_id_presupuesto: number;
-    p_id_pack_bono: number;
+    p_id_bono_paciente: number | null;
+    p_item_bono_paciente: number | null;
     p_fecha_cita: string;
     p_hora_inicio: string;
     p_hora_fin: string;
     p_comentario_ia: string;
   }): Promise<any> {
-    return await this.appointmentRepository.insertarCitaPackBonos(params);
+    return await this.appointmentRepository.insertarCitaConComentario(params);
   }
 }

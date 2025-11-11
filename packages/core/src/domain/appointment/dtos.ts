@@ -14,7 +14,8 @@ export interface AppointmentDTO {
   hora_fin: string;   // HH:mm:ss
 
   id_presupuesto?: number | null;
-  id_pack_bono?: number | null;
+  id_bono_paciente?: number | null;
+  item_bono_paciente?: number | null;
   comentario_ia?: string | null;
 
   // Datos obtenidos por joins

@@ -8,7 +8,7 @@ export * from "./AppointmentService";
 export * from "./BotConfigEnricher";
 export * from "./PrimaryBotService";
 export * from "./BotConfigService";
-export * from "./PackBonoService";
+export * from "./BonoService";
 export * from "./PatientService";
 export * from "./OpenAIService";
 export * from "./ClinicService";

@@ -131,7 +131,7 @@ Antes de ejecutar **cualquier tool**, el asistente verifica:
 * `id_paciente` (number) **si** `shouldCreatePatient:false`
 * `shouldCreatePatient` (boolean) según modo
 * `isThirdParty` (boolean)
-* `id_pack_bono` / `id_presupuesto` (number|null) opcional
+* `id_bono_paciente` / `item_bono_paciente` / `id_presupuesto` (number|null) opcional
 * `horarioEscogido` **(objeto con)**:
 
   * `fecha_cita` (YYYY‑MM‑DD)
