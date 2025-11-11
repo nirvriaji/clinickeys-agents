@@ -2,7 +2,11 @@
 
 import { IAppointmentRepository, AppointmentDTO } from "@clinickeys-agents/core/domain/appointment";
 import { IPresupuestoRepository, PresupuestoDTO } from "@clinickeys-agents/core/domain/presupuesto";
-import { IPackBonoRepository, PackBonoConUsoDTO } from "@clinickeys-agents/core/domain/packBono";
+import {
+  IBonoRepository,
+  BonoConUsoDTO,
+  BonoSesionDetalleDTO,
+} from "@clinickeys-agents/core/domain/bono";
 import { IPatientRepository, PatientDTO } from "@clinickeys-agents/core/domain/patient";
 import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 import { DateTime } from "luxon";
@@ -21,23 +25,23 @@ export class PatientService {
   private readonly patientRepo: IPatientRepository;
   private readonly presupuestoRepo: IPresupuestoRepository;
   private readonly appointmentRepo: IAppointmentRepository;
-  private readonly packBonoRepo: IPackBonoRepository;
+  private readonly BonoRepo: IBonoRepository;
 
   constructor({
     patientRepo,
     appointmentRepo,
     presupuestoRepo,
-    packBonoRepo,
+    BonoRepo,
   }: {
     patientRepo: IPatientRepository;
     presupuestoRepo: IPresupuestoRepository;
     appointmentRepo: IAppointmentRepository;
-    packBonoRepo: IPackBonoRepository;
+    BonoRepo: IBonoRepository;
   }) {
     this.patientRepo = patientRepo;
     this.presupuestoRepo = presupuestoRepo;
     this.appointmentRepo = appointmentRepo;
-    this.packBonoRepo = packBonoRepo;
+    this.BonoRepo = BonoRepo;
   }
 
   async findById(patientId: number): Promise<PatientDTO | undefined> {
@@ -148,7 +152,7 @@ export class PatientService {
       paciente: PatientDTO;
       presupuestos: PresupuestoDTO[];
       citas: AppointmentDTO[];
-      packsBonos: PackBonoConUsoDTO[];
+      packsBonos: BonoConUsoDTO[];
     }[];
   }> {
     Logger.info("[PatientService] getPatientInfo called", {
@@ -211,7 +215,7 @@ export class PatientService {
         paciente,
         presupuestos: await this.fetchPresupuestos(paciente.id_paciente, id_clinica),
         citas: await this.fetchCitas(paciente.id_paciente, id_clinica, tiempoActualDT),
-        packsBonos: await this.fetchPacksBonos(paciente.id_paciente, id_clinica),
+        packsBonos: await this.fetchBonos(paciente.id_paciente, id_clinica),
       }))
     );
 
@@ -278,63 +282,80 @@ export class PatientService {
     });
   }
 
-  private async fetchPacksBonos(
+  private async fetchBonos(
     idPaciente: number,
     idClinica: number
-  ): Promise<PackBonoConUsoDTO[]> {
-    const packSesiones = await this.packBonoRepo.getPackBonosSesionesByPacienteId(
-      idPaciente
-    );
-    const citasDetalle = await this.appointmentRepo.getCitasDetallePorPackTratamiento(
-      idPaciente,
-      idClinica
-    );
-    const lookupCitas: Record<string, number[]> = {};
-    (citasDetalle || []).forEach((row) => {
-      const key = `${row.id_pack_bono}_${row.id_tratamiento}`;
-      if (!lookupCitas[key]) lookupCitas[key] = [];
-      lookupCitas[key].push(row.id_cita);
-    });
+  ): Promise<BonoConUsoDTO[]> {
+    Logger.debug("[PatientService] fetchBonos called", { idPaciente, idClinica });
 
-    const packsBonos = await Promise.all(
-      (packSesiones || []).map(async (sesion) => {
-        const packBono = await this.packBonoRepo.getPackBonoById(
-          sesion.id_pack_bono,
-          idClinica
-        );
-        if (!packBono) return null;
-        const tratamientos = await this.packBonoRepo.getPackBonoTratamientos(
-          sesion.id_pack_bono
-        );
-        const tratamientosConUso = (tratamientos || []).map((tratamiento) => {
-          const key = `${sesion.id_pack_bono}_${tratamiento.id_tratamiento}`;
-          const citas_id = lookupCitas[key] || [];
+    // 1) Trae los detalles del bono por paciente (ítems/tratamientos)
+    const detalles = await this.BonoRepo.getBonosSesionesDetallesByPacienteId(idPaciente);
+    if (!detalles || !detalles.length) {
+      Logger.debug("[PatientService] fetchBonos: no pack/bono details found", { idPaciente });
+      return [];
+    }
+
+    // 2) Fuente de verdad del consumo: recibos/detalle_recibo (NO citas)
+    const detallesRecibo = await this.BonoRepo.getDetalleRecibosByPacienteId(idPaciente);
+
+    // 3) Construir índices de uso por clave (bono-item-tratamiento)
+    //    Clave elegida: `tratamiento_${id_tratamiento}_${item}`
+    const sesionesUsadas: Record<string, number> = {};
+    for (const dr of detallesRecibo || []) {
+      if (!dr || dr.id_tratamiento == null || dr.item == null) continue;
+      const key = `tratamiento_${dr.id_tratamiento}_${dr.item}`;
+      const cant = Number(dr.cantidad || 0);
+      if (!Number.isFinite(cant)) continue;
+      sesionesUsadas[key] = (sesionesUsadas[key] || 0) + cant;
+    }
+
+    // 4) Agrupar detalles por bono
+    const bonosMap = new Map<number, BonoSesionDetalleDTO[]>();
+    for (const d of detalles) {
+      if (!bonosMap.has(d.id_bono_paciente)) bonosMap.set(d.id_bono_paciente, []);
+      bonosMap.get(d.id_bono_paciente)!.push(d);
+    }
+
+    // 5) Construir salida – sin legacy, sin citas_id, con item_bono_paciente
+    const bonos: BonoConUsoDTO[] = [];
+
+    for (const [id_bono_paciente, items] of bonosMap) {
+      const head = items[0];
+
+      const tratamientos = items
+        .filter(i => i.id_tratamiento != null)
+        .map(i => {
+          const total = Number(i.cantidad || 0);
+          const key = `tratamiento_${i.id_tratamiento}_${i.item}`;
+          const usadasDesdeRecibos = Number(sesionesUsadas[key] || 0);
+          // Cap para evitar sobreconsumo por inconsistencias contables
+          const sesiones_usadas = Math.min(Math.max(usadasDesdeRecibos, 0), Math.max(total, 0));
+
           return {
-            id_pack_bono: sesion.id_pack_bono,
-            id_tratamiento: tratamiento.id_tratamiento,
-            total_sesiones: tratamiento.total_sesiones,
-            sesiones_usadas: citas_id.length,
-            citas_id,
+            id_tratamiento: i.id_tratamiento as number,
+            item_bono_paciente: i.item,
+            total_sesiones: total,
+            sesiones_usadas,
           };
         });
-        const total_sesiones = tratamientosConUso.reduce(
-          (sum, t) => sum + Number(t.total_sesiones),
-          0
-        );
-        const total_sesiones_utilizadas = tratamientosConUso.reduce(
-          (sum, t) => sum + Number(t.sesiones_usadas),
-          0
-        );
-        return {
-          ...packBono,
-          total_sesiones,
-          total_sesiones_utilizadas,
-          tratamientos: tratamientosConUso,
-        } as PackBonoConUsoDTO;
-      })
-    );
 
-    return packsBonos.filter((item): item is PackBonoConUsoDTO => item !== null);
+      const total_sesiones = tratamientos.reduce((s, t) => s + t.total_sesiones, 0);
+      const total_sesiones_utilizadas = tratamientos.reduce((s, t) => s + t.sesiones_usadas, 0);
+
+      bonos.push({
+        id_bono_paciente,
+        id_clinica: idClinica,
+        nombre: head.nombre_bono,
+        descripcion: head.descripcion ?? "",
+        precio: Number(head.monto_total),
+        total_sesiones,
+        total_sesiones_utilizadas,
+        tratamientos,
+      });
+    }
+
+    Logger.debug("[PatientService] fetchBonos result", { bonos });
+    return bonos;
   }
 
   async updateKommoLeadId(patientId: number, kommoLeadId: string): Promise<void> {

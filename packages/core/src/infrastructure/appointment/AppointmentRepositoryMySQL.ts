@@ -1,42 +1,15 @@
 // packages/core/src/infrastructure/appointment/AppointmentRepositoryMySQL.ts
 
-import { ejecutarConReintento, ejecutarExecConReintento, ejecutarUnicoResultado } from "@clinickeys-agents/core/infrastructure/helpers";
+import {
+  ejecutarConReintento,
+  ejecutarExecConReintento,
+  ejecutarUnicoResultado,
+} from "@clinickeys-agents/core/infrastructure/helpers";
 import { AppointmentDTO } from "@clinickeys-agents/core/domain/appointment/dtos";
-import { CreateAppointmentInput, UpdateAppointmentInput, CitaDetallePackTratamientoDTO } from "@clinickeys-agents/core/domain/appointment/IAppointmentRepository";
+import { UpdateAppointmentInput, IAppointmentRepository } from "@clinickeys-agents/core/domain/appointment";
 import { CITAS_ESTADOS_VISIBLES } from "@clinickeys-agents/core/utils";
 
-export class AppointmentRepositoryMySQL {
-  /**
-   * Crea una nueva cita.
-   */
-  async createAppointment(params: CreateAppointmentInput): Promise<number> {
-    const query = `
-      INSERT INTO citas (
-        id_paciente, id_clinica, id_super_clinica, id_medico,
-        id_tratamiento, id_espacio, fecha_cita, hora_inicio, hora_fin,
-        id_presupuesto, id_pack_bono, comentario_ia
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    const args = [
-      params.id_paciente,
-      params.id_clinica,
-      params.id_super_clinica,
-      params.id_medico,
-      params.id_tratamiento,
-      params.id_espacio,
-      params.fecha_cita,
-      params.hora_inicio,
-      params.hora_fin,
-      params.id_presupuesto ?? null,
-      params.id_pack_bono ?? null,
-      params.comentario_ia ?? null
-    ];
-
-    const result: any = await ejecutarExecConReintento(query, args);
-    return result.insertId || result[0]?.insertId;
-  }
-
+export class AppointmentRepositoryMySQL implements IAppointmentRepository {
   /**
    * Actualiza una cita existente.
    */
@@ -92,7 +65,10 @@ export class AppointmentRepositoryMySQL {
   /**
    * Obtiene las citas de un paciente por clínica.
    */
-  async getAppointmentsByPatient(patientId: number, clinicId: number): Promise<AppointmentDTO[]> {
+  async getAppointmentsByPatient(
+    patientId: number,
+    clinicId: number
+  ): Promise<AppointmentDTO[]> {
     const DAYS_LIMIT = 400; // Número de días hacia atrás para filtrar citas
     const query = `
       SELECT
@@ -107,7 +83,8 @@ export class AppointmentRepositoryMySQL {
         citas.hora_inicio,
         citas.hora_fin,
         citas.id_presupuesto,
-        citas.id_pack_bono,
+        citas.id_bono_paciente,
+        citas.item_bono_paciente,
         citas.comentario_ia,
         espacios.nombre AS nombre_espacio,
         tratamientos.nombre_tratamiento,
@@ -131,12 +108,12 @@ export class AppointmentRepositoryMySQL {
   /**
    * Obtiene una cita por su ID.
    */
-  async findById(id_cita: number): Promise<AppointmentDTO | undefined> {
+  async findAppointmentById(id_cita: number): Promise<AppointmentDTO | undefined> {
     const query = `
       SELECT 
         id_cita, id_paciente, id_medico, id_super_clinica, id_clinica,
         id_tratamiento, id_espacio, fecha_cita, hora_inicio, hora_fin,
-        id_presupuesto, id_pack_bono, comentario_ia
+        id_presupuesto, id_bono_paciente, item_bono_paciente, comentario_ia
       FROM citas WHERE id_cita = ?
     `;
     const row = await ejecutarUnicoResultado(query, [id_cita]);
@@ -144,23 +121,9 @@ export class AppointmentRepositoryMySQL {
   }
 
   /**
-   * Obtiene detalles de citas por pack de tratamiento para un paciente y clínica.
+   * Inserta una cita asociada a un pack bono, usando el stored procedure.
    */
-  async getCitasDetallePorPackTratamiento(id_paciente: number, id_clinica: number): Promise<CitaDetallePackTratamientoDTO[]> {
-    const query = `
-      SELECT id_pack_bono, id_tratamiento, id_cita
-      FROM citas
-      WHERE id_paciente = ? 
-        AND id_pack_bono IS NOT NULL
-        AND id_clinica = ?
-    `;
-    return await ejecutarConReintento(query, [id_paciente, id_clinica]);
-  }
-
-  /**
-   * Inserta una cita asociada a un pack bono, usando el stored procedure legacy.
-   */
-  async insertarCitaPackBonos(params: {
+  async insertarCitaConComentario(params: {
     p_id_paciente: number;
     p_id_medico: number;
     p_id_espacio: number;
@@ -170,11 +133,13 @@ export class AppointmentRepositoryMySQL {
     p_hora_fin: string;
     p_id_clinica: number;
     p_id_super_clinica: number;
-    p_id_pack_bono: number;
-    p_id_presupuesto: number;
+    p_id_presupuesto: number | null;
     p_comentario_ia: string;
+    p_id_bono_paciente: number | null;
+    p_item_bono_paciente: number | null;
   }): Promise<any> {
-    const query = "CALL sp_crear_cita_con_comentario(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    const query =
+      "CALL sp_crear_cita_con_comentario_V3(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     const values = [
       params.p_id_paciente,
       params.p_id_medico,
@@ -185,9 +150,11 @@ export class AppointmentRepositoryMySQL {
       params.p_hora_fin,
       params.p_id_clinica,
       params.p_id_super_clinica,
-      params.p_id_pack_bono,
-      params.p_id_presupuesto,
-      params.p_comentario_ia
+      params.p_id_presupuesto, // <- primero presupuesto
+      params.p_comentario_ia, // <- luego comentario
+      null, // <- p_id_pack_bono (legacy)
+      params.p_id_bono_paciente,
+      params.p_item_bono_paciente,
     ];
     return await ejecutarExecConReintento(query, values);
   }

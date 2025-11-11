@@ -19,7 +19,7 @@ import {
   AvailabilityDomainService,
   PatientService,
   OpenAIService,
-  PackBonoService,
+  BonoService,
 } from '@clinickeys-agents/core/application/services';
 
 import {
@@ -52,7 +52,8 @@ interface ScheduleAppointmentInput {
     apellido: string;
     telefono: string;
     summary: string;
-    id_pack_bono?: number | null;
+    id_bono_paciente?: number | null;
+    item_bono_paciente?: number | null;
     id_presupuesto?: number | null;
 
     horarioEscogido: {
@@ -99,7 +100,7 @@ export class ScheduleAppointmentUseCase {
     private readonly availabilityService: AvailabilityDomainService,
     private readonly patientService: PatientService,
     private readonly openAIService: OpenAIService,
-    private readonly packBonoService: PackBonoService,
+    private readonly bonoService: BonoService,
   ) {}
 
   public async execute(input: ScheduleAppointmentInput): Promise<ScheduleAppointmentOutput> {
@@ -115,7 +116,8 @@ export class ScheduleAppointmentUseCase {
     } = params;
 
     // Normalización fuerte de campos opcionales
-    const id_pack_bono = (params.id_pack_bono ?? null) as number | null;
+    const id_bono_paciente = (params.id_bono_paciente ?? null) as number | null;
+    const item_bono_paciente = (params.item_bono_paciente ?? null) as number | null;
     const id_presupuesto = (params.id_presupuesto ?? null) as number | null;
 
     // Invariante de identidad paciente: id_paciente null cuando se crea; number cuando no
@@ -219,18 +221,20 @@ export class ScheduleAppointmentUseCase {
         id_medico: horarioEscogido.id_medico,
         id_espacio: horarioEscogido.id_espacio,
         id_tratamiento: horarioEscogido.id_tratamiento,
-        id_pack_bono,
+        id_bono_paciente,
+        item_bono_paciente,
         id_presupuesto,
       });
 
-      const spResponse = await this.appointmentService.insertarCitaPackBonos({
+      const spResponse = await this.appointmentService.insertarCitaConComentario({
         p_id_clinica: botConfig.clinicId,
         p_id_super_clinica: botConfig.superClinicId,
         p_id_paciente: finalPatientId,
         p_id_medico: horarioEscogido.id_medico,
         p_id_espacio: horarioEscogido.id_espacio,
         p_id_tratamiento: horarioEscogido.id_tratamiento,
-        p_id_pack_bono: id_pack_bono || 0,
+        p_id_bono_paciente: id_bono_paciente || 0,
+        p_item_bono_paciente: item_bono_paciente || 0,
         p_id_presupuesto: id_presupuesto || 0,
         p_fecha_cita: fecha_cita,
         p_hora_inicio: hora_inicio,
@@ -243,7 +247,7 @@ export class ScheduleAppointmentUseCase {
       if (!id_cita) throw new Error('SP no devolvió id_cita');
 
       Logger.info('[ScheduleAppointment] Cita creada', { id_cita });
-      await this.packBonoService.procesarPackbonoPresupuestoDeCita('on_crear_cita', id_cita);
+      await this.bonoService.procesarBonoPresupuestoDeCita('on_crear_cita', id_cita);
 
       const isSoon = isAppointmentSoon(fecha_cita, tiempoActualDT.toISO() as string, botConfig.timezone);
 

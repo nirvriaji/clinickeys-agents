@@ -57,7 +57,8 @@ const ScheduleAppointmentUseExistingSchema = z.object({
   id_paciente: z.number(), // requerido y numérico
   shouldCreatePatient: z.literal(false),
   isThirdParty: z.boolean(),
-  id_pack_bono: z.number().nullable(),
+  id_bono_paciente: z.number().nullable(),
+  item_bono_paciente: z.number().nullable(),
   id_presupuesto: z.number().nullable(),
   horarioEscogido: z.object({
     fecha_cita: z.string(),
@@ -79,7 +80,8 @@ const ScheduleAppointmentCreateSchema = z.object({
   id_paciente: z.null(), // requerido por la tool, pero valor null
   shouldCreatePatient: z.literal(true),
   isThirdParty: z.boolean(),
-  id_pack_bono: z.number().nullable(),
+  id_bono_paciente: z.number().nullable(),
+  item_bono_paciente: z.number().nullable(),
   id_presupuesto: z.number().nullable(),
   horarioEscogido: z.object({
     fecha_cita: z.string(),
@@ -327,7 +329,8 @@ export class OrchestrateConversationUseCase {
           horarioEscogido: {
             ...parsed.horarioEscogido,
           },
-          id_pack_bono: norm((parsed as any).id_pack_bono) as number | undefined,
+          id_bono_paciente: norm((parsed as any).id_bono_paciente) as number | undefined,
+          item_bono_paciente: norm((parsed as any).item_bono_paciente) as number | undefined,
           id_presupuesto: norm((parsed as any).id_presupuesto) as number | undefined,
           // id_paciente se mantiene tal cual (number | null) para el UC
         } as typeof parsed;
