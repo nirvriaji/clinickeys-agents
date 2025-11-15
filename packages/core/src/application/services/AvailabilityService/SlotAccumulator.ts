@@ -155,8 +155,8 @@ export async function SlotAccumulator(input: SlotAccumulatorInput): Promise<Slot
     AvailabilityTimeDivisionsService.logCoverage(assignment);
 
     const prioritized = selectTopSlotsForDay(orderedIntra, preferredDivisionSet, MAX_SLOTS_PER_DAY);
-    const rankPos = rankingPosition.get(day as ISODate)
-      ?? (filterPriority.has(day) ? filterPriority.get(day)! : Number.MAX_SAFE_INTEGER);
+    const rankPos = rankingPosition.get(day as ISODate) ?? Number.MAX_SAFE_INTEGER;
+    const filterRank = filterPriority.has(day) ? filterPriority.get(day)! : undefined;
     const inRequestedRange = requestedDates.size === 0 ? true : requestedDates.has(day);
     const diffFromNow = daysDiffFrom(nowAnchor, day);
     const matchesPreferredWeekday = weekdayPreferenceSet.size === 0
@@ -173,6 +173,7 @@ export async function SlotAccumulator(input: SlotAccumulatorInput): Promise<Slot
       isComplete: assignment.coverage.nonEmptyDivisions >= (DEFAULT_DIVISIONS.length || 1),
       inRequestedRange,
       rankPos,
+      filterRank,
       diffFromNow,
       matchesPreferredWeekday,
     });
@@ -230,6 +231,7 @@ interface DaySelectionInfo {
   isComplete: boolean;
   inRequestedRange: boolean;
   rankPos: number;
+  filterRank?: number;
   diffFromNow: number;
   matchesPreferredWeekday: boolean;
 }
@@ -489,6 +491,15 @@ function selectTopSlotsForDay(
 }
 
 function compareDayInfo(a: DaySelectionInfo, b: DaySelectionInfo): number {
+  const aHasFilter = typeof a.filterRank === 'number';
+  const bHasFilter = typeof b.filterRank === 'number';
+  if (aHasFilter || bHasFilter) {
+    if (aHasFilter && bHasFilter) {
+      if (a.filterRank! !== b.filterRank!) return a.filterRank! - b.filterRank!;
+    } else {
+      return aHasFilter ? -1 : 1;
+    }
+  }
   if (a.rankPos !== b.rankPos) return a.rankPos - b.rankPos;
   if (a.diffFromNow !== b.diffFromNow) return a.diffFromNow - b.diffFromNow;
   if (a.inRequestedRange !== b.inRequestedRange) return a.inRequestedRange ? -1 : 1;
