@@ -566,7 +566,7 @@ function determineMaxDays(
   });
 
   if (matchingDays.length === 0) return null;
-  return matchingDays.length;
+  return Math.min(matchingDays.length, MAX_SELECTED_DAYS);
 }
 
 // =============================
