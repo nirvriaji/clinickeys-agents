@@ -189,10 +189,10 @@ export class CheckAvailabilityUseCase {
       date_ranges: filter0?.date_ranges,
       time_windows: Array.isArray(filter0?.date_ranges)
         ? filter0!.date_ranges.map((r) => ({
-            start_date: r?.start_date,
-            end_date: r?.end_date,
-            time_windows: Array.isArray(r?.time_windows) ? r?.time_windows : [],
-          }))
+          start_date: r?.start_date,
+          end_date: r?.end_date,
+          time_windows: Array.isArray(r?.time_windows) ? r?.time_windows : [],
+        }))
         : [],
     });
 
@@ -428,20 +428,20 @@ export class CheckAvailabilityUseCase {
     }, { batchSize: stepBatchSize });
 
     const analisisTotal = stepExec.analisis_agenda as SlotDisponibilidad[];
+    const datesConsultedRanges = collapseDatesToRanges(Array.from(fechasConsultadas)).map((r) => ({ start: r.start, end: r.end }));
 
     // 8) Si no hubo resultados en ningún step → respuesta sin disponibilidad
     if (!analisisTotal.length) {
-      const datesConsultedRanges = collapseDatesToRanges(Array.from(fechasConsultadas)).map((r) => ({ start: r.start, end: r.end }));
-    const policyEmpty = await AgendaConfigCompilerService(
-      presenterOpenAI,
-      botConfig?.placeholders?.ASISTENTE_AGENDA_CONFIG || "",
-      [],
-      {
-        preferencias_usuario: { horas_preferencia_usuario: preferenceHintsForServices },
-        presentacion_override: { mostrar_medicos: "auto" },
-        limites_override: { tope_global: 999, tope_por_dia: 999, tope_dias: 99 },
-      },
-    );
+      const policyEmpty = await AgendaConfigCompilerService(
+        presenterOpenAI,
+        botConfig?.placeholders?.ASISTENTE_AGENDA_CONFIG || "",
+        [],
+        {
+          preferencias_usuario: { horas_preferencia_usuario: preferenceHintsForServices },
+          presentacion_override: { mostrar_medicos: "auto" },
+          limites_override: { tope_global: 999, tope_por_dia: 999, tope_dias: 99 },
+        },
+      );
 
       const queryContext: QueryContext = {
         fechas_rankeadas: rankedDatesAll,
@@ -514,8 +514,30 @@ export class CheckAvailabilityUseCase {
       },
     );
 
+    const queryContextForAccumulator: QueryContext = {
+      fechas_rankeadas: rankedDatesAll,
+      consultas_ejecutadas: datesConsultedRanges,
+      fechas_entregadas_al_asistente: [],
+      criterios: {
+        base: "fechas_rankeadas (weekday-preferred si aplica) → ascendente; cobertura por divisions",
+        preferencias_horarias: resolveQueryContextPreferences(timeWindowSummary, preferenceHintsForServices, params.horas),
+        interpretacion_maximo: policyForAll?.interpretacion_maximo ?? "ultimo_inicio",
+      },
+      caducidad: {
+        ttl_ms: 5 * 60 * 1000,
+        generated_at_iso: tiempoActualDT.toISO() as string,
+        timezone,
+      },
+      anchors: { today_iso: tiempoActualDT.toISODate() || undefined },
+      coverage: {
+        dates_consulted_count: fechasConsultadas.size,
+        dates_with_results_count: fechasConResultados.size,
+        selected_days_count: 0,
+      },
+    };
+
     // 10) Acumulador/selector (no necesita filtros por nombre)
-  const accOut = await SlotAccumulator({
+    const accOut = await SlotAccumulator({
       policy: policyForAll,
       filters: filter0 ? [filter0] : [],
       windows: analisisTotal,
@@ -524,6 +546,7 @@ export class CheckAvailabilityUseCase {
         ahoraISO: tiempoActualDT.toISO() as string,
         timezone,
         weekday_preferences: weekdayPreferences,
+        query_context: queryContextForAccumulator,
       },
     });
 
@@ -561,8 +584,6 @@ export class CheckAvailabilityUseCase {
     }
 
     // 12) Redactor final
-    const datesConsultedRanges = collapseDatesToRanges(Array.from(fechasConsultadas)).map((r) => ({ start: r.start, end: r.end }));
-
     const finalPolicy = await AgendaConfigCompilerService(
       presenterOpenAI,
       botConfig?.placeholders?.ASISTENTE_AGENDA_CONFIG || "",
@@ -714,8 +735,8 @@ function normalizeExtractorWindows(
       case "labels": {
         const labels = Array.isArray(raw.labels)
           ? raw.labels
-              .map((label) => normalizeDivisionKey(label, divisionConfig))
-              .filter((label): label is string => typeof label === "string" && label.trim().length > 0 && divisionRangeMap.has(label))
+            .map((label) => normalizeDivisionKey(label, divisionConfig))
+            .filter((label): label is string => typeof label === "string" && label.trim().length > 0 && divisionRangeMap.has(label))
           : [];
         if (!labels.length) continue;
         normalized.push({ type: "labels", labels });

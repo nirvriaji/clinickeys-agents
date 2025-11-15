@@ -101,6 +101,11 @@ export async function SlotAccumulator(input: SlotAccumulatorInput): Promise<Slot
     ? input.contexto!.query_context!.fechas_rankeadas.filter((d): d is string => typeof d === 'string')
     : [];
 
+  const filterPriority = new Map<string, number>();
+  dayOrderFromFilters.forEach((day, idx) => {
+    if (!filterPriority.has(day)) filterPriority.set(day, idx);
+  });
+
   const combinedOrder = dayOrderFromFilters.length
     ? uniqPreserving([...dayOrderFromFilters, ...allDaysChrono])
     : allDaysChrono;
@@ -110,12 +115,7 @@ export async function SlotAccumulator(input: SlotAccumulatorInput): Promise<Slot
     if (!rankingPosition.has(d)) rankingPosition.set(d, idx);
   });
 
-  const dayOrder = [...combinedOrder].sort((a, b) => {
-    const pa = rankingPosition.has(a) ? rankingPosition.get(a)! : Number.MAX_SAFE_INTEGER;
-    const pb = rankingPosition.has(b) ? rankingPosition.get(b)! : Number.MAX_SAFE_INTEGER;
-    if (pa !== pb) return pa - pb;
-    return a < b ? -1 : a > b ? 1 : 0;
-  });
+  const dayOrder = [...combinedOrder];
 
   // 4) Agrupar por día y ordenar intra‑día con preferencias
   const perDayMap = groupByDate(allSlots);
@@ -155,7 +155,8 @@ export async function SlotAccumulator(input: SlotAccumulatorInput): Promise<Slot
     AvailabilityTimeDivisionsService.logCoverage(assignment);
 
     const prioritized = selectTopSlotsForDay(orderedIntra, preferredDivisionSet, MAX_SLOTS_PER_DAY);
-    const rankPos = rankingPosition.get(day as ISODate) ?? Number.MAX_SAFE_INTEGER;
+    const rankPos = rankingPosition.get(day as ISODate)
+      ?? (filterPriority.has(day) ? filterPriority.get(day)! : Number.MAX_SAFE_INTEGER);
     const inRequestedRange = requestedDates.size === 0 ? true : requestedDates.has(day);
     const diffFromNow = daysDiffFrom(nowAnchor, day);
     const matchesPreferredWeekday = weekdayPreferenceSet.size === 0
