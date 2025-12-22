@@ -53,17 +53,17 @@ export function buildGeneralRaw(
               toMinutes(pe.hora_fin)
             );
 
-            Logger.debug("[AWB] Intersección prog médico/espacio", {
-              fecha: ymd(pm.fecha_inicio),
-              id_medico: med.id_medico,
-              nombre_medico: med.nombre_medico,
-              id_espacio: esp.id_espacio,
-              nombre_espacio: esp.nombre_espacio,
-              tratamiento: { id_tratamiento, nombre_tratamiento, duracion_tratamiento },
-              r_medico: { start: pm.hora_inicio, end: pm.hora_fin },
-              r_espacio: { start: pe.hora_inicio, end: pe.hora_fin },
-              r_inter: inter ? { start: toHHMMSS(inter[0]), end: toHHMMSS(inter[1]) } : null,
-            });
+            // Logger.debug("[AWB] Intersección prog médico/espacio", {
+            //   fecha: ymd(pm.fecha_inicio),
+            //   id_medico: med.id_medico,
+            //   nombre_medico: med.nombre_medico,
+            //   id_espacio: esp.id_espacio,
+            //   nombre_espacio: esp.nombre_espacio,
+            //   tratamiento: { id_tratamiento, nombre_tratamiento, duracion_tratamiento },
+            //   r_medico: { start: pm.hora_inicio, end: pm.hora_fin },
+            //   r_espacio: { start: pe.hora_inicio, end: pe.hora_fin },
+            //   r_inter: inter ? { start: toHHMMSS(inter[0]), end: toHHMMSS(inter[1]) } : null,
+            // });
 
             if (!inter) continue;
 
@@ -238,25 +238,25 @@ export function subtractAppointments(
       if (r) blocks.push({ start: r[0], end: r[1] });
     }
 
-    Logger.debug("[AWB] Resta de citas en ventana", {
-      fecha: v.fecha_cita,
-      id_medico: v.id_medico,
-      nombre_medico: v.nombre_medico,
-      id_espacio: v.id_espacio,
-      nombre_espacio: v.nombre_espacio,
-      base: { start: toHHMMSS(v.startMin), end: toHHMMSS(v.endMin) },
-      bloques: blocks.map((b) => ({ start: toHHMMSS(b.start), end: toHHMMSS(b.end) })),
-      totalCitasDia: dayCitas.length,
-    });
+    // Logger.debug("[AWB] Resta de citas en ventana", {
+    //   fecha: v.fecha_cita,
+    //   id_medico: v.id_medico,
+    //   nombre_medico: v.nombre_medico,
+    //   id_espacio: v.id_espacio,
+    //   nombre_espacio: v.nombre_espacio,
+    //   base: { start: toHHMMSS(v.startMin), end: toHHMMSS(v.endMin) },
+    //   bloques: blocks.map((b) => ({ start: toHHMMSS(b.start), end: toHHMMSS(b.end) })),
+    //   totalCitasDia: dayCitas.length,
+    // });
 
     const free = subtractRanges({ start: v.startMin, end: v.endMin }, blocks);
 
-    Logger.debug("[AWB] Huecos libres resultantes", {
-      fecha: v.fecha_cita,
-      id_medico: v.id_medico,
-      id_espacio: v.id_espacio,
-      libres: free.map((fr) => ({ start: toHHMMSS(fr.start), end: toHHMMSS(fr.end) })),
-    });
+    // Logger.debug("[AWB] Huecos libres resultantes", {
+    //   fecha: v.fecha_cita,
+    //   id_medico: v.id_medico,
+    //   id_espacio: v.id_espacio,
+    //   libres: free.map((fr) => ({ start: toHHMMSS(fr.start), end: toHHMMSS(fr.end) })),
+    // });
 
     for (const fr of free) {
       out.push({ ...v, startMin: fr.start, endMin: fr.end });
@@ -277,13 +277,13 @@ export function windowsToSlots(ventanas: Ventana[]): SlotDisponibilidad[] {
   for (const v of ventanas) {
     const latestStart = v.endMin - v.duracion_tratamiento; // inclusivo
     if (latestStart < v.startMin) {
-      Logger.debug("[AWB] Ventana descartada (sin espacio suficiente)", {
-        fecha: v.fecha_cita,
-        id_medico: v.id_medico,
-        id_espacio: v.id_espacio,
-        duracion: v.duracion_tratamiento,
-        rango: { start: toHHMMSS(v.startMin), end: toHHMMSS(v.endMin) },
-      });
+      // Logger.debug("[AWB] Ventana descartada (sin espacio suficiente)", {
+      //   fecha: v.fecha_cita,
+      //   id_medico: v.id_medico,
+      //   id_espacio: v.id_espacio,
+      //   duracion: v.duracion_tratamiento,
+      //   rango: { start: toHHMMSS(v.startMin), end: toHHMMSS(v.endMin) },
+      // });
       continue;
     }
 
@@ -301,15 +301,15 @@ export function windowsToSlots(ventanas: Ventana[]): SlotDisponibilidad[] {
       especifica: v.origen === "especifica",
     };
 
-    Logger.debug("[AWB] Slot emitido", {
-      fecha: slot.fecha_cita,
-      id_medico: slot.id_medico,
-      id_espacio: slot.id_espacio,
-      duracion: slot.duracion_tratamiento,
-      hora_inicio_minima: slot.hora_inicio_minima,
-      hora_inicio_maxima: slot.hora_inicio_maxima,
-      origen: v.origen,
-    });
+    // Logger.debug("[AWB] Slot emitido", {
+    //   fecha: slot.fecha_cita,
+    //   id_medico: slot.id_medico,
+    //   id_espacio: slot.id_espacio,
+    //   duracion: slot.duracion_tratamiento,
+    //   hora_inicio_minima: slot.hora_inicio_minima,
+    //   hora_inicio_maxima: slot.hora_inicio_maxima,
+    //   origen: v.origen,
+    // });
 
     slots.push(slot);
   }
@@ -362,6 +362,6 @@ export function AvailabilityWindowBuilder(input: {
   const slots = windowsToSlots(freeWindows);
   Logger.info("[AWB] Total de slots calculados", { count: slots.length });
 
-  Logger.debug(`[AWB] Slots ejemplo (primeros 5)`, slots.slice(0, 5));
+  // Logger.debug(`[AWB] Slots ejemplo (primeros 5)`, slots.slice(0, 5));
   return slots;
 }

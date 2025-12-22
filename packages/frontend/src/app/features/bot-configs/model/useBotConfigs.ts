@@ -20,10 +20,10 @@ import type { BotIdParams } from "@/app/features/bot-configs/api/botConfigsApi";
 export type BotConfigIdParams = BotIdParams;
 
 const BOT_CONFIGS_QUERY_KEY = ["bot-configs"] as const;
-const DEFAULT_LIMIT = 30;
+const DEFAULT_LIMIT = 100;
 
 interface UseBotConfigsOptions {
-  /** Máximo de registros por página (default: 30) */
+  /** Máximo de registros por página (default: 100) */
   limit?: number;
 }
 

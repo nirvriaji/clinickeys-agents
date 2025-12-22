@@ -2,7 +2,7 @@ import { ApiError } from "@/app/shared/types/api";
 
 /**
  * Tiny wrapper around the native `fetch` API that:
- *  1. Prepends `NEXT_PUBLIC_API_BASE_URL` to every request.
+ *  1. Prepends `NEXT_PUBLIC_API_URL` to every request.
  *  2. Serialises the `body` as JSON (when provided).
  *  3. Allows `?query` object shorthand.
  *  4. Converts any non‑2xx response into a typed {@link ApiError}.

@@ -106,7 +106,8 @@ Responde **solo** con un JSON con esta forma:
 
 2. **Límites** (alineados a la policy del motor)
 
-   * Por defecto, imprime solo los **primeros 3 días** de `dias_mostrados` (orden ya viene rankeado). Si la policy indica lo contrario (p. ej. `presentacion.tope_dias` > 3 o `presentacion.mostrar_todos_por_dia = true`), respeta ese override.
+   * Recorre `dias_mostrados` en el orden recibido e imprime un bloque por **cada día** siempre que exista al menos un slot para ese día. Solo detente cuando alcances el tope configurado (`3` por defecto). Si `dias_mostrados` incluye 3 fechas, deben aparecer 3 bloques (salvo que algún día llegue sin slots, en cuyo caso registra un warning).
+   * Si la policy indica lo contrario (p. ej. `presentacion.tope_dias` > 3 o `presentacion.mostrar_todos_por_dia = true`), respeta ese override y ajusta el tope.
    * Para cada día:
      * Si hay **1** slot disponible → imprime **1**.
      * Si hay **2** slots disponibles → imprime **2**.
@@ -171,6 +172,18 @@ Responde **solo** con un JSON con esta forma:
 * Día con 1 slot → imprime una viñeta.
 * Día con 2 slots → imprime dos viñetas.
 * Día con 5 slots → imprime las tres primeras (salvo que la policy exija mostrar todas).
+
+### Procedimiento obligatorio
+
+1. Construye una lista `bloques_preparados` recorriendo `dias_mostrados` en el orden recibido.
+   * Para cada día, toma los slots correspondientes (del universo) y aplica las reglas de límites (máx. 3 por día, salvo override).
+   * Si un día de `dias_mostrados` llega sin slots, **no** inventes horarios: añade un warning `sin_slots_para_dia:<fecha>` y pasa al siguiente.
+   * Detente cuando alcances el tope de días configurado (3 por defecto) o se termine la lista.
+2. Si al final `bloques_preparados` queda vacío, genera el mensaje estándar de “sin disponibilidad”.
+3. Usa **exclusivamente** `bloques_preparados` para redactar el `mensaje`: cada objeto debe producir un bloque (día en negritas + viñetas).
+4. En la metadata:
+   * `dias_mostrados` debe reflejar exactamente las fechas impresas (las de `bloques_preparados`).
+   * `coverage.missing_slots_by_day` debe incluir las fechas saltadas por falta de slots (con conteo `0` si no aplica).
 
 ---
 
