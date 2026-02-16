@@ -10,6 +10,9 @@ main: BEGIN
   DECLARE v_fecha_cita DATE;
   DECLARE v_hora_inicio, v_hora_fin TIME;
   DECLARE v_id_estado_cita INT;
+  DECLARE v_estado_actual_notif VARCHAR(20);
+  DECLARE v_estado_final VARCHAR(20);
+  DECLARE v_dummy INT;
 
   DECLARE v_nombre_paciente, v_apellido_paciente VARCHAR(100);
   DECLARE v_nombre_tratamiento, v_nombre_medico, v_nombre_clinica, v_nombre_espacio VARCHAR(255);
@@ -33,8 +36,20 @@ main: BEGIN
   SET v_hora_fin         = NEW.hora_fin;
   SET v_id_estado_cita   = NEW.id_estado_cita;
 
-  /* ===== 1. Bloqueos o eliminadas ===== */
-  IF v_id_estado_cita IN (4,6) THEN
+  /* ===== Estado actual (si existe) ===== */
+  SET v_estado_actual_notif = NULL;
+  BEGIN
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_dummy = 1;
+    SELECT estado
+      INTO v_estado_actual_notif
+      FROM notificaciones
+     WHERE entidad_desencadenadora = 'cita'
+       AND id_entidad_desencadenadora = NEW.id_cita
+     LIMIT 1;
+  END;
+
+  /* ===== 1. Cancelación dura por estado ===== */
+  IF v_id_estado_cita IN (2,4,6) THEN
     UPDATE notificaciones
        SET estado = 'cancelado',
            actualizado_el = CURRENT_TIMESTAMP
@@ -143,10 +158,8 @@ main: BEGIN
     /* ===== Estado de la notificación ===== */
     IF NEW.id_cita = v_min_cita THEN
       IF v_id_estado_cita IN (1,7,8,9) THEN
-        SET v_estado = CASE
-          WHEN DATEDIFF(v_fecha_cita, CURDATE()) > 1 THEN 'pendiente'
-          ELSE 'cancelado'
-        END;
+        /* Regla de negocio: en UPDATE no se cancela por hoy/mañana; se conserva el estado. */
+        SET v_estado = 'pendiente';
       ELSE
         SET v_estado = 'cancelado';
       END IF;
@@ -154,8 +167,15 @@ main: BEGIN
       SET v_estado = 'cancelado';
     END IF;
 
+    /* ===== Ajuste por estados no-cancelatorios ===== */
+    IF v_id_estado_cita IN (3,5) THEN
+      SET v_estado_final = IFNULL(v_estado_actual_notif, v_estado);
+    ELSE
+      SET v_estado_final = v_estado;
+    END IF;
+
     /* ===== Cancelar duplicadas ===== */
-    IF v_estado = 'pendiente' THEN
+    IF v_estado_final = 'pendiente' THEN
       UPDATE notificaciones
          SET estado = 'cancelado', actualizado_el = CURRENT_TIMESTAMP
        WHERE id_entidad_destino = v_id_paciente
@@ -182,7 +202,7 @@ main: BEGIN
              hora_envio_programada  = v_hora_envio,
              id_clinica             = v_id_clinica,
              id_super_clinica       = v_id_super_clinica,
-             estado                 = v_estado,
+             estado                 = v_estado_final,
              actualizado_el         = CURRENT_TIMESTAMP
        WHERE entidad_desencadenadora = 'cita'
          AND id_entidad_desencadenadora = NEW.id_cita;
@@ -197,7 +217,7 @@ main: BEGIN
         'recordatorio_cita', v_id_paciente, 'paciente', v_mensaje, v_payload,
         v_fecha_envio, v_hora_envio,
         'cita', NEW.id_cita,
-        v_id_clinica, v_id_super_clinica, v_estado, CURRENT_TIMESTAMP
+        v_id_clinica, v_id_super_clinica, v_estado_final, CURRENT_TIMESTAMP
       );
     END IF;
   END IF;
