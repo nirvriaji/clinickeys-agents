@@ -45,7 +45,11 @@ import { Logger } from "@clinickeys-agents/core/infrastructure/external";
 
 import { LeadQueueMessageDTO } from "@clinickeys-agents/core/domain/kommo";
 import { BotConfigType } from "@clinickeys-agents/core/domain/botConfig";
-import { RESP_ID, REMINDER_MESSAGE } from "@clinickeys-agents/core/utils";
+import { RESP_ID, REMINDER_MESSAGE, RANDOM_STAMP } from "@clinickeys-agents/core/utils";
+
+// Track processed randomStamps to detect and skip duplicate webhook deliveries
+const processedStamps = new Set<string>();
+const MAX_STAMP_CACHE_SIZE = 1000;
 
 export class LeadProcessorController {
   constructor(
@@ -67,6 +71,27 @@ export class LeadProcessorController {
     } catch (err) {
       this.logger.error("[LeadProcessorController] Invalid JSON", err as Error);
       throw err;
+    }
+
+    // Detect and skip duplicate webhook deliveries using randomStamp
+    const stamp = (msg.kommo?.raw as any)?.leads?.add?.[0]?.[RANDOM_STAMP] || 
+                  (msg.kommo?.raw as any)?.[RANDOM_STAMP];
+    if (stamp && processedStamps.has(stamp)) {
+      this.logger.info("[LeadProcessorController] Duplicate randomStamp detected, skipping processing", {
+        leadId: msg.kommo?.leads?.add?.[0]?.id,
+        stamp,
+      });
+      return;
+    }
+    if (stamp) {
+      processedStamps.add(stamp);
+      // Prevent unbounded growth
+      if (processedStamps.size > MAX_STAMP_CACHE_SIZE) {
+        const firstStamp = processedStamps.values().next().value;
+        if (firstStamp) {
+          processedStamps.delete(firstStamp);
+        }
+      }
     }
 
     const { botConfigType, botConfigId, clinicSource, clinicId } = msg.pathParameters;

@@ -8,7 +8,7 @@ import {
   ToolOutputPayload,
 } from "@clinickeys-agents/core/infrastructure/integrations/openai/models";
 
-const DEFAULT_MODEL = "gpt-4.1";
+const DEFAULT_MODEL = "gpt-5.4";
 
 export interface OpenAIResponseGatewayOptions {
   apiKey: string;

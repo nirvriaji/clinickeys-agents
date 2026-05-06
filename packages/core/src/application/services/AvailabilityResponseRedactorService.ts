@@ -106,7 +106,7 @@ export async function AvailabilityResponseRedactorService(
 
   // Llamada al modelo con firma posicional + schema Zod real
   const schemaLabel = 'RedactorHorariosSchema';
-  const model = opts?.model || 'gpt-4o-mini';
+  const model = opts?.model || 'gpt-5.4-mini';
 
   try {
     const parsed: RedactorHorariosParsed = await openAIService.getSchemaStructuredResponse(

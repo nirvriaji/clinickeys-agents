@@ -82,6 +82,6 @@ In the template, we have an `api.ts`, and `storage.ts`. These export the created
 
 # MAKEFILE COMMANDS
 
-make local
-make deploy
-make remove
+make sst-local
+make sst-deploy
+make sst-remove

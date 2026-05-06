@@ -151,7 +151,7 @@ export class AvailabilityRequestExtractorService {
         userPrompt,
         ExtractorResultSchema,
         "ExtractorResultSchema",
-        options?.model || "gpt-4.1-mini",
+        options?.model || "gpt-5.4-mini",
       );
 
       const result = parsed as ExtractorResult;

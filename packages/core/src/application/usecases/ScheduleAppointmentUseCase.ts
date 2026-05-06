@@ -74,6 +74,7 @@ interface ScheduleAppointmentInput {
   timezone: string;
   tiempoActualDT: DateTime;
   subdomain: string;
+  waitingMessageSentForLead?: Set<number>; // Track si ya se envió waiting message para este lead
 }
 
 interface ScheduleAppointmentOutput {
@@ -84,6 +85,8 @@ interface ScheduleAppointmentOutput {
   needsConfirmation?: boolean;
   /** Id del paciente finalmente utilizado (existente o recién creado). */
   id_paciente_result?: number;
+  /** La tool ya envió mensaje al usuario (inicial + formateado) */
+  userMessageSent?: boolean;
 }
 
 type StepTipo =
@@ -104,7 +107,7 @@ export class ScheduleAppointmentUseCase {
   ) {}
 
   public async execute(input: ScheduleAppointmentInput): Promise<ScheduleAppointmentOutput> {
-    const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT } = input;
+    const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, waitingMessageSentForLead } = input;
 
     const {
       shouldCreatePatient,
@@ -131,6 +134,7 @@ export class ScheduleAppointmentUseCase {
         return {
           success: false,
           toolOutput: '#agendarCita\nNo se pudo agendar: falta un id_paciente válido cuando shouldCreatePatient=false.',
+          userMessageSent: false,
         };
       }
     }
@@ -147,13 +151,20 @@ export class ScheduleAppointmentUseCase {
       hasHorario: !!horarioEscogido,
     });
 
-    // 1) Mensaje inicial al bot (UX)
-    await this.kommoService.sendBotInitialMessage({
-      leadId,
-      normalizedLeadCF,
-      salesbotId: botConfig.kommo.salesbotId,
-      message: 'Perfecto, voy a intentar agendar tu cita ahora mismo. Un momento por favor.'
-    });
+    // 1) Mensaje inicial al bot (UX) - solo si no se envió ya para este lead
+    const shouldSendWaitingMessage = !waitingMessageSentForLead?.has(leadId);
+    if (shouldSendWaitingMessage) {
+      await this.kommoService.sendBotInitialMessage({
+        leadId,
+        normalizedLeadCF,
+        salesbotId: botConfig.kommo.salesbotId,
+        message: 'Perfecto, voy a intentar agendar tu cita ahora mismo. Un momento por favor.'
+      });
+      // Marcar que ya se envió el waiting message para este lead
+      waitingMessageSentForLead?.add(leadId);
+    } else {
+      Logger.info('[ScheduleAppointment] Waiting message ya enviado previamente para este lead, omitiendo', { leadId });
+    }
 
     // 2) Asegurar paciente (único lugar donde se crea si shouldCreatePatient === true)
     let finalPatientId: number | null = id_paciente;
@@ -188,6 +199,7 @@ export class ScheduleAppointmentUseCase {
         success: false,
         toolOutput: '#agendarCita\nNo se pudo identificar o crear un paciente válido para agendar la cita.',
         id_paciente_result: undefined,
+        userMessageSent: false,
       };
     }
 
@@ -288,6 +300,7 @@ export class ScheduleAppointmentUseCase {
         createdAppointmentId: appointmentCreated.id_cita,
         needsConfirmation: appointmentCreated.isSoon,
         id_paciente_result: finalPatientId,
+        userMessageSent: false, // El Bot Principal generará el mensaje de confirmación
       };
     }
 
@@ -556,6 +569,7 @@ export class ScheduleAppointmentUseCase {
       createdAppointmentId: undefined,
       needsConfirmation: false,
       id_paciente_result: finalPatientId,
+      userMessageSent: false, // El Bot Principal presentará las opciones encontradas
     };
   }
 

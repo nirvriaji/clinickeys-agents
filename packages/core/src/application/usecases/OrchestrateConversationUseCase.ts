@@ -212,7 +212,14 @@ export class OrchestrateConversationUseCase {
             });
 
             toolCallsThisTurn += 1;
-            return toolResult;
+            
+            // Si el tool ya envió el mensaje al usuario, marcar para no enviar duplicado
+            if (toolResult.userMessageSent) {
+              finalMessageAlreadySent = true;
+              Logger.info("[OrchestrateConversation] Tool indicó que ya envió mensaje al usuario, omitiendo envío final", { name });
+            }
+            
+            return toolResult.toolOutput;
           } catch (err) {
             const isLast = attempt === MAX_TOOL_RETRIES;
             Logger.warn("[OrchestrateConversation] Tool error/retry", {
@@ -245,6 +252,8 @@ export class OrchestrateConversationUseCase {
       Logger.info("[OrchestrateConversation] Resultado final", {
         hasMessage: !!finalMessage,
         responseId,
+        finalMessagePreview: finalMessage?.substring(0, 100),
+        finalMessageLength: finalMessage?.length,
       });
 
       // Armar custom fields para Kommo
@@ -264,6 +273,24 @@ export class OrchestrateConversationUseCase {
         [PLEASE_WAIT_MESSAGE]: "false",
         [PATIENT_MESSAGE_PROCESSED_CHUNK]: userMessage,
       };
+
+      // Si el tool ya envió el mensaje al usuario, no enviar mensaje final duplicado
+      if (finalMessageAlreadySent) {
+        Logger.info("[OrchestrateConversation] Mensaje final ya enviado por tool, omitiendo replyToLead", { leadId });
+        // Aún así actualizar RESP_ID para tracking, pero con mensaje vacío
+        const trackingFields: Record<string, string> = {
+          ...baseFields,
+          [BOT_MESSAGE]: "", // Mensaje vacío - ya fue enviado por el tool
+        };
+        await this.deps.kommoService.replyToLead({
+          salesbotId: botConfig.kommo.salesbotId,
+          leadId,
+          customFields: trackingFields,
+          normalizedLeadCF,
+        });
+        await this.deps.sessionResetUC.postFlight({ botConfig, leadId });
+        return { success: true, message: "" };
+      }
 
       Logger.info("[OrchestrateConversation] Enviando respuesta a Kommo", {
         leadId,
@@ -310,7 +337,7 @@ export class OrchestrateConversationUseCase {
     normalizedLeadCF: (KommoCustomFieldValueBase & { value: any })[];
     patientCache: Map<string, number>;
     waitingMessageSentForLead: Set<number>;
-  }): Promise<string> {
+  }): Promise<{ toolOutput: string; userMessageSent: boolean }> {
     const { name, args, botConfig, leadId, normalizedLeadCF, patientCache, waitingMessageSentForLead } = params;
 
     switch (name) {
@@ -328,7 +355,7 @@ export class OrchestrateConversationUseCase {
           waitingMessageSentForLead,
         });
         if (!out.success) throw new Error("consulta_agendar UC failed");
-        return this.wrapToolOutput(out.toolOutput);
+        return { toolOutput: this.wrapToolOutput(out.toolOutput), userMessageSent: out.userMessageSent ?? false };
       }
 
       case "agendar_cita": {
@@ -368,6 +395,7 @@ export class OrchestrateConversationUseCase {
           timezone: botConfig.timezone,
           tiempoActualDT: localTime(botConfig.timezone),
           subdomain: botConfig.kommo.subdomain,
+          waitingMessageSentForLead,
         });
         if (!out.success) throw new Error("agendar_cita UC failed");
 
@@ -391,24 +419,21 @@ export class OrchestrateConversationUseCase {
                 // motivo_cambio no se envía en esta confirmación implícita
               } as any,
             });
-          } catch (e) {
-            Logger.warn("[Tool] manageAppointmentState post-agendar falló (no bloqueante)", { e });
+            Logger.info("[OrchestrateConversation] Estado de cita actualizado automáticamente", {
+              leadId,
+              id_cita: out.createdAppointmentId,
+              estado: out.needsConfirmation ? "CONFIRMADA" : "PROGRAMADA",
+            });
+          } catch (err) {
+            Logger.warn("[OrchestrateConversation] No se pudo actualizar estado de cita automáticamente", {
+              leadId,
+              id_cita: out.createdAppointmentId,
+              err,
+            });
           }
         }
 
-        return this.wrapToolOutput(out.toolOutput);
-      }
-
-      case "gestionar_estado_cita": {
-        Logger.info("[Tool] gestionar_estado_cita");
-        const parsed = ManageAppointmentStateSchema.parse(args);
-        const out = await this.deps.manageAppointmentStateUC.execute({
-          leadId,
-          params: parsed,
-        });
-        if (!out.success) throw new Error("gestionar_estado_cita UC failed");
-        // Esta tool no envía mensajes al usuario, el Bot Principal debe enviar
-        return this.wrapToolOutput(out.toolOutput);
+        return { toolOutput: this.wrapToolOutput(out.toolOutput), userMessageSent: out.userMessageSent ?? false };
       }
 
       case "crear_tarea": {
@@ -421,7 +446,31 @@ export class OrchestrateConversationUseCase {
           params: parsed,
         });
         if (!out.success) throw new Error("crear_tarea UC failed");
-        return this.wrapToolOutput(out.toolOutput);
+        return { toolOutput: this.wrapToolOutput(out.toolOutput), userMessageSent: false };
+      }
+
+      case "conversacion_regular": {
+        Logger.info("[Tool] conversacion_regular");
+        const parsed = RegularConversationSchema.parse(args);
+        const out = await this.deps.regularConversationUC.execute({
+          params: parsed,
+        });
+        if (!out.success) throw new Error("conversacion_regular UC failed");
+        return { toolOutput: this.wrapToolOutput(out.toolOutput), userMessageSent: false };
+      }
+
+      case "obtener_info_paciente": {
+        Logger.info("[Tool] obtener_info_paciente");
+        const parsed = LoadPatientsByPhoneSchema.parse(args);
+        const out = await this.deps.loadPatientsByPhoneUC.execute({
+          botConfig,
+          leadId,
+          normalizedLeadCF,
+          params: parsed,
+          tiempoActualDT: localTime(botConfig.timezone),
+        });
+        if (!out.success) throw new Error("obtener_info_paciente UC failed");
+        return { toolOutput: this.wrapToolOutput(out.toolOutput), userMessageSent: false };
       }
 
       case "cargar_pacientes_por_telefono": {
@@ -436,23 +485,26 @@ export class OrchestrateConversationUseCase {
         });
         if (!out.success) throw new Error("cargar_pacientes_por_telefono UC failed");
         // Esta tool no envía mensajes al usuario, el Bot Principal debe enviar
-        return this.wrapToolOutput(out.toolOutput);
+        return { toolOutput: this.wrapToolOutput(out.toolOutput), userMessageSent: false };
       }
 
-      default: {
-        Logger.info("[Tool] fallback → conversación_regular");
-        const out = await this.deps.regularConversationUC.execute({
-          params: RegularConversationSchema.parse({ assistantMessage: String(args?.assistantMessage || "") }),
+      case "gestionar_estado_cita": {
+        Logger.info("[Tool] gestionar_estado_cita");
+        const parsed = ManageAppointmentStateSchema.parse(args);
+        const out = await this.deps.manageAppointmentStateUC.execute({
+          leadId,
+          params: parsed,
         });
-        if (!out.success) throw new Error("regularConversation UC failed");
-        // Conversación regular no envía mensajes, el Bot Principal debe enviar
-        return this.wrapToolOutput(out.toolOutput);
+        if (!out.success) throw new Error("gestionar_estado_cita UC failed");
+        return { toolOutput: this.wrapToolOutput(out.toolOutput), userMessageSent: false };
       }
+
+      default:
+        throw new Error(`Tool no implementado: ${name}`);
     }
   }
 
   private wrapToolOutput(toolOutput: string): string {
-    // IMPORTANTE: no cerrar con una llave extra (bug anterior) — devolver tal cual
     return `${toolOutput}`;
   }
 
