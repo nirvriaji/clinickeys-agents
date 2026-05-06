@@ -83,11 +83,13 @@ interface CheckAvailabilityInput {
   timezone: string;
   tiempoActualDT: DateTime;
   subdomain: string;
+  waitingMessageSentForLead?: Set<number>; // Track si ya se envió waiting message para este lead
 }
 
 interface CheckAvailabilityOutput {
   success: boolean;
   toolOutput: string;
+  userMessageSent: boolean; // La tool ya envió mensaje al usuario (inicial + formateado)
 }
 
 type HHMM = `${string}:${string}`;
@@ -113,20 +115,27 @@ export class CheckAvailabilityUseCase {
   }
 
   public async execute(input: CheckAvailabilityInput): Promise<CheckAvailabilityOutput> {
-    const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT } = input;
+    const { botConfig, leadId, normalizedLeadCF, params, timezone, tiempoActualDT, waitingMessageSentForLead } = input;
     const localTimeForPrompts = getClinicLocalTimestamp(tiempoActualDT, timezone);
 
-    // 1) Mensaje inicial (no bloqueante)
-    try {
-      await this.kommoService.sendBotInitialMessage({
-        leadId,
-        normalizedLeadCF,
-        salesbotId: botConfig.kommo.salesbotId,
-        message:
-          "Muy bien, voy a mirar la agenda para ver las citas disponibles. Un momento, por favor.",
-      });
-    } catch (err) {
-      Logger.warn("[CheckAvailability] No se pudo enviar el mensaje inicial (continuando)", { err });
+    // 1) Mensaje inicial (no bloqueante) - solo si no se envió ya para este lead
+    const shouldSendWaitingMessage = !waitingMessageSentForLead?.has(leadId);
+    if (shouldSendWaitingMessage) {
+      try {
+        await this.kommoService.sendBotInitialMessage({
+          leadId,
+          normalizedLeadCF,
+          salesbotId: botConfig.kommo.salesbotId,
+          message:
+            "Muy bien, voy a mirar la agenda para ver las citas disponibles. Un momento, por favor.",
+        });
+        // Marcar que ya se envió el waiting message para este lead
+        waitingMessageSentForLead?.add(leadId);
+      } catch (err) {
+        Logger.warn("[CheckAvailability] No se pudo enviar el mensaje inicial (continuando)", { err });
+      }
+    } else {
+      Logger.info("[CheckAvailability] Waiting message ya enviado previamente para este lead, omitiendo", { leadId });
     }
 
     Logger.info("[CheckAvailability] Inicio (ID-first)", {
@@ -231,7 +240,7 @@ export class CheckAvailabilityUseCase {
         + `    `;
 
       Logger.warn("[CheckAvailability] Extractor sin filtros o sin date_ranges; devolviendo aclaración");
-      return { success: true, toolOutput };
+      return { success: true, toolOutput, userMessageSent: false };
     }
 
     const intentSignature = buildIntentSignature({
@@ -327,7 +336,7 @@ export class CheckAvailabilityUseCase {
         + `    `;
 
       Logger.warn("[CheckAvailability] Ranking devolvió 0 fechas");
-      return { success: true, toolOutput };
+      return { success: true, toolOutput, userMessageSent: false };
     }
 
     // 6) Divisiones horarias canónicas (DivisionConfig)
@@ -499,7 +508,7 @@ export class CheckAvailabilityUseCase {
         timeWindows: timeWindowSummary,
       });
 
-      return { success: true, toolOutput };
+      return { success: true, toolOutput, userMessageSent: false };
     }
 
     // 9) Política global para selección y redacción
@@ -672,7 +681,7 @@ export class CheckAvailabilityUseCase {
       timeWindows: timeWindowSummary,
     });
 
-    return { success: true, toolOutput };
+    return { success: true, toolOutput, userMessageSent: true };
   }
 }
 

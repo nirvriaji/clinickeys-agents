@@ -175,6 +175,12 @@ export class OrchestrateConversationUseCase {
       // Contador de tool-calls por turno
       let toolCallsThisTurn = 0;
 
+      // Set para trackear si ya se envió waiting message para este lead (evita múltiples envíos en iteraciones)
+      const waitingMessageSentForLead = new Set<number>();
+
+      // Flag para trackear si ya se envió el mensaje final formateado (evita múltiples envíos)
+      let finalMessageAlreadySent = false;
+
       // Caché simple de pacientes por turno (clave: nombre|apellido|telefono normalizado)
       const patientCache = new Map<string, number>();
 
@@ -189,17 +195,24 @@ export class OrchestrateConversationUseCase {
 
         for (let attempt = 1; attempt <= MAX_TOOL_RETRIES; attempt++) {
           try {
-            const toolOutput = await this.executeTool({
+            // Si ya se envió mensaje final, no ejecutar más tools
+            if (finalMessageAlreadySent) {
+              Logger.info("[OrchestrateConversation] Mensaje final ya enviado, saltando tool", { name });
+              return "";
+            }
+
+            const toolResult = await this.executeTool({
               name,
               args,
               botConfig,
               leadId,
               normalizedLeadCF,
               patientCache,
+              waitingMessageSentForLead,
             });
 
             toolCallsThisTurn += 1;
-            return toolOutput;
+            return toolResult;
           } catch (err) {
             const isLast = attempt === MAX_TOOL_RETRIES;
             Logger.warn("[OrchestrateConversation] Tool error/retry", {
@@ -296,8 +309,9 @@ export class OrchestrateConversationUseCase {
     leadId: number;
     normalizedLeadCF: (KommoCustomFieldValueBase & { value: any })[];
     patientCache: Map<string, number>;
+    waitingMessageSentForLead: Set<number>;
   }): Promise<string> {
-    const { name, args, botConfig, leadId, normalizedLeadCF, patientCache } = params;
+    const { name, args, botConfig, leadId, normalizedLeadCF, patientCache, waitingMessageSentForLead } = params;
 
     switch (name) {
       case "consulta_agendar": {
@@ -311,6 +325,7 @@ export class OrchestrateConversationUseCase {
           timezone: botConfig.timezone,
           tiempoActualDT: localTime(botConfig.timezone),
           subdomain: botConfig.kommo.subdomain,
+          waitingMessageSentForLead,
         });
         if (!out.success) throw new Error("consulta_agendar UC failed");
         return this.wrapToolOutput(out.toolOutput);
@@ -392,6 +407,7 @@ export class OrchestrateConversationUseCase {
           params: parsed,
         });
         if (!out.success) throw new Error("gestionar_estado_cita UC failed");
+        // Esta tool no envía mensajes al usuario, el Bot Principal debe enviar
         return this.wrapToolOutput(out.toolOutput);
       }
 
@@ -419,6 +435,7 @@ export class OrchestrateConversationUseCase {
           tiempoActualDT: localTime(botConfig.timezone),
         });
         if (!out.success) throw new Error("cargar_pacientes_por_telefono UC failed");
+        // Esta tool no envía mensajes al usuario, el Bot Principal debe enviar
         return this.wrapToolOutput(out.toolOutput);
       }
 
@@ -428,6 +445,7 @@ export class OrchestrateConversationUseCase {
           params: RegularConversationSchema.parse({ assistantMessage: String(args?.assistantMessage || "") }),
         });
         if (!out.success) throw new Error("regularConversation UC failed");
+        // Conversación regular no envía mensajes, el Bot Principal debe enviar
         return this.wrapToolOutput(out.toolOutput);
       }
     }
