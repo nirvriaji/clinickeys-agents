@@ -52,6 +52,10 @@ export class UpdatePatientMessageUseCase {
     return added.join(" ").trim();
   }
 
+  private normalizeForComparison(text: string): string {
+    return this.splitWords(text).join(" ").trim();
+  }
+
   public async execute(
     input: UpdatePatientMessageInput
   ): Promise<UpdatePatientMessageOutput> {
@@ -77,14 +81,32 @@ export class UpdatePatientMessageUseCase {
         patientMessageProcessedChunk,
       });
 
-      // Objetivo: extraer SOLO la parte nueva entre el chunk procesado y el último mensaje
-      const newPart = this.extractNewPart(
-        patientMessageProcessedChunk,
-        lastPatientMessage
-      );
+      const normalizedLastPatientMessage = this.normalizeForComparison(String(lastPatientMessage));
+      const normalizedProcessedChunk = this.normalizeForComparison(String(patientMessageProcessedChunk));
 
-      // Si no hay parte nueva, usamos el último mensaje completo (fallback seguro)
-      const newPatientMessage = newPart || lastPatientMessage;
+      // Si el último mensaje ya fue cubierto por el chunk procesado, es un webhook atrasado/reintento.
+      if (
+        normalizedLastPatientMessage &&
+        normalizedProcessedChunk &&
+        normalizedLastPatientMessage === normalizedProcessedChunk
+      ) {
+        Logger.info("[UpdatePatientMessageUseCase] Sin texto nuevo; último mensaje ya procesado", { leadId });
+        await this.kommoService.updateLeadCustomFields({
+          botConfig,
+          leadId,
+          customFields: {
+            [LAST_PATIENT_MESSAGE]: "",
+            [PATIENT_MESSAGE]: "",
+          },
+        });
+        return { success: true, newPatientMessage: "" };
+      }
+
+      // Objetivo: extraer SOLO la parte nueva entre el chunk procesado y el último mensaje.
+      // En el primer turno, cuando no hay chunk previo, el mensaje completo sí es nuevo.
+      const newPatientMessage = normalizedProcessedChunk
+        ? this.extractNewPart(String(patientMessageProcessedChunk), String(lastPatientMessage))
+        : String(lastPatientMessage || "").trim();
 
       Logger.debug("[UpdatePatientMessageUseCase] Nuevo patientMessage calculado", {
         newPatientMessage,

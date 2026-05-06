@@ -26,6 +26,8 @@ import {
   shouldLambdaContinue,
   PLEASE_WAIT_MESSAGE,
   BOT_MESSAGE,
+  LAST_PATIENT_MESSAGE,
+  PATIENT_MESSAGE_PROCESSED_CHUNK,
   PATIENT_FIRST_NAME,
   PATIENT_LAST_NAME,
   PATIENT_PHONE,
@@ -260,15 +262,32 @@ export class KommoService {
         .map((cf) => ({ id: cf.field_id, name: cf.field_name })) || [],
     });
 
-    const latest = await this.kommoRepository.getLeadById({ leadId: input.leadId });
+    const latest = await this.getLeadById(input.leadId);
     const initialCounter = getCustomFieldValue(input.normalizedLeadCF || [], RANDOM_STAMP);
     const ok = await shouldLambdaContinue({
       latestLead: latest!,
       initialValue: initialCounter,
     });
     if (!ok) {
-      Logger.warn('[KommoService.replyToLead] Abortado por shouldLambdaContinue=false', { leadId: input.leadId });
-      return { success: false, aborted: true };
+      const latestLastPatientMessage = this.readLeadField(latest, LAST_PATIENT_MESSAGE);
+      const latestProcessedChunk = this.readLeadField(latest, PATIENT_MESSAGE_PROCESSED_CHUNK);
+      const hasPendingPatientText = this.normalizeText(latestLastPatientMessage) !== ""
+        && this.normalizeText(latestLastPatientMessage) !== this.normalizeText(latestProcessedChunk);
+
+      if (hasPendingPatientText) {
+        Logger.warn('[KommoService.replyToLead] Abortado por shouldLambdaContinue=false; hay texto nuevo pendiente', {
+          leadId: input.leadId,
+          latestLastPatientMessage,
+          latestProcessedChunk,
+        });
+        return { success: false, aborted: true };
+      }
+
+      Logger.warn('[KommoService.replyToLead] randomStamp cambió sin texto nuevo pendiente; se permite continuar', {
+        leadId: input.leadId,
+        latestLastPatientMessage,
+        latestProcessedChunk,
+      });
     } else {
       Logger.debug('[KommoService.replyToLead] La lambda continua');
     }
@@ -319,10 +338,9 @@ export class KommoService {
     normalizedLeadCF: (KommoCustomFieldValueBase & { value: unknown })[];
     message: string;
   }): Promise<void> {
-    const extra: Record<string, string> = {};
-    for (const cf of input.normalizedLeadCF) if (cf.value != null) extra[cf.field_name] = String(cf.value);
-    if (extra[PLEASE_WAIT_MESSAGE] === 'true') return;
-    const customFields = { ...extra, [BOT_MESSAGE]: input.message, [PLEASE_WAIT_MESSAGE]: 'true' };
+    const pleaseWaitMessage = getCustomFieldValue(input.normalizedLeadCF || [], PLEASE_WAIT_MESSAGE);
+    if (pleaseWaitMessage === 'true') return;
+    const customFields = { [BOT_MESSAGE]: input.message, [PLEASE_WAIT_MESSAGE]: 'true' };
     Logger.info('[KommoService.sendBotInitialMessage] Preparando replyToLead', {
       leadId: input.leadId,
       salesbotId: input.salesbotId,
@@ -345,5 +363,20 @@ export class KommoService {
 
   public async getUsers(): Promise<KommoUsersResponse | null> {
     return this.kommoRepository.getUsers();
+  }
+
+  private readLeadField(
+    lead: ((KommoGetLeadByIdResponse & {
+      custom_fields?: Array<{ field_id: number; field_name: string; value: string }>;
+    }) | null),
+    fieldName: string,
+  ): string {
+    const friendly = lead?.custom_fields?.find((cf) => cf.field_name === fieldName)?.value;
+    if (friendly != null) return String(friendly);
+    return getCustomFieldValue(lead?.custom_fields_values || [], fieldName);
+  }
+
+  private normalizeText(text: string): string {
+    return String(text || "").split(/\s+/).filter(Boolean).join(" ").trim();
   }
 }

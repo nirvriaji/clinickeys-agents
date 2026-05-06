@@ -178,8 +178,9 @@ export class OrchestrateConversationUseCase {
       // Set para trackear si ya se envió waiting message para este lead (evita múltiples envíos en iteraciones)
       const waitingMessageSentForLead = new Set<number>();
 
-      // Flag para trackear si ya se envió el mensaje final formateado (evita múltiples envíos)
-      let finalMessageAlreadySent = false;
+      // Flag para trackear si una tool envió la respuesta final al usuario.
+      // No incluye mensajes transitorios tipo "un momento".
+      let finalReplySentByTool = false;
 
       // Caché simple de pacientes por turno (clave: nombre|apellido|telefono normalizado)
       const patientCache = new Map<string, number>();
@@ -195,9 +196,9 @@ export class OrchestrateConversationUseCase {
 
         for (let attempt = 1; attempt <= MAX_TOOL_RETRIES; attempt++) {
           try {
-            // Si ya se envió mensaje final, no ejecutar más tools
-            if (finalMessageAlreadySent) {
-              Logger.info("[OrchestrateConversation] Mensaje final ya enviado, saltando tool", { name });
+            // Si una tool ya envió la respuesta final, no ejecutar más tools
+            if (finalReplySentByTool) {
+              Logger.info("[OrchestrateConversation] Respuesta final ya enviada por tool, saltando tool", { name });
               return "";
             }
 
@@ -213,10 +214,11 @@ export class OrchestrateConversationUseCase {
 
             toolCallsThisTurn += 1;
             
-            // Si el tool ya envió el mensaje al usuario, marcar para no enviar duplicado
-            if (toolResult.userMessageSent) {
-              finalMessageAlreadySent = true;
-              Logger.info("[OrchestrateConversation] Tool indicó que ya envió mensaje al usuario, omitiendo envío final", { name });
+            // Solo saltamos el envío final si la tool mandó la respuesta final.
+            // Los mensajes transitorios de espera no cuentan para este flag.
+            if (toolResult.finalReplySentByTool) {
+              finalReplySentByTool = true;
+              Logger.info("[OrchestrateConversation] Tool indicó que ya envió respuesta final al usuario", { name });
             }
             
             return toolResult.toolOutput;
@@ -274,19 +276,18 @@ export class OrchestrateConversationUseCase {
         [PATIENT_MESSAGE_PROCESSED_CHUNK]: userMessage,
       };
 
-      // Si el tool ya envió el mensaje al usuario, no enviar mensaje final duplicado
-      if (finalMessageAlreadySent) {
-        Logger.info("[OrchestrateConversation] Mensaje final ya enviado por tool, omitiendo replyToLead", { leadId });
-        // Aún así actualizar RESP_ID para tracking, pero con mensaje vacío
-        const trackingFields: Record<string, string> = {
-          ...baseFields,
-          [BOT_MESSAGE]: "", // Mensaje vacío - ya fue enviado por el tool
-        };
-        await this.deps.kommoService.replyToLead({
-          salesbotId: botConfig.kommo.salesbotId,
+      // Si la tool ya envió la respuesta final, solo actualizamos tracking.
+      // No usar replyToLead aquí: ejecuta Salesbot y un BOT_MESSAGE vacío dispara webhooks espurios.
+      if (finalReplySentByTool) {
+        Logger.info("[OrchestrateConversation] Respuesta final ya enviada por tool; actualizando tracking sin Salesbot", { leadId });
+        await this.deps.kommoService.updateLeadCustomFields({
+          botConfig,
           leadId,
-          customFields: trackingFields,
-          normalizedLeadCF,
+          customFields: {
+            [RESP_ID]: responseId,
+            [PLEASE_WAIT_MESSAGE]: "false",
+            [PATIENT_MESSAGE_PROCESSED_CHUNK]: userMessage,
+          },
         });
         await this.deps.sessionResetUC.postFlight({ botConfig, leadId });
         return { success: true, message: "" };
@@ -337,7 +338,7 @@ export class OrchestrateConversationUseCase {
     normalizedLeadCF: (KommoCustomFieldValueBase & { value: any })[];
     patientCache: Map<string, number>;
     waitingMessageSentForLead: Set<number>;
-  }): Promise<{ toolOutput: string; userMessageSent: boolean }> {
+  }): Promise<{ toolOutput: string; finalReplySentByTool: boolean }> {
     const { name, args, botConfig, leadId, normalizedLeadCF, patientCache, waitingMessageSentForLead } = params;
 
     switch (name) {
@@ -355,7 +356,7 @@ export class OrchestrateConversationUseCase {
           waitingMessageSentForLead,
         });
         if (!out.success) throw new Error("consulta_agendar UC failed");
-        return { toolOutput: this.wrapToolOutput(out.toolOutput), userMessageSent: out.userMessageSent ?? false };
+        return { toolOutput: this.wrapToolOutput(out.toolOutput), finalReplySentByTool: out.finalReplySentByTool ?? false };
       }
 
       case "agendar_cita": {
@@ -433,7 +434,7 @@ export class OrchestrateConversationUseCase {
           }
         }
 
-        return { toolOutput: this.wrapToolOutput(out.toolOutput), userMessageSent: out.userMessageSent ?? false };
+        return { toolOutput: this.wrapToolOutput(out.toolOutput), finalReplySentByTool: out.finalReplySentByTool ?? false };
       }
 
       case "crear_tarea": {
@@ -446,7 +447,7 @@ export class OrchestrateConversationUseCase {
           params: parsed,
         });
         if (!out.success) throw new Error("crear_tarea UC failed");
-        return { toolOutput: this.wrapToolOutput(out.toolOutput), userMessageSent: false };
+        return { toolOutput: this.wrapToolOutput(out.toolOutput), finalReplySentByTool: false };
       }
 
       case "conversacion_regular": {
@@ -456,7 +457,7 @@ export class OrchestrateConversationUseCase {
           params: parsed,
         });
         if (!out.success) throw new Error("conversacion_regular UC failed");
-        return { toolOutput: this.wrapToolOutput(out.toolOutput), userMessageSent: false };
+        return { toolOutput: this.wrapToolOutput(out.toolOutput), finalReplySentByTool: false };
       }
 
       case "obtener_info_paciente": {
@@ -470,7 +471,7 @@ export class OrchestrateConversationUseCase {
           tiempoActualDT: localTime(botConfig.timezone),
         });
         if (!out.success) throw new Error("obtener_info_paciente UC failed");
-        return { toolOutput: this.wrapToolOutput(out.toolOutput), userMessageSent: false };
+        return { toolOutput: this.wrapToolOutput(out.toolOutput), finalReplySentByTool: false };
       }
 
       case "cargar_pacientes_por_telefono": {
@@ -485,7 +486,7 @@ export class OrchestrateConversationUseCase {
         });
         if (!out.success) throw new Error("cargar_pacientes_por_telefono UC failed");
         // Esta tool no envía mensajes al usuario, el Bot Principal debe enviar
-        return { toolOutput: this.wrapToolOutput(out.toolOutput), userMessageSent: false };
+        return { toolOutput: this.wrapToolOutput(out.toolOutput), finalReplySentByTool: false };
       }
 
       case "gestionar_estado_cita": {
@@ -496,7 +497,7 @@ export class OrchestrateConversationUseCase {
           params: parsed,
         });
         if (!out.success) throw new Error("gestionar_estado_cita UC failed");
-        return { toolOutput: this.wrapToolOutput(out.toolOutput), userMessageSent: false };
+        return { toolOutput: this.wrapToolOutput(out.toolOutput), finalReplySentByTool: false };
       }
 
       default:

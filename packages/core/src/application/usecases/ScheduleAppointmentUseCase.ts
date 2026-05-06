@@ -85,8 +85,8 @@ interface ScheduleAppointmentOutput {
   needsConfirmation?: boolean;
   /** Id del paciente finalmente utilizado (existente o recién creado). */
   id_paciente_result?: number;
-  /** La tool ya envió mensaje al usuario (inicial + formateado) */
-  userMessageSent?: boolean;
+  /** Solo true si la tool envió la respuesta final al usuario. No incluye mensajes de espera. */
+  finalReplySentByTool?: boolean;
 }
 
 type StepTipo =
@@ -134,7 +134,7 @@ export class ScheduleAppointmentUseCase {
         return {
           success: false,
           toolOutput: '#agendarCita\nNo se pudo agendar: falta un id_paciente válido cuando shouldCreatePatient=false.',
-          userMessageSent: false,
+          finalReplySentByTool: false,
         };
       }
     }
@@ -199,7 +199,7 @@ export class ScheduleAppointmentUseCase {
         success: false,
         toolOutput: '#agendarCita\nNo se pudo identificar o crear un paciente válido para agendar la cita.',
         id_paciente_result: undefined,
-        userMessageSent: false,
+        finalReplySentByTool: false,
       };
     }
 
@@ -300,7 +300,7 @@ export class ScheduleAppointmentUseCase {
         createdAppointmentId: appointmentCreated.id_cita,
         needsConfirmation: appointmentCreated.isSoon,
         id_paciente_result: finalPatientId,
-        userMessageSent: false, // El Bot Principal generará el mensaje de confirmación
+        finalReplySentByTool: false, // El Bot Principal generará el mensaje de confirmación
       };
     }
 
@@ -569,7 +569,7 @@ export class ScheduleAppointmentUseCase {
       createdAppointmentId: undefined,
       needsConfirmation: false,
       id_paciente_result: finalPatientId,
-      userMessageSent: false, // El Bot Principal presentará las opciones encontradas
+      finalReplySentByTool: false, // El Bot Principal presentará las opciones encontradas
     };
   }
 

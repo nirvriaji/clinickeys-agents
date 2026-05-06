@@ -89,7 +89,7 @@ interface CheckAvailabilityInput {
 interface CheckAvailabilityOutput {
   success: boolean;
   toolOutput: string;
-  userMessageSent: boolean; // La tool ya envió mensaje al usuario (inicial + formateado)
+  finalReplySentByTool: boolean; // Solo true si la tool envió la respuesta final al usuario.
 }
 
 type HHMM = `${string}:${string}`;
@@ -240,7 +240,7 @@ export class CheckAvailabilityUseCase {
         + `    `;
 
       Logger.warn("[CheckAvailability] Extractor sin filtros o sin date_ranges; devolviendo aclaración");
-      return { success: true, toolOutput, userMessageSent: false };
+      return { success: true, toolOutput, finalReplySentByTool: false };
     }
 
     const intentSignature = buildIntentSignature({
@@ -336,7 +336,7 @@ export class CheckAvailabilityUseCase {
         + `    `;
 
       Logger.warn("[CheckAvailability] Ranking devolvió 0 fechas");
-      return { success: true, toolOutput, userMessageSent: false };
+      return { success: true, toolOutput, finalReplySentByTool: false };
     }
 
     // 6) Divisiones horarias canónicas (DivisionConfig)
@@ -508,7 +508,7 @@ export class CheckAvailabilityUseCase {
         timeWindows: timeWindowSummary,
       });
 
-      return { success: true, toolOutput, userMessageSent: false };
+      return { success: true, toolOutput, finalReplySentByTool: false };
     }
 
     // 9) Política global para selección y redacción
@@ -681,7 +681,7 @@ export class CheckAvailabilityUseCase {
       timeWindows: timeWindowSummary,
     });
 
-    return { success: true, toolOutput, userMessageSent: true };
+    return { success: true, toolOutput, finalReplySentByTool: false };
   }
 }
 
