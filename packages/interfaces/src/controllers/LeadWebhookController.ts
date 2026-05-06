@@ -76,41 +76,58 @@ export class LeadWebhookController {
     }
 
     // ──────────────────────────────────────────────────────────────
-    // 3. Construir mensaje de cola mediante el Use Case
+    // 3. Construir mensaje de cola de forma asíncrona (fire-and-forget)
     // ──────────────────────────────────────────────────────────────
-    let queueMessage: LeadQueueMessageDTO;
-    try {
-      queueMessage = await this.processUseCase.execute(dto, event.queryStringParameters ?? {});
-    } catch (err) {
-      this.logger.error("ProcessLeadWebhookUseCase failed", err as Error);
-      return this.serverError("Internal processing error");
-    }
+    // Responder 202 inmediatamente a Kommo (<2s timeout) y procesar cola en background
+    const sendPromise = this.buildAndSendQueueMessage(dto, event.queryStringParameters ?? {}, leadId);
+
+    // Handle background errors (log them but don't fail the HTTP response)
+    sendPromise.catch((err) => {
+      this.logger.error("[LeadWebhookController] Queue send failed (background)", err as Error);
+    });
 
     // ──────────────────────────────────────────────────────────────
-    // 4. Publicar en la cola FIFO vía puerto de Mensajería
+    // 4. Responder 202 Accepted inmediatamente
     // ──────────────────────────────────────────────────────────────
-    const dedupId = crypto
-      .createHash("sha256")
-      .update(`${leadId}:${Date.now()}`)
-      .digest("hex");
+    return {
+      statusCode: 202,
+      body: JSON.stringify({ message: "Evento recibido y encolado." }),
+    };
+  }
+
+  /**
+   * Construye y envía el mensaje a la cola en background.
+   * Separado del flujo HTTP para permitir fire-and-forget.
+   */
+  private async buildAndSendQueueMessage(
+    dto: KommoLeadEventDTO,
+    queryStringParameters: Record<string, string | undefined>,
+    leadId: string
+  ): Promise<void> {
+    let queueMessage: LeadQueueMessageDTO;
+    try {
+      queueMessage = await this.processUseCase.execute(dto, queryStringParameters);
+    } catch (err) {
+      this.logger.error("[LeadWebhookController] ProcessLeadWebhookUseCase failed", err as Error);
+      throw err;
+    }
+
+    // Publicar en la cola FIFO vía puerto de Mensajería
+    // NOTA: Usar un ID único por mensaje (no determinístico) ya que el procesador
+    // tiene early-exit para detectar y omitir reintentos de Kommo (mensajes vacíos).
+    // El dedupId único garantiza que cada mensaje nuevo del usuario se procese.
+    const dedupId = crypto.randomUUID();
 
     try {
       await this.queue.send(queueMessage, {
         groupId: leadId,
         deduplicationId: dedupId,
       });
+      this.logger.info("[LeadWebhookController] Message sent to queue", { leadId, dedupId });
     } catch (err) {
-      this.logger.error("Queue publication failed", err as Error);
-      return this.serverError("Error enqueuing message");
+      this.logger.error("[LeadWebhookController] Queue publication failed", err as Error);
+      throw err;
     }
-
-    // ──────────────────────────────────────────────────────────────
-    // 5. Responder 202 Accepted
-    // ──────────────────────────────────────────────────────────────
-    return {
-      statusCode: 202,
-      body: JSON.stringify({ message: "Evento recibido y encolado." }),
-    };
   }
 
   // Helpers -------------------------------------------------------

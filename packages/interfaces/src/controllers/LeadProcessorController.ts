@@ -203,6 +203,15 @@ export class LeadProcessorController {
     });
 
     const userMessage = updateResult.newPatientMessage;
+
+    // Early-exit: si no hay mensaje nuevo para procesar, salir (evita reprocesar reintentos de Kommo)
+    if (!userMessage || userMessage.trim() === "") {
+      this.logger.info("[LeadProcessorController] Mensaje vacío, omitiendo procesamiento (posible reintento)", {
+        leadId: Number(msg.kommo.leads.add?.[0]?.id ?? 0),
+      });
+      return;
+    }
+
     const reminderMessage = normalizedLeadCF.find((cf) => cf.field_name === REMINDER_MESSAGE)?.value || undefined;
     const previousResponseId = normalizedLeadCF.find((cf) => cf.field_name === RESP_ID)?.value || undefined; // mantenido por compatibilidad; Responses v5 usa previousResponseId
 
