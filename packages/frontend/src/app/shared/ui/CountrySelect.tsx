@@ -1,8 +1,8 @@
 'use client';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import SelectLib, { SingleValue, StylesConfig } from 'react-select';
 import CountryFlag from 'react-country-flag';
-import { countryOptions } from '@/app/shared/lib/countryOptions';
+import { getCountryOptions, CountryOption as ImportedCountryOption } from '@/app/shared/lib/countryOptions';
 
 export interface CountryOption {
   value: string;
@@ -17,9 +17,23 @@ interface CountrySelectProps {
 }
 
 export function CountrySelect({ value, onChange }: CountrySelectProps) {
+  const [countryOptions, setCountryOptions] = useState<ImportedCountryOption[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    getCountryOptions()
+      .then(options => {
+        setCountryOptions(options);
+        setIsLoading(false);
+      })
+      .catch(() => {
+        setIsLoading(false);
+      });
+  }, []);
+
   const selectedOption = useMemo(
     () => countryOptions.find(opt => opt.value === value) || null,
-    [value]
+    [value, countryOptions]
   );
 
   const styles = useMemo<StylesConfig<CountryOption, false>>(
@@ -55,6 +69,7 @@ export function CountrySelect({ value, onChange }: CountrySelectProps) {
         options={countryOptions}
         isSearchable
         isClearable
+        isLoading={isLoading}
         placeholder="Seleccionar país…"
         styles={styles}
         value={selectedOption}

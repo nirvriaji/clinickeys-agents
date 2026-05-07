@@ -1,14 +1,15 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Controller, type UseFormReturn, type FieldError } from "react-hook-form";
 import { TextInput } from "@/app/shared/ui/TextInput";
 import { TextArea } from "@/app/shared/ui/TextArea";
 import { ClinicSelector } from "@/app/features/bot-configs/ui/ClinicSelector";
 import { CountrySelect } from "@/app/shared/ui/CountrySelect";
 import { Select } from "@/app/shared/ui/Select";
-import { timezoneOptions } from "@/app/shared/lib/timezoneOptions";
+import { getAllTimezoneOptions } from "@/app/shared/lib/timezoneOptions";
 import { KommoUserSelector } from "@/app/features/bot-configs/ui/KommoUserSelector";
 import type { BotConfigType } from "@/app/entities/bot-config/types";
 import type { Field } from "@/app/features/bot-configs/model/fieldPolicy";
+import type { Option as TimezoneOption } from "@/app/shared/types/global";
 
 interface StepGeneralProps {
   methods: UseFormReturn<any>;
@@ -17,6 +18,14 @@ interface StepGeneralProps {
 }
 
 export function StepGeneral({ methods, botType, isEditable }: StepGeneralProps) {
+  const [timezoneOptions, setTimezoneOptions] = useState<TimezoneOption[]>([]);
+
+  useEffect(() => {
+    getAllTimezoneOptions()
+      .then(options => setTimezoneOptions(options))
+      .catch(() => setTimezoneOptions([]));
+  }, []);
+
   const {
     control,
     formState: { errors },
