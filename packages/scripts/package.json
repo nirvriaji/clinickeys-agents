@@ -4,7 +4,7 @@
   "type": "module",
   "dependencies": {
     "@clinickeys-agents/core": "*",
-    "sst": "*"
+    "sst": "4.13.1"
   },
   "scripts": {
     "shell": "sst shell tsx"
