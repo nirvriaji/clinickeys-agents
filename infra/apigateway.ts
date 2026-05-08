@@ -7,9 +7,10 @@ export const botConfigApiGateway = new sst.aws.ApiGatewayV2(`BotConfigApiGateway
   cors: {
     allowOrigins: [
       "http://localhost:3000",
+      "https://d3se8lln76kumh.cloudfront.net", // SATURNINO
       "https://d3m0gnmflpv02n.cloudfront.net", // DEV
       "https://d2vvj4meqgnw27.cloudfront.net", // TESTING
-      "https://d1iim6u6uriel9.cloudfront.net", // PRODUCTION
+      "https://d309sn88theb70.cloudfront.net", // PRODUCTION
     ],
     allowCredentials: true,
     allowHeaders: ["Content-Type", "Authorization"],

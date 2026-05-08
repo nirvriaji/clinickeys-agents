@@ -6,8 +6,8 @@ export default $config({
   app(input) {
     return {
       name: `clinickeys-agents-${input.stage}`,
-      removal: input?.stage === "production" ? "retain" : "remove",
-      protect: ["production"].includes(input?.stage),
+      removal: ["saturnino", "production"].includes(input?.stage) ? "retain" : "remove",
+      protect: ["saturnino", "production"].includes(input?.stage),
       home: "aws",
     };
   },

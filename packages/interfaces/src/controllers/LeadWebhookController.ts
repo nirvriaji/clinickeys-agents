@@ -75,20 +75,12 @@ export class LeadWebhookController {
       return this.badRequest("Lead ID not found in payload");
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // 3. Construir mensaje de cola de forma asíncrona (fire-and-forget)
-    // ──────────────────────────────────────────────────────────────
-    // Responder 202 inmediatamente a Kommo (<2s timeout) y procesar cola en background
-    const sendPromise = this.buildAndSendQueueMessage(dto, event.queryStringParameters ?? {}, leadId);
+    try {
+      await this.buildAndSendQueueMessage(dto, event.queryStringParameters ?? {}, leadId);
+    } catch (err) {
+      this.logger.error("[LeadWebhookController] Queue send failed", err as Error);
+    }
 
-    // Handle background errors (log them but don't fail the HTTP response)
-    sendPromise.catch((err) => {
-      this.logger.error("[LeadWebhookController] Queue send failed (background)", err as Error);
-    });
-
-    // ──────────────────────────────────────────────────────────────
-    // 4. Responder 202 Accepted inmediatamente
-    // ──────────────────────────────────────────────────────────────
     return {
       statusCode: 202,
       body: JSON.stringify({ message: "Evento recibido y encolado." }),
